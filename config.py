@@ -49,6 +49,10 @@ class InitializationConfig:
         self.k_pca = args.k_pca
         self.start_year = args.start_year
         self.method = args.method
+        self.is_generic_xarray_dataset = args.is_generic_xarray_dataset != None
+
+        if self.is_generic_xarray_dataset:
+            return
 
         self._set_saving_path(args)
         initialize_logger(self.saving_path)

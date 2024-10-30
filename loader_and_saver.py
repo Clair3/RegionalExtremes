@@ -281,3 +281,109 @@ class Saver:
             )
         mask.to_zarr(mask_path)
         printt("Mask computed and saved.")
+
+
+class InMemorySaver(Saver):
+    def _save_minmax_data(self, max_data, min_data, coords):
+        self.min_max_data = xr.Dataset(
+            {
+                "max_data": max_data,
+                "min_data": min_data,
+            },
+            coords={"dayofyear": coords},
+        )
+        printt("Min and max data saved in memory.")
+
+    def _save_pca_model(self, pca):
+        # Save the PCA model
+        self.pca = pca
+        printt(f"PCA saved in memory.")
+
+    def _save_pca_projection(self, pca_projection, explained_variance_ratio_) -> None:
+        """Saves the limits bins to a file."""
+        # Split the components into separate DataArrays
+        # Create a new coordinate for the 'component' dimension
+        component = np.arange(pca_projection.shape[1])
+
+        # Create the new DataArray
+        pca_projection = xr.DataArray(
+            data=pca_projection.values,
+            dims=["location", "component"],
+            coords={
+                "location": pca_projection.location,
+                "component": component,
+            },
+            name="pca",
+        )
+        # Unstack location for longitude and latitude as dimensions
+        pca_projection = pca_projection.set_index(
+            location=["longitude", "latitude"]
+        ).unstack("location")
+
+        # Explained variance for each component
+        explained_variance = xr.DataArray(
+            explained_variance_ratio_,
+            dims=["component"],
+            coords={"component": component},
+        )
+        pca_projection["explained_variance"] = explained_variance
+
+        self.pca_projection = pca_projection
+        printt("Projection saved in memory.")
+
+    def _save_limits_bins(self, limits_bins: list[np.ndarray]) -> None:
+        """Saves the limits bins to a file."""
+        self.limits_bins = limits_bins
+        printt(f"Limits bins saved to memory.")
+
+    def _save_bins(self, boxes_indices, projected_data):
+        """Saves the bins to a file."""
+
+        # Create the new DataArray
+        component = np.arange(boxes_indices.shape[1])
+
+        boxes_indices = xr.DataArray(
+            data=boxes_indices,
+            dims=["location", "component"],
+            coords={
+                "location": projected_data.location,
+                "component": component,
+            },
+            name="bins",
+        )
+
+        # Unstack location for longitude and latitude as dimensions
+        boxes_indices = boxes_indices.set_index(
+            location=["longitude", "latitude"]
+        ).unstack("location")
+
+        self.boxes_indices = boxes_indices
+        printt("Boxes computed and saved in memory.")
+
+    def _save_thresholds(self, thresholds):
+        """Saves the extremes quantile to a file."""
+
+        # Unstack location for longitude and latitude as dimensions
+        thresholds = thresholds.set_index(location=["longitude", "latitude"]).unstack(
+            "location"
+        )
+        thresholds.name = "threshold"
+
+        self.thresholds = thresholds
+        printt("Thresholds computed and saved in memory.")
+
+    def _save_extremes(self, extremes):
+        """Saves the extremes quantile to a file."""
+        # Unstack location for longitude and latitude as dimensions
+        extremes = extremes.set_index(location=["longitude", "latitude"]).unstack(
+            "location"
+        )
+
+        self.extremes = extremes
+        printt("Extremes computed and saved in memory.")
+
+    def _save_spatial_masking(self, mask):
+        mask = mask.set_index(location=["longitude", "latitude"]).unstack("location")
+
+        self.mask = mask
+        printt("Mask computed and saved in memory.")

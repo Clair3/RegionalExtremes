@@ -28,7 +28,9 @@ VARIABLE_NAME = lambda index: f"{index}gapfilled_QCdyn"
 
 @staticmethod
 def create_handler(config, n_samples):
-    if config.index in ECOLOGICAL_INDICES:
+    if config.is_generic_xarray_dataset:
+        return GenericDatasetHandler(config=config, n_samples=n_samples)        
+    elif config.index in ECOLOGICAL_INDICES:
         return EcologicalDatasetHandler(config=config, n_samples=n_samples)
     elif config.index in CLIMATIC_INDICES:
         return ClimaticDatasetHandler(config=config, n_samples=n_samples)
@@ -455,6 +457,34 @@ class EcologicalDatasetHandler(DatasetHandler):
         self.data = self._spatial_filtering(self.data)
 
         printt(f"Ecological data loaded with dimensions: {self.data.sizes}")
+
+    def _remove_low_vegetation_location(self, threshold, msc):
+        # Calculate mean data across the dayofyear dimension
+        mean_msc = msc.mean("dayofyear", skipna=True)
+
+        # Create a boolean mask for locations where mean is greater than or equal to the threshold
+        mask = mean_msc >= threshold
+
+        return mask
+
+class GenericDatasetHandler(DatasetHandler):
+    def _dataset_specific_loading(self):
+        """
+        Preprocess data based on the index.
+        """
+        self.data = self.config.data
+        return self.data
+
+    def filter_dataset_specific(self):
+        """
+        Standarize the ecological xarray. Remove irrelevant area, and reshape for the PCA.
+        """
+        assert self.data is not None, "Data not loaded."
+
+        # Assert dimensions are as expected after loading and transformation
+        assert all(
+            dim in self.data.sizes for dim in ("time", "latitude", "longitude")
+        ), "Dimension missing"
 
     def _remove_low_vegetation_location(self, threshold, msc):
         # Calculate mean data across the dayofyear dimension
