@@ -3,6 +3,8 @@ import xarray as xr
 import numpy as np
 from sklearn.decomposition import PCA, KernelPCA
 import pickle as pk
+import dask.array as da
+import flox.xarray
 
 import sys
 
@@ -16,6 +18,8 @@ np.set_printoptions(threshold=sys.maxsize)
 from global_land_mask import globe
 
 import argparse
+
+from dask.distributed import Client
 
 
 # Argparser for all configuration needs
@@ -176,8 +180,8 @@ class RegionalExtremes:
 
         if isinstance(self.pca, PCA):
             printt(
-                f"PCA performed. Sum of explained variance: {sum(self.pca.explained_variance_ratio_)}. "
-                f"Explained variance ratio: {self.pca.explained_variance_ratio_}"
+                f"PCA performed. Sum of explained variance: {sum(self.pca.explained_variance_ratio_)}."
+                f"Explained variance ratio: {self.pca.explained_variance_ratio_}."
             )
         elif isinstance(self.pca, KernelPCA):
             printt(
@@ -298,25 +302,36 @@ class RegionalExtremes:
             len(self.limits_bins) == self.n_components
         ), "the lenght of limits_bins list is not equal to the number of components"
 
-        box_indices = np.zeros(
+        boxes_indices = np.zeros(
             (self.projected_data.shape[0], self.projected_data.shape[1]), dtype=int
         )
         # defines boxes
         for i, limits_bin in enumerate(self.limits_bins):
             # get the indices of the bins to which each value in input array belongs.
-            box_indices[:, i] = np.digitize(self.projected_data[:, i], limits_bin)
-        self.saver._save_bins(box_indices, self.projected_data)
-        self.bins = box_indices
-        return box_indices
+            boxes_indices[:, i] = np.digitize(self.projected_data[:, i], limits_bin)
+
+        component = np.arange(boxes_indices.shape[1])
+
+        self.bins = xr.DataArray(
+            data=boxes_indices,
+            dims=["location", "component"],
+            coords={
+                "location": self.projected_data.location,
+                "component": component,
+            },
+            name="bins",
+        )
+        self.saver._save_bins(self.bins)
+        return self.bins
 
     def apply_regional_threshold(self, deseasonalized, quantile_levels):
         """Compute and save a xarray (location, time) indicating the quantiles of extremes using the regional threshold definition."""
+        assert self.config.method == "regional"
         LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL = quantile_levels
         quantile_levels = np.concatenate((LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
-        if len(self.bins.location) > len(deseasonalized.location):
-            self.bins = self.bins.sel(location=deseasonalized.location)
-        elif len(self.bins.location) < len(deseasonalized.location):
-            deseasonalized = deseasonalized.sel(location=self.bins.location)
+        intersection = np.intersect1d(deseasonalized.location, self.bins.location)
+        deseasonalized = deseasonalized.sel(location=intersection)
+        self.bins = self.bins.sel(location=intersection)
 
         # Create a new DataArrays to store the quantile values (0.025 or 0.975) for extreme values
         extremes_array = xr.full_like(deseasonalized.astype(float), np.nan)
@@ -363,8 +378,10 @@ class RegionalExtremes:
         self.saver._save_extremes(extremes_array)
 
     def apply_local_threshold(self, deseasonalized, quantile_levels):
+        assert self.config.method == "local"
         """Compute and save a xarray (location, time) indicating the quantiles of extremes using a uniform threshold definition."""
         LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL = quantile_levels
+
         # Create a new DataArray to store the quantile values (0.025 or 0.975) for extreme values
         extremes_array = xr.full_like(deseasonalized.astype(float), np.nan)
 
@@ -385,12 +402,13 @@ class RegionalExtremes:
             quantile_levels=(LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL),
             method="local",
         )
+        printt("results computed")
 
         # Assign the results back to the quantile_array
         extremes_array.values = results["extremes"].values
         thresholds_array.values = results["thresholds"].values.T
-
         # save the array
+        printt("Saving in progress")
         self.saver._save_extremes(extremes_array)
         self.saver._save_thresholds(thresholds_array)
 
@@ -407,31 +425,35 @@ class RegionalExtremes:
         """
         LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL = quantile_levels
         quantile_levels = np.concatenate((LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
-        deseasonalized = deseasonalized.chunk("auto")
+        deseasonalized = deseasonalized.chunk("auto")  # dict(location=-1, time=-1))
 
         if method == "regional":
-            dim = ["time", "location"]
+            deseasonalized_dask = deseasonalized.data
+            quantiles = da.percentile(
+                deseasonalized_dask.flatten(),
+                np.array([*LOWER_QUANTILES_LEVEL, *UPPER_QUANTILES_LEVEL]) * 100,
+                method="linear",
+            )
+            all_levels = [*LOWER_QUANTILES_LEVEL, *UPPER_QUANTILES_LEVEL]
+            quantiles_xr = xr.DataArray(
+                quantiles, coords={"quantile": all_levels}, dims=["quantile"]
+            )
         elif method == "local":
-            dim = ["time"]
+            quantiles_xr = deseasonalized.quantile(
+                np.array([*LOWER_QUANTILES_LEVEL, *UPPER_QUANTILES_LEVEL]), dim=["time"]
+            )
         else:
             raise NotImplementedError("Global threshold method is not yet implemented.")
-
-        lower_quantiles = deseasonalized.quantile(LOWER_QUANTILES_LEVEL, dim=dim)
-        upper_quantiles = deseasonalized.quantile(UPPER_QUANTILES_LEVEL, dim=dim)
-        all_quantiles = xr.concat([lower_quantiles, upper_quantiles], dim="quantile")
-
-        masks = self._create_quantile_masks(
-            deseasonalized, lower_quantiles, upper_quantiles
-        )
+        masks = self._create_quantile_masks(deseasonalized, quantiles_xr)
 
         extremes = xr.full_like(deseasonalized.astype(float), np.nan)
         for i, mask in enumerate(masks):
             extremes = xr.where(mask, quantile_levels[i], extremes)
 
-        results = xr.Dataset({"extremes": extremes, "thresholds": all_quantiles})
+        results = xr.Dataset({"extremes": extremes, "thresholds": quantiles_xr})
         return results
 
-    def _create_quantile_masks(self, data, lower_quantiles, upper_quantiles):
+    def _create_quantile_masks(self, data, quantiles):
         """
         Create masks for each quantile level.
 
@@ -443,6 +465,8 @@ class RegionalExtremes:
         Returns:
             list: List of boolean masks for each quantile level.
         """
+        lower_quantiles = quantiles.sel(quantile=LOWER_QUANTILES_LEVEL)
+        upper_quantiles = quantiles.sel(quantile=UPPER_QUANTILES_LEVEL)
         masks = [
             data < lower_quantiles[0],
             *[
@@ -463,7 +487,7 @@ def regional_extremes_method(args, quantile_levels):
     then define the bins on the full dataset projected."""
     # Initialization of the configs, load and save paths, log.txt.
     config = InitializationConfig(args)
-
+    assert config.method == "regional"
     # Initialization of RegionalExtremes, load data if already computed.
     extremes_processor = RegionalExtremes(
         config=config,
@@ -520,6 +544,7 @@ def regional_extremes_method(args, quantile_levels):
 def local_extremes_method(args, quantile_levels):
     # Initialization of the configs, load and save paths, log.txt.
     config = InitializationConfig(args)
+    assert config.method == "local"
 
     # Initialization of RegionalExtremes, load data if already computed.
     extremes_processor = RegionalExtremes(
@@ -544,16 +569,19 @@ def local_extremes_method(args, quantile_levels):
 
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
-    args.name = "eco_threshold_local_2000_test"
+    args.name = "eco_local_2000_wo_droughts"
     args.index = "EVI"
     args.k_pca = False
-    args.n_samples = 1000
-    args.n_components = 2
-    args.n_bins = 50
+    args.n_samples = 5000
+    args.n_components = 3
+    args.n_bins = 100
     args.compute_variance = False
-    args.method = "regional"
+    args.method = "local"
+    args.start_year = 2000
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-10_13:37:49_eco_threshold_local_2000_test"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-01_14:52:57_eco_threshold_2000"
+    # client = Client(dashboard_address="localhost:8888")
+
+    # args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-24_14:24:40_eco_regional_2000_200_bins"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-18_10:05:59_eco_local_2000_hr"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-17_10:44:23_eco_pca_2000_500bins_local"
 
     LOWER_QUANTILES_LEVEL = np.array([0.01, 0.025, 0.05])
     UPPER_QUANTILES_LEVEL = np.array([0.95, 0.975, 0.99])

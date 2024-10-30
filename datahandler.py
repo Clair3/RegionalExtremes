@@ -12,6 +12,7 @@ from abc import ABC, abstractmethod
 from config import InitializationConfig, CLIMATIC_INDICES, ECOLOGICAL_INDICES
 from loader_and_saver import Loader, Saver
 
+np.random.seed(2024)
 np.set_printoptions(threshold=sys.maxsize)
 from utils import printt
 
@@ -53,6 +54,8 @@ class DatasetHandler(ABC):
         # Saver class to save intermediate steps.
         self.saver = Saver(config)
 
+        self.start_year = self.config.start_year
+
         # data loaded from the dataset
         self.data = None
         # Mean seasonal cycle
@@ -61,9 +64,6 @@ class DatasetHandler(ABC):
         # minimum and maximum of the data for normalization
         self.max_data = None
         self.min_data = None
-
-        # Spatial masking. Stay None if precomputed.
-        self.compute_spatial_masking = None
 
     def preprocess_data(
         self,
@@ -94,11 +94,7 @@ class DatasetHandler(ABC):
         if reduce_temporal_resolution:
             self._reduce_temporal_resolution()
 
-        if (
-            remove_nan
-            and not self.n_samples
-            and isinstance(self.spatial_masking, xr.DataArray)
-        ):
+        if remove_nan and not self.n_samples:
             self._remove_nans()
 
         if scale:
@@ -121,25 +117,19 @@ class DatasetHandler(ABC):
         pass
 
     def _spatial_filtering(self, data):
-        mask = self.loader._load_spatial_masking()  # return None if no mask available
-        if mask:
-            self.data = data.where(mask, drop=True)
-            return self.data
-        else:
-            # Filter data from the polar regions
-            remove_poles = np.abs(data.latitude) <= NORTH_POLE_THRESHOLD
+        # Filter data from the polar regions
+        remove_poles = np.abs(data.latitude) <= NORTH_POLE_THRESHOLD
 
-            # Filter dataset to select Europe
-            # Select European data
-            in_europe = self._is_in_europe(data.longitude, data.latitude)
-            printt("Data filtred to Europe.")
+        # Filter dataset to select Europe
+        # Select European data
+        in_europe = self._is_in_europe(data.longitude, data.latitude)
+        printt("Data filtred to Europe.")
 
-            in_land = self._is_in_land(data)
+        in_land = self._is_in_land(data)
 
-            self.spatial_masking = remove_poles & in_europe & in_land
+        self.data = data.where(remove_poles & in_europe & in_land, drop=True)
 
-            self.data = data.where(self.spatial_masking, drop=True)
-            return self.data
+        return self.data
 
     def _is_in_land(self, data):
         # Create a land mask
@@ -241,14 +231,26 @@ class DatasetHandler(ABC):
         self.msc = self.msc.chunk({"dayofyear": len(self.msc.dayofyear), "location": 1})
 
     def _remove_nans(self):
-        # if self.spatial_masking is None, location with NaN already have removed using the precomputed mask.
-        not_low_vegetation = self._remove_low_vegetation_location(0.1, self.msc)
-        condition = ~self.msc.isnull().any(dim="dayofyear")
-        self.msc = self.msc.where((condition & not_low_vegetation).compute(), drop=True)
-        self.saver._save_spatial_masking(
-            condition & not_low_vegetation  # & self.spatial_masking
-        )
-        printt("NaNs removed.")
+        # If a NaN mask is precomputed
+        mask = self.loader._load_spatial_masking()  # return None if no mask available
+        if mask:
+            printt("Mask loaded.")
+            mask_broadcasted = mask.EVIgapfilled_QCdyn.broadcast_like(self.msc)
+            mask_broadcasted = mask_broadcasted.sel(location=self.msc.location)
+            mask_broadcasted = mask_broadcasted.chunk("auto")
+            self.msc = self.msc.where(mask_broadcasted.compute(), drop=True)
+            printt("Mask applied. NaNs removed")
+
+        else:
+            print("Mask precomputed unavailable.")
+            not_low_vegetation = self._remove_low_vegetation_location(0.1, self.msc)
+            condition = ~self.msc.isnull().any(dim="dayofyear")
+            self.msc = self.msc.where(
+                (condition & not_low_vegetation).compute(), drop=True
+            )
+            # self.computespatial_masking = self.spatial_masking.broadcast_like(condition)
+            self.saver._save_spatial_masking(condition & not_low_vegetation)
+            printt("Mask Computed. NaNs removed")
 
     def _reduce_temporal_resolution(self):
         # first day and last day are removed due to error in the original data.
@@ -257,10 +259,10 @@ class DatasetHandler(ABC):
         )
 
     def _get_min_max_data(self):
-        minmax_data = self.loader._load_min_max_data(min_max_data_path)
-        if isinstance(minmax_data, xr.DataArray):
-            self.min_data = min_max_data.min_data
-            self.max_data = min_max_data.max_data
+        minmax_data = self.loader._load_minmax_data()
+        if isinstance(minmax_data, xr.Dataset):
+            self.min_data = minmax_data.min_data
+            self.max_data = minmax_data.max_data
         else:
             self._compute_and_save_min_max_data()
 
@@ -380,7 +382,7 @@ class EcologicalDatasetHandler(DatasetHandler):
         if self.config.index in ECOLOGICAL_INDICES:
             filepath = ECOLOGICAL_FILEPATH(self.config.index)
             self.load_data(filepath)
-            self.reduce_resolution()
+            # self.reduce_resolution()
         else:
             raise NotImplementedError(
                 f"Index {self.config.index} unavailable. Ecological Index available: {ECOLOGICAL_INDICES}."
@@ -442,8 +444,13 @@ class EcologicalDatasetHandler(DatasetHandler):
 
         # Temporal filtering.
         self.data = self.data.sel(
-            time=slice(datetime.date(2000, 1, 1), datetime.date(2022, 12, 31))
+            time=slice(
+                datetime.date(self.start_year, 1, 1), datetime.date(2022, 12, 31)
+            )
         )
+        # Then remove specific years using boolean indexing
+        years_to_exclude = [2003, 2018, 2019, 2020, 2022]
+        self.data = self.data.sel(time=~self.data.time.dt.year.isin(years_to_exclude))
 
         self.data = self._spatial_filtering(self.data)
 

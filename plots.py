@@ -158,7 +158,6 @@ class PlotExtremes(InitializationConfig):
         """Map of the bins in RBG."""
         bins = self.loader._load_bins().T
         bins = bins.unstack("location")
-        print(bins)
 
         # Normalize the explained variance
         # Normalize the data to the range [0, 1]
@@ -169,7 +168,9 @@ class PlotExtremes(InitializationConfig):
         normalized_red = _normalization(0)  # Red is the first component
         normalized_green = _normalization(1)  # Green is the second component
         normalized_blue = _normalization(2)  # blue is the third component
-
+        # For the blue component, we'll use a constant value or a combination of red and green
+        # Option 1: Constant blue (e.g., 0)
+        # normalized_blue = np.zeros_like(normalized_red)
         # Stack the components into a 3D array
         rgb_normalized = np.dstack((normalized_red, normalized_green, normalized_blue))
         # Transpose the array
@@ -626,7 +627,8 @@ class PlotExtremes(InitializationConfig):
         pca_projection = pca_projection.where(condition, drop=True)
         return pca_projection.location
 
-    def plot_3D_pca(self):
+    def plot_3D_pca_old(self):
+
         pca_projection, explained_variance = self.loader._load_pca_projection(
             explained_variance=True
         )
@@ -660,7 +662,59 @@ class PlotExtremes(InitializationConfig):
         saving_path = self.saving_path / "3D_pca.png"
         plt.savefig(saving_path)
 
-        # plt.show()
+        plt.show()
+        return
+
+    def plot_3D_pca(self):
+        data = xr.open_zarr(
+            "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-18_10:05:59_eco_regional_2000_hr_50bins/EVI/pca_projection.zarr"
+        )
+        pca_projection = data.pca.stack(location=("longitude", "latitude")).transpose(
+            "location", "component", ...
+        )
+        mask = xr.open_zarr(
+            "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-17_11:14:50_eco_pca_2016_500bins_regional/EVI/mask.zarr"
+        ).EVIgapfilled_QCdyn
+        mask = mask.stack(location=("longitude", "latitude"))
+        mask_broadcasted = mask.broadcast_like(pca_projection)
+        pca_projection = pca_projection.where(mask_broadcasted.compute(), drop=True)
+        # pca_projection = pca_projection.sel(location=common_locations)
+
+        # Error computation
+        target = xr.open_zarr(
+            "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-17_14:40:51_eco_local_2000_hr/EVI/thresholds.zarr"
+        ).threshold.sel(quantile=0.025)
+        target = target.stack(location=("longitude", "latitude"))
+        target = target.sel(location=pca_projection.location)
+        prediction = xr.open_zarr(
+            "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-18_10:05:59_eco_regional_2000_hr_50bins/EVI/thresholds.zarr"
+        ).threshold.sel(quantile=0.025)
+        prediction = prediction.stack(location=("longitude", "latitude"))
+        prediction = prediction.sel(location=pca_projection.location)
+        error = target - prediction
+        # Convert box indices to RGB colors
+        # Normalize indices to the range [0, 1] for RGB
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection="3d")
+        # Scatter plot
+        sc = ax.scatter(
+            pca_projection.isel(component=0).values.T,
+            pca_projection.isel(component=1).values.T,
+            pca_projection.isel(component=2).values.T,
+            c=error.values.T,
+            s=5,
+            cmap="seismic",
+            vmin=-0.2,
+            vmax=0.2,
+        )
+        # Adding labels and title
+        ax.set_xlabel("PCA Component 1")
+        ax.set_ylabel("PCA Component 2")
+        ax.set_zlabel("PCA Component 3")
+        ax.set_title("3D PCA Projection with RGB Colors")
+        ax.legend()
+        plt.show()
         return
 
     def plot_2D_component(self):
@@ -680,8 +734,7 @@ class PlotExtremes(InitializationConfig):
         sc = ax.scatter(
             pca_projection.isel(component=0).values.T,
             pca_projection.isel(component=1).values.T,
-            # pca_projection.isel(component=2).values.T,
-            c=colors.values,
+            c=colors.values.T,
             s=75,
             edgecolor="k",
         )
@@ -708,7 +761,7 @@ class PlotExtremes(InitializationConfig):
         unique_sorted = unique[sorted_indices][:50]
         counts_sorted = counts[sorted_indices][:50]
         # Convert unique values to strings for labels
-        labels = [f"({int(u[0])}, {int(u[1])}, {int(u[2])})" for u in unique_sorted]
+        labels = [f"({int(u[0])}, {int(u[1])})" for u in unique_sorted]
 
         # Plot
         plt.figure(figsize=(12, 6))
@@ -856,7 +909,13 @@ class PlotExtremes(InitializationConfig):
         )
 
     def extremes_plots(self, date):
-        extremes = self.loader._load_extremes()
+        extremes = self.loader._load_extremes().EVIgapfilled_QCdyn
+        print(extremes)
+        # mask = self.loader._load_spatial_masking().EVIgapfilled_QCdyn
+        # print(extremes)
+        # print(mask)
+        # mask_broadcasted = mask.broadcast_like(extremes)
+        # extremes = extremes.where(mask_broadcasted, np.nan)
         # Set up the map projection
         projection = cartopy.crs.PlateCarree()
         data_day = extremes.sel(time=f"{date}T12:00:00.000000000", method="nearest")
@@ -898,7 +957,7 @@ class PlotExtremes(InitializationConfig):
         im = ax.pcolormesh(
             data_day.longitude.values,  # Test with a smaller subset
             data_day.latitude.values,
-            data_day.EVIgapfilled_QCdyn.values.T,  # Ensure C is 1 smaller
+            data_day.values.T,  # Ensure C is 1 smaller
             transform=projection,
             cmap=cmap,
             norm=norm,
@@ -936,7 +995,36 @@ class PlotExtremes(InitializationConfig):
         print((counts / sum(counts)) * 100)
 
     def threshold(self):
-        threshold = self.loader._load_thresholds().__xarray_dataarray_variable__
+        args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-02_15:04:53_eco_threshold_uniform_2000"
+        config = InitializationConfig(args)
+        print("first", config.path_load_experiment)
+        threshold_local2000 = self.loader._load_thresholds().threshold.sel(
+            quantile=0.05
+        )
+        # mask = self.loader._load_spatial_masking().EVIgapfilled_QCdyn
+        # mask_broadcasted = mask.broadcast_like(threshold_local2000)
+        # threshold_local2000 = threshold_local2000.where(mask_broadcasted, np.nan)
+        threshold_local2000 = threshold_local2000.stack(
+            location=("longitude", "latitude")
+        )
+        print(threshold_local2000.values[5300:5500])
+        args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-01_14:53:47_eco_threshold_2016"
+        config = InitializationConfig(args)
+        print("2", config.path_load_experiment)
+        threshold_regional2000 = self.loader._load_thresholds().threshold.sel(
+            quantile=0.05
+        )
+        threshold_regional2000 = threshold_regional2000.stack(
+            location=("longitude", "latitude")
+        )
+        print(threshold_regional2000.values[5300:5500])
+        common_locations = np.intersect1d(
+            threshold_local2000.location, threshold_regional2000.location
+        )
+        threshold = threshold_local2000 - threshold_regional2000
+        threshold = threshold.set_index(location=["longitude", "latitude"]).unstack(
+            "location"
+        )
 
         projection = cartopy.crs.PlateCarree()
 
@@ -962,7 +1050,7 @@ class PlotExtremes(InitializationConfig):
         im = ax.pcolormesh(
             threshold.longitude.values,
             threshold.latitude.values,
-            threshold.sel(quantile=0.975).values.T,
+            threshold.values.T,
             transform=projection,
             cmap="viridis",
             # vmin=-0.15,
@@ -973,7 +1061,8 @@ class PlotExtremes(InitializationConfig):
         cbar.set_label(f"Threshold")
         # Add a title
         title = ax.set_title(f"Regional thresholds")
-        map_saving_path = self.saving_path / f"threshold.png"
+        map_saving_path = self.saving_path / f"threshold_diff.png"
+        print(map_saving_path)
         plt.savefig(map_saving_path)
         print("Plot saved")
         # Show the plot
@@ -1027,21 +1116,89 @@ class PlotExtremes(InitializationConfig):
     def barplot_error_thresholds(self):
         args = parser_arguments().parse_args()
 
-        args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-01_14:52:57_eco_threshold_2000"
+        args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-01_14:53:47_eco_threshold_2016"
         config = InitializationConfig(args)
-        threshold = self.loader._load_thresholds().__xarray_dataarray_variable__
+        print(args.path_load_experiment)
+        threshold_regional2000 = self.loader._load_thresholds().threshold
+        threshold_regional2000 = threshold_regional2000.stack(
+            location=("longitude", "latitude")
+        )
+        threshold_regional2000 = threshold_regional2000.dropna(
+            dim="location", how="all"
+        )
+        print(threshold_regional2000.values.shape)
+        # args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-01_14:53:47_eco_threshold_2016"
+        # config = InitializationConfig(args)
+        # threshold_regional2016 = self.loader._load_thresholds().threshold
+        # threshold_regional2016 = threshold_regional2016.stack(
+        #     location=("longitude", "latitude")
+        # )
+        # args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-02_14:53:56_eco_threshold_uniform_2016"
+        # config = InitializationConfig(args)
+        # threshold_local2016 = self.loader._load_thresholds().threshold
+        # threshold_local2016 = threshold_local2016.stack(
+        #     location=("longitude", "latitude")
+        # )
+
+        # Ground Truth
+        args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-02_15:04:53_eco_threshold_uniform_2000"
+        config = InitializationConfig(args)
+        print(args.path_load_experiment)
+        threshold_local2000 = self.loader._load_thresholds().threshold
+        # mask = self.loader._load_spatial_masking().EVIgapfilled_QCdyn
+        # mask_broadcasted = mask.broadcast_like(threshold_local2000)
+        # threshold_local2000 = threshold_local2000.where(mask_broadcasted, np.nan)
+        threshold_local2000 = threshold_local2000.stack(
+            location=("longitude", "latitude")
+        )
+        threshold_local2000 = threshold_local2000.dropna(dim="location", how="all")
+
+        rmse_data1 = calculate_rmse(
+            threshold_local2000,
+            threshold_regional2000,
+        )
+        print(rmse_data1)
+
+        # Get quantile values
+        quantiles = threshold_local2000.coords["quantile"].values
+        print(quantiles)
+
+        # Plotting
+        plt.figure(figsize=(10, 6))
+        plt.plot(quantiles, rmse_data1, label="Regional 2016")
+        plt.plot(quantiles, rmse_data2, label="Local 2016")
+        plt.xlabel("Quantile")
+        plt.ylabel("RMSE")
+        plt.title("RMSE vs Quantile for Different Datasets")
+        plt.legend()
+        plt.grid(True)
+
+        plt.show()
+
+
+def calculate_rmse(truth, data):
+    # Calculate the squared difference
+    common_quantiles = np.intersect1d(truth.location, data.location)
+    return np.mean(
+        (
+            truth.sel(location=common_quantiles, quantile=0.05).values
+            - data.sel(location=common_quantiles, quantile=0.05).values
+        )
+    )
 
 
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-10_13:37:49_eco_threshold_local_2000_test"
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-18_10:05:59_eco_regional_2000_hr_50bins"
     config = InitializationConfig(args)
     # loader = Loader(config)
     # print(loader._load_pca_matrix().explained_variance_ratio_)
     # limits_bins = loader._load_limits_bins()
     # print(limits_bins)
     plot = PlotExtremes(config=config)
+    plot.plot_3D_pca()
+    # plot.plot_2D_component()
     # plot.map_component()
     # plot.map_bins()
 
@@ -1069,13 +1226,15 @@ if __name__ == "__main__":
     # indices = np.array([12, 1, 1])
     # plot.region(indices=indices)load_thresholds().__xarray_dataarray_variable__
 
-    # plot.region_distribution()
+    plot.region_distribution()
+    plot.distribution_per_region()
     # plot.map_modis()
     # plot.map_bins()
     # plot.threshold_time_serie()
     # plot.check_number(config, "2018-08-15")
+    # plot.barplot_error_thresholds()
     # plot.threshold()
-    plot.plot_mask()
+    # # plot.plot_mask()
     # plot.extremes_plots("2022-08-15")
     # plot.extremes_plots("2021-08-15")
     # plot.extremes_plots("2020-08-15")

@@ -47,6 +47,8 @@ class InitializationConfig:
         self.index = args.index
         self.compute_variance = args.compute_variance
         self.k_pca = args.k_pca
+        self.start_year = args.start_year
+        self.method = args.method
 
         self._set_saving_path(args)
         initialize_logger(self.saving_path)

@@ -25,6 +25,9 @@ class Loader:
         Load PCA matrix from the file.
         """
         pca_path = self.config.saving_path / "pca_matrix.pkl"
+        if not os.path.exists(pca_path):
+            printt(f"PCA projection not found at {pca_path}")
+            return None
         with open(pca_path, "rb") as f:
             pca = pk.load(f)
         return pca
@@ -56,14 +59,15 @@ class Loader:
 
     def _load_spatial_masking(self):
         """Saves the extremes quantile to a file."""
-        mask_path = self.config.saving_path / "mask.zarr"
-
+        # mask_path = self.config.saving_path / "mask.zarr"
+        # Overwrite to speed up the process
+        mask_path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-18_10:05:59_eco_regional_2000_hr_50bins/EVI/mask.zarr"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-01_14:52:57_eco_threshold_2000/EVI/mask.zarr"
         if not os.path.exists(mask_path):
             printt(f"The file {mask_path} not found.")
             return None
-        mask = xr.open_zarr(mask_path)
+        mask = xr.open_zarr(mask_path).astype(np.int32)
         # Unstack location for longitude and latitude as dimensions
-        # mask = mask.stack(location=["longitude", "latitude"])
+        mask = mask.stack(location=["longitude", "latitude"])
         printt("Mask loaded.")
         return mask
 
@@ -122,11 +126,14 @@ class Loader:
         printt("Extremes loaded.")
         return extremes
 
-    def _load_min_max_data(self):
+    def _load_minmax_data(self):
         """
         Load min-max data from the file.
         """
         min_max_data_path = self.config.saving_path / "min_max_data.zarr"
+        if not os.path.exists(min_max_data_path):
+            printt(f"The file {min_max_data_path } not found.")
+            return None
         min_max_data = xr.open_zarr(min_max_data_path)
         return min_max_data
 
@@ -212,22 +219,8 @@ class Saver:
         np.savez(limits_bins_path, *limits_bins)
         printt(f"Limits bins saved to {limits_bins_path}")
 
-    def _save_bins(self, boxes_indices, projected_data):
+    def _save_bins(self, boxes_indices):
         """Saves the bins to a file."""
-
-        # Create the new DataArray
-        component = np.arange(boxes_indices.shape[1])
-
-        boxes_indices = xr.DataArray(
-            data=boxes_indices,
-            dims=["location", "component"],
-            coords={
-                "location": projected_data.location,
-                "component": component,
-            },
-            name="bins",
-        )
-
         # Unstack location for longitude and latitude as dimensions
         boxes_indices = boxes_indices.set_index(
             location=["longitude", "latitude"]
@@ -274,7 +267,12 @@ class Saver:
         printt("Extremes computed and saved.")
 
     def _save_spatial_masking(self, mask):
-        mask = mask.set_index(location=["longitude", "latitude"]).unstack("location")
+        mask = mask.astype(np.int32)
+        mask = (
+            mask.drop_duplicates("location")
+            .set_index(location=["longitude", "latitude"])
+            .unstack("location")
+        )
 
         mask_path = self.config.saving_path / "mask.zarr"
         if os.path.exists(mask_path):
