@@ -507,17 +507,20 @@ class EarthnetDatasetHandler(DatasetHandler):
         """
         Preprocess data based on the index.
         """
-        print(self.n_samples)
         samples_location = self.sample_locations_with_grid(
-            self.n_samples, grid_size=128
+            self.n_samples * 100, grid_size=128
         )
-        print(samples_location)
-        data = self.load_minicube(samples_location.iloc[0])
+        # print(samples_location)
+        # data = self.load_minicube(samples_location.iloc[0])
         # print(data)
 
-        # with ThreadPoolExecutor() as executor:
-        #    data = list(executor.map(load_minicube, samples_location))
-
+        with ThreadPoolExecutor() as executor:
+            data = list(
+                executor.map(
+                    self.load_minicube, samples_location.to_dict(orient="records")
+                )
+            )
+        print(data)
         return self.data
 
     def sample_locations_with_grid(self, n_samples, grid_size=128):
@@ -567,13 +570,25 @@ class EarthnetDatasetHandler(DatasetHandler):
         return samples
 
     def load_minicube(self, row):
-        print("hereh", row)
-        print(row["path"])
-        print(EARTHNET_FILEPATH + row["path"])
-        ds = xr.open_zarr(EARTHNET_FILEPATH + row["path"]).isel(x=row["x"], y=row["y"])
-        # EVI computation
-        evi = 2.5 * ((ds.B8A - ds.B04) / (ds.B8A) + 6 * ds.B04 - 7.5 * ds.B02 + 1)
-        return evi
+        ds = (
+            xr.open_zarr(EARTHNET_FILEPATH + row["path"])
+            .isel(x=row["x"], y=row["y"])
+            .sel(time=slice(datetime.date(2017, 3, 7), datetime.date(2022, 9, 30)))
+        )
+        evi = (2.5 * (ds.B8A - ds.B04)) / (ds.B8A + 6 * ds.B04 - 7.5 * ds.B02 + 1)
+        # evi = (ds.B8A - ds.B04) / (ds.B8A + ds.B04)
+        # Mask
+        # mask = 1 where there is a cloud, 0 where data
+        mask = ds.cloudmask_en.where(ds.cloudmask_en == 0, np.nan)
+        mask = mask.where(ds.SCL == 4, np.nan)
+        mask = mask.where(mask != 0, 1)
+
+        nan_percentage = mask.isnull().mean().values * 100
+
+        if nan_percentage > 50:
+            return None
+        else:
+            return evi * mask
 
     def filter_dataset_specific(self):
         """
