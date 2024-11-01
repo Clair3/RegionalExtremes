@@ -49,7 +49,7 @@ class InitializationConfig:
         self.k_pca = args.k_pca
         self.start_year = args.start_year
         self.method = args.method
-        self.is_generic_xarray_dataset = args.is_generic_xarray_dataset != None
+        self.is_generic_xarray_dataset = args.is_generic_xarray_dataset is True
 
         if self.is_generic_xarray_dataset:
             return

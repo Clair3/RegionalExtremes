@@ -8,9 +8,11 @@ import regionmask
 import sys
 
 from typing import Union
+import pandas as pd
 from abc import ABC, abstractmethod
 from config import InitializationConfig, CLIMATIC_INDICES, ECOLOGICAL_INDICES
 from loader_and_saver import Loader, Saver
+from concurrent.futures import ThreadPoolExecutor
 
 np.random.seed(2024)
 np.set_printoptions(threshold=sys.maxsize)
@@ -24,16 +26,19 @@ ECOLOGICAL_FILEPATH = (
     lambda index: f"/Net/Groups/BGI/work_1/scratch/fluxcom/upscaling_inputs/MODIS_VI_perRegion061/{index}/Groups_{index}gapfilled_QCdyn.zarr"
 )
 VARIABLE_NAME = lambda index: f"{index}gapfilled_QCdyn"
+EARTHNET_FILEPATH = "/Net/Groups/BGI/work_2/scratch/DeepExtremes/dx-minicubes"  # "/Net/Groups/BGI/tscratch/crobin/dx-minicubes_interpolated"
 
 
 @staticmethod
 def create_handler(config, n_samples):
     if config.is_generic_xarray_dataset:
-        return GenericDatasetHandler(config=config, n_samples=n_samples)        
+        return GenericDatasetHandler(config=config, n_samples=n_samples)
     elif config.index in ECOLOGICAL_INDICES:
         return EcologicalDatasetHandler(config=config, n_samples=n_samples)
     elif config.index in CLIMATIC_INDICES:
         return ClimaticDatasetHandler(config=config, n_samples=n_samples)
+    elif config.index in ["EVI_EN"]:
+        return EarthnetDatasetHandler(config=config, n_samples=n_samples)
     else:
         raise ValueError("Invalid index")
 
@@ -467,6 +472,7 @@ class EcologicalDatasetHandler(DatasetHandler):
 
         return mask
 
+
 class GenericDatasetHandler(DatasetHandler):
     def _dataset_specific_loading(self):
         """
@@ -474,6 +480,100 @@ class GenericDatasetHandler(DatasetHandler):
         """
         self.data = self.config.data
         return self.data
+
+    def filter_dataset_specific(self):
+        """
+        Standarize the ecological xarray. Remove irrelevant area, and reshape for the PCA.
+        """
+        assert self.data is not None, "Data not loaded."
+
+        # Assert dimensions are as expected after loading and transformation
+        assert all(
+            dim in self.data.sizes for dim in ("time", "latitude", "longitude")
+        ), "Dimension missing"
+
+    def _remove_low_vegetation_location(self, threshold, msc):
+        # Calculate mean data across the dayofyear dimension
+        mean_msc = msc.mean("dayofyear", skipna=True)
+
+        # Create a boolean mask for locations where mean is greater than or equal to the threshold
+        mask = mean_msc >= threshold
+
+        return mask
+
+
+class EarthnetDatasetHandler(DatasetHandler):
+    def _dataset_specific_loading(self):
+        """
+        Preprocess data based on the index.
+        """
+        print(self.n_samples)
+        samples_location = self.sample_locations_with_grid(
+            self.n_samples, grid_size=128
+        )
+        print(samples_location)
+        data = self.load_minicube(samples_location.iloc[0])
+        # print(data)
+
+        # with ThreadPoolExecutor() as executor:
+        #    data = list(executor.map(load_minicube, samples_location))
+
+        return self.data
+
+    def sample_locations_with_grid(self, n_samples, grid_size=128):
+        """
+        Randomly sample locations from a DataFrame with replacement and assign random grid coordinates.
+
+        Parameters:
+        -----------
+        df : pandas.DataFrame
+            DataFrame containing latitude and longitude columns
+        n_samples : int
+            Number of samples to generate (with replacement)
+        grid_size : int, default=128
+            Size of the grid (grid_size x grid_size)
+
+        Returns:
+        --------
+        pandas.DataFrame
+            DataFrame containing original lat/lon plus random grid coordinates
+        """
+        metadata_file = (
+            "/Net/Groups/BGI/work_2/scratch/DeepExtremes/mc_earthnet_biome.csv"
+        )
+        df = pd.read_csv(metadata_file, delimiter=",")[
+            [
+                "path",
+                "group",
+                "check",
+                "start_date",
+                "lat",
+                "lon",
+            ]
+        ]
+        df = df.loc[df["check"] == 0]
+
+        # Random sampling with replacement
+        sampled_indices = np.random.choice(df.index, size=n_samples, replace=True)
+        samples = df.iloc[sampled_indices].copy()
+
+        # Generate random grid coordinates
+        samples["x"] = np.random.randint(0, grid_size, size=n_samples)
+        samples["y"] = np.random.randint(0, grid_size, size=n_samples)
+
+        # Reset index to avoid duplicate indices
+        samples = samples.reset_index(drop=True)
+
+        return samples
+
+    def load_minicube(self, row):
+        print("hereh", row)
+        print(row["path"])
+        print(EARTHNET_FILEPATH + row["path"])
+        ds = xr.open_zarr(EARTHNET_FILEPATH + row["path"]).isel(x=row["x"], y=row["y"])
+        # EVI computation
+        evi = 2.5 * ((ds.B8A - ds.B04) / (ds.B8A) + 6 * ds.B04 - 7.5 * ds.B02 + 1)
+        return evi
 
     def filter_dataset_specific(self):
         """

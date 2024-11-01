@@ -445,7 +445,7 @@ class RegionalExtremes:
         """
         LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL = quantile_levels
         quantile_levels = np.concatenate((LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
-        deseasonalized = deseasonalized.chunk("auto")  # dict(location=-1, time=-1))
+        deseasonalized = deseasonalized.chunk("auto")
 
         if method == "regional":
             deseasonalized_dask = deseasonalized.data
@@ -518,20 +518,19 @@ def regional_extremes_method(args, quantile_levels):
     # Initialization of RegionalExtremes, load data if already computed.
     extremes_processor = RegionalExtremes(
         config=config,
-        n_components=args.n_components,
-        n_bins=args.n_bins,
+        n_components=config.n_components,
+        n_bins=config.n_bins,
     )
 
     # Load a subset of the dataset and fit the PCA
-    if config.path_load_experiment is None:
+    if extremes_processor.pca is None:
         # Initialization of the climatic or ecological DatasetHandler
         dataset = create_handler(
             config=config,
-            n_samples=args.n_samples,  # args.n_samples,  # all the dataset
+            n_samples=config.n_samples,  # args.n_samples,  # all the dataset
         )
         # Load and preprocess the dataset
         data_subset = dataset.preprocess_data()
-
         # Fit the PCA on the data
         extremes_processor.compute_pca_and_transform(scaled_data=data_subset)
 
@@ -578,8 +577,8 @@ def local_extremes_method(args, quantile_levels):
     # Initialization of RegionalExtremes, load data if already computed.
     extremes_processor = RegionalExtremes(
         config=config,
-        n_components=args.n_components,
-        n_bins=args.n_bins,
+        n_components=config.n_components,
+        n_bins=config.n_bins,
     )
 
     dataset_processor = create_handler(config=config, n_samples=None)  # all the dataset
@@ -608,7 +607,7 @@ def get_thresholds_from_generic_xarray_dataset(
         "index": None,
         "name": "test",
         "k_pca": False,
-        "n_samples": 1000,
+        "n_samples": 5,
         "n_components": 2,
         "n_bins": 50,
         "compute_variance": False,
@@ -624,19 +623,20 @@ def get_thresholds_from_generic_xarray_dataset(
 
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
-    args.name = "eco_local_2000_wo_droughts"
-    args.index = "EVI"
+    args.name = "eco_HR"
+    args.index = "EVI_EN"
     args.k_pca = False
-    args.n_samples = 5000
+    args.n_samples = 3
     args.n_components = 3
     args.n_bins = 100
     args.compute_variance = False
-    args.method = "local"
+    args.method = "regional"
     args.start_year = 2000
+    args.is_generic_xarray_dataset = False
 
     # client = Client(dashboard_address="localhost:8888")
 
-    # args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-24_14:24:40_eco_regional_2000_200_bins"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-18_10:05:59_eco_local_2000_hr"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-17_10:44:23_eco_pca_2000_500bins_local"
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-11-01_16:12:47_eco_HR"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-18_10:05:59_eco_local_2000_hr"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-17_10:44:23_eco_pca_2000_500bins_local"
 
     LOWER_QUANTILES_LEVEL = np.array([0.01, 0.025, 0.05])
     UPPER_QUANTILES_LEVEL = np.array([0.95, 0.975, 0.99])
