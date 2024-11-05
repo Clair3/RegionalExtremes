@@ -84,8 +84,6 @@ class DatasetHandler(ABC):
         """
         self._dataset_specific_loading()
         self.filter_dataset_specific()
-        # Stack the dimensions
-        self.data = self.data.stack(location=("longitude", "latitude"))
 
         # Select only a subset of the data if n_samples is specified
         if self.n_samples:
@@ -372,6 +370,9 @@ class ClimaticDatasetHandler(DatasetHandler):
 
         self.data = self._spatial_filtering(self.data)
 
+        # Stack the dimensions
+        self.data = self.data.stack(location=("longitude", "latitude"))
+
         printt(f"Climatic data loaded with dimensions: {self.data.sizes}")
 
     @abstractmethod
@@ -461,6 +462,9 @@ class EcologicalDatasetHandler(DatasetHandler):
 
         self.data = self._spatial_filtering(self.data)
 
+        # Stack the dimensions
+        self.data = self.data.stack(location=("longitude", "latitude"))
+
         printt(f"Ecological data loaded with dimensions: {self.data.sizes}")
 
     def _remove_low_vegetation_location(self, threshold, msc):
@@ -507,12 +511,10 @@ class EarthnetDatasetHandler(DatasetHandler):
         """
         Preprocess data based on the index.
         """
+        self.variable_name = "evi_earthnet"
         samples_location = self.sample_locations_with_grid(
-            self.n_samples * 100, grid_size=128
+            self.n_samples, grid_size=128
         )
-        # print(samples_location)
-        # data = self.load_minicube(samples_location.iloc[0])
-        # print(data)
 
         with ThreadPoolExecutor() as executor:
             data = list(
@@ -520,7 +522,9 @@ class EarthnetDatasetHandler(DatasetHandler):
                     self.load_minicube, samples_location.to_dict(orient="records")
                 )
             )
-        print(data)
+        filtered_data_arrays = [da for da in data if da is not None]
+        ds = xr.concat(filtered_data_arrays, dim="location")
+        self.data = ds.to_dataset(name=self.variable_name)
         return self.data
 
     def sample_locations_with_grid(self, n_samples, grid_size=128):
@@ -572,33 +576,66 @@ class EarthnetDatasetHandler(DatasetHandler):
     def load_minicube(self, row):
         ds = (
             xr.open_zarr(EARTHNET_FILEPATH + row["path"])
-            .isel(x=row["x"], y=row["y"])
+            # .isel(x=row["x"], y=row["y"])
             .sel(time=slice(datetime.date(2017, 3, 7), datetime.date(2022, 9, 30)))
         )
+        ds = self._select_randomly_vegetation_location(ds)
+        if ds is None:
+            return None
         evi = (2.5 * (ds.B8A - ds.B04)) / (ds.B8A + 6 * ds.B04 - 7.5 * ds.B02 + 1)
         # evi = (ds.B8A - ds.B04) / (ds.B8A + ds.B04)
         # Mask
         # mask = 1 where there is a cloud, 0 where data
         mask = ds.cloudmask_en.where(ds.cloudmask_en == 0, np.nan)
-        mask = mask.where(ds.SCL == 4, np.nan)
         mask = mask.where(mask != 0, 1)
 
         nan_percentage = mask.isnull().mean().values * 100
-
-        if nan_percentage > 50:
+        if nan_percentage > 75:
             return None
         else:
             return evi * mask
+
+    def _select_randomly_vegetation_location(self, ds):
+        # Count occurrences of 4 and 5 at each location across the 'time' dimension
+        count_of_4 = (ds.SCL == 4).sum(dim="time")  # vegetation classification
+        count_of_5 = (ds.SCL == 5).sum(dim="time")  # soil/ground classification
+
+        # Create the mask based on the conditions:
+        # - total count of 4s and 5s is greater than 74
+        # - count of 4s alone is greater than 10
+        mask = ((count_of_4 + count_of_5) > 74) & (count_of_4 > 10)
+
+        # Get indices of locations that satisfy the condition
+        eligible_indices = np.argwhere(mask.values)
+        if eligible_indices.size > 0:
+            random_index = eligible_indices[np.random.choice(eligible_indices.shape[0])]
+            selected_data = ds.isel(x=random_index[0], y=random_index[1])
+
+            # Expand x and y as singleton dimensions to enable stacking
+            selected_data = selected_data.expand_dims(
+                x=[selected_data.x.values.item()],
+                y=[selected_data.y.values.item()],
+            )
+
+            # Rename x and y to longitude and latitude
+            selected_data = selected_data.rename({"x": "longitude", "y": "latitude"})
+
+            # Stack x and y into a single location dimension
+            selected_data = selected_data.stack(location=("longitude", "latitude"))
+            return selected_data
+        else:
+            return None
 
     def filter_dataset_specific(self):
         """
         Standarize the ecological xarray. Remove irrelevant area, and reshape for the PCA.
         """
         assert self.data is not None, "Data not loaded."
-
+        print(self.data)
+        print(self.data.sizes)
         # Assert dimensions are as expected after loading and transformation
         assert all(
-            dim in self.data.sizes for dim in ("time", "latitude", "longitude")
+            dim in self.data.sizes for dim in ("time", "location")
         ), "Dimension missing"
 
     def _remove_low_vegetation_location(self, threshold, msc):
