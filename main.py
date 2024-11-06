@@ -523,7 +523,7 @@ def regional_extremes_method(args, quantile_levels):
     )
 
     # Load a subset of the dataset and fit the PCA
-    if extremes_processor.pca is None:
+    if not hasattr(extremes_processor.pca, "explained_variance_"):
         # Initialization of the climatic or ecological DatasetHandler
         dataset = create_handler(
             config=config,
@@ -634,9 +634,7 @@ if __name__ == "__main__":
     args.start_year = 2000
     args.is_generic_xarray_dataset = False
 
-    # client = Client(dashboard_address="localhost:8888")
-
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-11-01_16:12:47_eco_HR"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-18_10:05:59_eco_local_2000_hr"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-17_10:44:23_eco_pca_2000_500bins_local"
+    # args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-11-01_16:12:47_eco_HR"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-18_10:05:59_eco_local_2000_hr"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-17_10:44:23_eco_pca_2000_500bins_local"
 
     LOWER_QUANTILES_LEVEL = np.array([0.01, 0.025, 0.05])
     UPPER_QUANTILES_LEVEL = np.array([0.95, 0.975, 0.99])

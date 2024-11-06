@@ -43,12 +43,15 @@ class InitializationConfig:
         Args:
             args (argparse.Namespace): Parsed arguments from argparse.ArgumentParser().parse_args()
         """
-        self.time_resolution = args.time_resolution
-        self.index = args.index
-        self.compute_variance = args.compute_variance
-        self.k_pca = args.k_pca
-        self.start_year = args.start_year
-        self.method = args.method
+        print(args)
+        for key, value in vars(args).items():
+            setattr(self, key, value)
+        # self.time_resolution = args.time_resolution
+        # self.index = args.index
+        # self.compute_variance = args.compute_variance
+        # self.k_pca = args.k_pca
+        # self.start_year = args.start_year
+        # self.method = args.method
         self.is_generic_xarray_dataset = args.is_generic_xarray_dataset is True
 
         if self.is_generic_xarray_dataset:

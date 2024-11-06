@@ -56,6 +56,7 @@ class DatasetHandler(ABC):
         self.config = config
         # Number of samples to load. If None, the full dataset is loaded.
         self.n_samples = n_samples
+        print(self.n_samples)
         # Loader class to load intermediate steps.
         self.loader = Loader(config)
         # Saver class to save intermediate steps.
@@ -84,6 +85,9 @@ class DatasetHandler(ABC):
         """
         self._dataset_specific_loading()
         self.filter_dataset_specific()
+
+        # Stack the dimensions
+        self.data = self.data.stack(location=("longitude", "latitude"))
 
         # Select only a subset of the data if n_samples is specified
         if self.n_samples:
@@ -166,7 +170,7 @@ class DatasetHandler(ABC):
         # Select the values at the specified coordinates
         selected_data = self.data[self.variable_name].sel(location=selected_locations)
         # Remove NaNs
-        condition = ~selected_data.isnull().all(dim="time").compute()  #
+        condition = ~selected_data.isnull().any(dim="time").compute()  #
         selected_data = selected_data.where(condition, drop=True)
 
         # Select randomly n_samples samples in selected_data
@@ -247,7 +251,7 @@ class DatasetHandler(ABC):
             printt("Mask applied. NaNs removed")
 
         else:
-            print("Mask precomputed unavailable.")
+            printt("Mask precomputed unavailable.")
             not_low_vegetation = self._remove_low_vegetation_location(0.1, self.msc)
             condition = ~self.msc.isnull().any(dim="dayofyear")
             self.msc = self.msc.where(
@@ -275,7 +279,7 @@ class DatasetHandler(ABC):
         assert (
             self.max_data and self.min_data
         ) is None, "the min and max of the data are already defined."
-        assert self.config.path_load_experiment is None, "A model is already loaded."
+        # assert self.config.path_load_experiment is None, "A model is already loaded."
 
         self.max_data = self.msc.max(dim=["location"])
         self.min_data = self.msc.min(dim=["location"])
@@ -370,9 +374,6 @@ class ClimaticDatasetHandler(DatasetHandler):
 
         self.data = self._spatial_filtering(self.data)
 
-        # Stack the dimensions
-        self.data = self.data.stack(location=("longitude", "latitude"))
-
         printt(f"Climatic data loaded with dimensions: {self.data.sizes}")
 
     @abstractmethod
@@ -462,9 +463,6 @@ class EcologicalDatasetHandler(DatasetHandler):
 
         self.data = self._spatial_filtering(self.data)
 
-        # Stack the dimensions
-        self.data = self.data.stack(location=("longitude", "latitude"))
-
         printt(f"Ecological data loaded with dimensions: {self.data.sizes}")
 
     def _remove_low_vegetation_location(self, threshold, msc):
@@ -515,6 +513,8 @@ class EarthnetDatasetHandler(DatasetHandler):
         samples_location = self.sample_locations_with_grid(
             self.n_samples, grid_size=128
         )
+        print(self.n_samples)
+        print(samples_location)
 
         with ThreadPoolExecutor() as executor:
             data = list(
@@ -631,8 +631,7 @@ class EarthnetDatasetHandler(DatasetHandler):
         Standarize the ecological xarray. Remove irrelevant area, and reshape for the PCA.
         """
         assert self.data is not None, "Data not loaded."
-        print(self.data)
-        print(self.data.sizes)
+
         # Assert dimensions are as expected after loading and transformation
         assert all(
             dim in self.data.sizes for dim in ("time", "location")
@@ -646,3 +645,54 @@ class EarthnetDatasetHandler(DatasetHandler):
         mask = mean_msc >= threshold
 
         return mask
+
+    def preprocess_data(
+        self,
+        scale=True,
+        reduce_temporal_resolution=True,
+        return_time_serie=False,
+        remove_nan=True,
+    ):
+        """
+        Preprocess data based on the index.
+        """
+        self._dataset_specific_loading()
+        self.filter_dataset_specific()  # useless, legacy...
+
+        self.data = self.data[self.variable_name]
+        printt(
+            f"Computation on the entire dataset. {self.data.sizes['location']} samples"
+        )
+        print(self.data.values)
+        # Assign "day of year" as a coordinate based on the time dimension
+        self.data = self.data.assign_coords(dayofyear=self.data["time"].dt.dayofyear)
+
+        # Create 15-day bins by dividing day of year into 15-day intervals
+        # (Adjust the range if you want it to exactly match the last days of the year)
+        bins = np.arange(1, 367, 15)  # Adjusts for 366 days if leap year included
+
+        # Use `groupby_bins` to group days into 15-day bins, then take the mean over each bin
+        self.msc = (
+            self.data.groupby_bins("dayofyear", bins=bins, right=False)
+            .mean("time", skipna=True)
+            .rename({"dayofyear_bins": "dayofyear"})
+        )
+
+        self.msc["dayofyear"] = [interval.mid for interval in self.msc.dayofyear.values]
+        print(self.msc.values)
+        # Step 2: Check for remaining NaNs and interpolate only where needed
+        # Interpolate missing values along the 'dayofyear' dimension
+        self.msc = self.msc.interpolate_na(dim="dayofyear", method="linear")
+        print(self.msc.values)
+        if scale:
+            self._scale_msc()
+
+        self.msc = self.msc.transpose("location", "dayofyear", ...)
+        print(self.msc)
+        print(self.msc.values)
+
+        if return_time_serie:
+            self.data = self.data.transpose("location", "time", ...)
+            return self.msc, self.data
+        else:
+            return self.msc
