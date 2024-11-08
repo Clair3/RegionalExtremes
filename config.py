@@ -19,6 +19,7 @@ CURRENT_DIRECTORY_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__))
 PARENT_DIRECTORY_PATH = os.path.abspath(os.path.join(CURRENT_DIRECTORY_PATH, os.pardir))
 CLIMATIC_INDICES = ["pei_30", "pei_90", "pei_180"]
 ECOLOGICAL_INDICES = ["EVI", "NDVI", "kNDVI"]
+EARTHNET_INDICES = ["EVI_EN"]
 
 
 class InitializationConfig:

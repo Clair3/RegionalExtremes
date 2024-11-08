@@ -6,11 +6,15 @@ import random
 import datetime
 import regionmask
 import sys
-
 from typing import Union
 import pandas as pd
 from abc import ABC, abstractmethod
-from config import InitializationConfig, CLIMATIC_INDICES, ECOLOGICAL_INDICES
+from config import (
+    InitializationConfig,
+    CLIMATIC_INDICES,
+    ECOLOGICAL_INDICES,
+    EARTHNET_INDICES,
+)
 from loader_and_saver import Loader, Saver
 from concurrent.futures import ThreadPoolExecutor
 
@@ -37,7 +41,7 @@ def create_handler(config, n_samples):
         return EcologicalDatasetHandler(config=config, n_samples=n_samples)
     elif config.index in CLIMATIC_INDICES:
         return ClimaticDatasetHandler(config=config, n_samples=n_samples)
-    elif config.index in ["EVI_EN"]:
+    elif config.index in EARTHNET_INDICES:
         return EarthnetDatasetHandler(config=config, n_samples=n_samples)
     else:
         raise ValueError("Invalid index")
@@ -56,7 +60,6 @@ class DatasetHandler(ABC):
         self.config = config
         # Number of samples to load. If None, the full dataset is loaded.
         self.n_samples = n_samples
-        print(self.n_samples)
         # Loader class to load intermediate steps.
         self.loader = Loader(config)
         # Saver class to save intermediate steps.
@@ -391,7 +394,7 @@ class EcologicalDatasetHandler(DatasetHandler):
         if self.config.index in ECOLOGICAL_INDICES:
             filepath = ECOLOGICAL_FILEPATH(self.config.index)
             self.load_data(filepath)
-            # self.reduce_resolution()
+            self.reduce_resolution()
         else:
             raise NotImplementedError(
                 f"Index {self.config.index} unavailable. Ecological Index available: {ECOLOGICAL_INDICES}."
@@ -510,40 +513,36 @@ class EarthnetDatasetHandler(DatasetHandler):
         Preprocess data based on the index.
         """
         self.variable_name = "evi_earthnet"
-        samples_location = self.sample_locations_with_grid(
-            self.n_samples, grid_size=128
-        )
-        print(self.n_samples)
-        print(samples_location)
+        if self.n_samples:
+            samples_indices, df = self.sample_locations(self.n_samples)
+        else:
+            samples_indices, df = self.sample_locations(10000)
 
+        self.df = df
+        self.prin = False
         with ThreadPoolExecutor() as executor:
-            data = list(
-                executor.map(
-                    self.load_minicube, samples_location.to_dict(orient="records")
-                )
-            )
+            data = list(executor.map(self.load_minicube, samples_indices))
         filtered_data_arrays = [da for da in data if da is not None]
         ds = xr.concat(filtered_data_arrays, dim="location")
         self.data = ds.to_dataset(name=self.variable_name)
         return self.data
 
-    def sample_locations_with_grid(self, n_samples, grid_size=128):
+    def sample_locations(self, n_samples):
         """
-        Randomly sample locations from a DataFrame with replacement and assign random grid coordinates.
+            Randomly sample locations from a DataFrame with replacement
+        .
 
-        Parameters:
-        -----------
-        df : pandas.DataFrame
-            DataFrame containing latitude and longitude columns
-        n_samples : int
-            Number of samples to generate (with replacement)
-        grid_size : int, default=128
-            Size of the grid (grid_size x grid_size)
+            Parameters:
+            -----------
+            df : pandas.DataFrame
+                DataFrame containing latitude and longitude columns
+            n_samples : int
+                Number of samples to generate (with replacement)
 
-        Returns:
-        --------
-        pandas.DataFrame
-            DataFrame containing original lat/lon plus random grid coordinates
+            Returns:
+            --------
+            pandas.DataFrame
+                DataFrame containing original lat/lon plus random grid coordinates
         """
         metadata_file = (
             "/Net/Groups/BGI/work_2/scratch/DeepExtremes/mc_earthnet_biome.csv"
@@ -562,20 +561,17 @@ class EarthnetDatasetHandler(DatasetHandler):
 
         # Random sampling with replacement
         sampled_indices = np.random.choice(df.index, size=n_samples, replace=True)
-        samples = df.iloc[sampled_indices].copy()
 
-        # Generate random grid coordinates
-        samples["x"] = np.random.randint(0, grid_size, size=n_samples)
-        samples["y"] = np.random.randint(0, grid_size, size=n_samples)
-
-        # Reset index to avoid duplicate indices
-        samples = samples.reset_index(drop=True)
-
-        return samples
+        return sampled_indices, df
 
     def load_minicube(self, row):
+        try:
+            A = self.df.iloc[row]["path"]
+        except:
+            print("row: ", row)
+        return None
         ds = (
-            xr.open_zarr(EARTHNET_FILEPATH + row["path"])
+            xr.open_zarr(EARTHNET_FILEPATH + self.df.iloc[row]["path"])
             # .isel(x=row["x"], y=row["y"])
             .sel(time=slice(datetime.date(2017, 3, 7), datetime.date(2022, 9, 30)))
         )
@@ -585,12 +581,13 @@ class EarthnetDatasetHandler(DatasetHandler):
         evi = (2.5 * (ds.B8A - ds.B04)) / (ds.B8A + 6 * ds.B04 - 7.5 * ds.B02 + 1)
         # evi = (ds.B8A - ds.B04) / (ds.B8A + ds.B04)
         # Mask
-        # mask = 1 where there is a cloud, 0 where data
+        # cloudmask_en > 1 where there is a cloud, 0 where data
         mask = ds.cloudmask_en.where(ds.cloudmask_en == 0, np.nan)
+        mask = mask.where(ds.SCL == (4 or 5), np.nan)
         mask = mask.where(mask != 0, 1)
 
         nan_percentage = mask.isnull().mean().values * 100
-        if nan_percentage > 75:
+        if nan_percentage > 80:
             return None
         else:
             return evi * mask
@@ -598,12 +595,7 @@ class EarthnetDatasetHandler(DatasetHandler):
     def _select_randomly_vegetation_location(self, ds):
         # Count occurrences of 4 and 5 at each location across the 'time' dimension
         count_of_4 = (ds.SCL == 4).sum(dim="time")  # vegetation classification
-        count_of_5 = (ds.SCL == 5).sum(dim="time")  # soil/ground classification
-
-        # Create the mask based on the conditions:
-        # - total count of 4s and 5s is greater than 74
-        # - count of 4s alone is greater than 10
-        mask = ((count_of_4 + count_of_5) > 74) & (count_of_4 > 10)
+        mask = count_of_4 > 24
 
         # Get indices of locations that satisfy the condition
         eligible_indices = np.argwhere(mask.values)
@@ -646,6 +638,56 @@ class EarthnetDatasetHandler(DatasetHandler):
 
         return mask
 
+    def _deseasonalize(self, subset_data, subset_msc):
+        # Align subset_msc with subset_data
+        aligned_msc = subset_msc.sel(dayofyear=subset_data["time.dayofyear"])
+        # Subtract the seasonal cycle
+        deseasonalized = subset_data - aligned_msc
+        deseasonalized = deseasonalized.isel(
+            time=slice(2, len(deseasonalized.time) - 1)
+        )
+        return deseasonalized
+
+    def compute_msc(self):
+        # Assign "day of year" as a coordinate based on the time dimension
+        self.data = self.data.assign_coords(dayofyear=self.data["time"].dt.dayofyear)
+
+        # Create 15-day bins by dividing day of year into 15-day intervals
+        # (Adjust the range if you want it to exactly match the last days of the year)
+        bins = np.arange(1, 367, 15)  # Adjusts for 366 days if leap year included
+
+        # Use `groupby_bins` to group days into 15-day bins, then take the mean over each bin
+        self.msc = (
+            self.data.groupby_bins("dayofyear", bins=bins, right=False)
+            .mean("time", skipna=True)
+            .rename({"dayofyear_bins": "dayofyear"})
+        )
+        # Set the 'dayofyear' to the midpoint of each bin
+        self.msc["dayofyear"] = [interval.mid for interval in self.msc.dayofyear.values]
+
+        # Step 3: Extend the data to facilitate circular interpolation
+        # To simulate circular continuity, set indices just outside the original range
+        # Adjust 'dayofyear' for wrapping data
+        prepend = self.msc.isel(dayofyear=-1).assign_coords(
+            dayofyear=self.msc.dayofyear[0] - 15
+        )
+        append = self.msc.isel(dayofyear=0).assign_coords(
+            dayofyear=self.msc.dayofyear[-1] + 15
+        )
+
+        # Concatenate with adjusted indices for circular continuity
+        self.msc_ext = xr.concat([prepend, self.msc, append], dim="dayofyear")
+
+        # Step 4: Perform linear interpolation along the extended 'dayofyear' dimension
+        self.msc_ext = self.msc_ext.chunk(dict(dayofyear=-1)).interpolate_na(
+            dim="dayofyear", method="linear"
+        )
+
+        # Step 5: Remove the extra bins to return to the original dataset shape
+        self.msc = self.msc_ext.isel(dayofyear=slice(1, -1))
+
+        self.msc = self.msc.fillna(0)
+
     def preprocess_data(
         self,
         scale=True,
@@ -663,33 +705,13 @@ class EarthnetDatasetHandler(DatasetHandler):
         printt(
             f"Computation on the entire dataset. {self.data.sizes['location']} samples"
         )
-        print(self.data.values)
-        # Assign "day of year" as a coordinate based on the time dimension
-        self.data = self.data.assign_coords(dayofyear=self.data["time"].dt.dayofyear)
 
-        # Create 15-day bins by dividing day of year into 15-day intervals
-        # (Adjust the range if you want it to exactly match the last days of the year)
-        bins = np.arange(1, 367, 15)  # Adjusts for 366 days if leap year included
+        self.compute_msc()
 
-        # Use `groupby_bins` to group days into 15-day bins, then take the mean over each bin
-        self.msc = (
-            self.data.groupby_bins("dayofyear", bins=bins, right=False)
-            .mean("time", skipna=True)
-            .rename({"dayofyear_bins": "dayofyear"})
-        )
-
-        self.msc["dayofyear"] = [interval.mid for interval in self.msc.dayofyear.values]
-        print(self.msc.values)
-        # Step 2: Check for remaining NaNs and interpolate only where needed
-        # Interpolate missing values along the 'dayofyear' dimension
-        self.msc = self.msc.interpolate_na(dim="dayofyear", method="linear")
-        print(self.msc.values)
         if scale:
             self._scale_msc()
 
         self.msc = self.msc.transpose("location", "dayofyear", ...)
-        print(self.msc)
-        print(self.msc.values)
 
         if return_time_serie:
             self.data = self.data.transpose("location", "time", ...)

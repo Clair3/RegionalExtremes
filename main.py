@@ -11,7 +11,12 @@ import sys
 from utils import initialize_logger, printt, int_or_none
 from loader_and_saver import InMemorySaver, Loader, Saver
 from datahandler import create_handler
-from config import InitializationConfig, CLIMATIC_INDICES, ECOLOGICAL_INDICES
+from config import (
+    InitializationConfig,
+    CLIMATIC_INDICES,
+    ECOLOGICAL_INDICES,
+    EARTHNET_INDICES,
+)
 
 np.set_printoptions(threshold=sys.maxsize)
 
@@ -235,14 +240,17 @@ class RegionalExtremes:
 
     def _validate_scaled_data(self, scaled_data: np.ndarray) -> None:
         """Validates the scaled data to ensure it matches the expected shape."""
-        if self.config.compute_variance:
-            expected_shape = round(366 / self.config.time_resolution) * 2 + 1
+        if self.config.index in EARTHNET_INDICES:
+            expected_shape = 24
         else:
-            expected_shape = round(366 / self.config.time_resolution)
-        if scaled_data.shape[1] != expected_shape:
-            raise ValueError(
-                f"scaled_data should have {expected_shape} columns, but has {scaled_data.shape[1]} columns."
-            )
+            if self.config.compute_variance:
+                expected_shape = round(366 / self.config.time_resolution) * 2 + 1
+            else:
+                expected_shape = round(366 / self.config.time_resolution)
+            if scaled_data.shape[1] != expected_shape:
+                raise ValueError(
+                    f"scaled_data should have {expected_shape} columns, but has {scaled_data.shape[1]} columns."
+                )
 
     def define_limits_bins(self) -> list[np.ndarray]:
         """
@@ -623,10 +631,10 @@ def get_thresholds_from_generic_xarray_dataset(
 
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
-    args.name = "eco_HR"
-    args.index = "EVI_EN"
+    args.name = "eco_test_markus"
+    args.index = "EVI"
     args.k_pca = False
-    args.n_samples = 3
+    args.n_samples = 1000
     args.n_components = 3
     args.n_bins = 100
     args.compute_variance = False
@@ -634,7 +642,7 @@ if __name__ == "__main__":
     args.start_year = 2000
     args.is_generic_xarray_dataset = False
 
-    # args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-11-01_16:12:47_eco_HR"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-18_10:05:59_eco_local_2000_hr"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-17_10:44:23_eco_pca_2000_500bins_local"
+    # args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-11-07_13:57:55_eco_HR_small"
 
     LOWER_QUANTILES_LEVEL = np.array([0.01, 0.025, 0.05])
     UPPER_QUANTILES_LEVEL = np.array([0.95, 0.975, 0.99])
