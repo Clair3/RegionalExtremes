@@ -472,14 +472,12 @@ class RegionalExtremes:
             )
         else:
             raise NotImplementedError("Global threshold method is not yet implemented.")
+        # print(dim)
+        # lower_quantiles = deseasonalized.quantile(LOWER_QUANTILES_LEVEL)
+        # upper_quantiles = deseasonalized.quantile(UPPER_QUANTILES_LEVEL)
+        # all_quantiles = xr.concat([lower_quantiles, upper_quantiles], dim="quantile")
 
-        lower_quantiles = deseasonalized.quantile(LOWER_QUANTILES_LEVEL, dim=dim)
-        upper_quantiles = deseasonalized.quantile(UPPER_QUANTILES_LEVEL, dim=dim)
-        all_quantiles = xr.concat([lower_quantiles, upper_quantiles], dim="quantile")
-
-        masks = self._create_quantile_masks(
-            deseasonalized, lower_quantiles, upper_quantiles
-        )
+        masks = self._create_quantile_masks(deseasonalized, quantiles_xr)
 
         extremes = xr.full_like(deseasonalized.astype(float), np.nan)
         for i, mask in enumerate(masks):
@@ -560,7 +558,7 @@ def regional_extremes_method(args, quantile_levels):
 
     # Apply the regional threshold and compute the extremes
     # Load the data
-    dataset_processor = create_handler(config=config, n_samples=None)
+    dataset_processor = create_handler(config=config, n_samples=None)  # None)
     msc, data = dataset_processor.preprocess_data(
         scale=False,
         return_time_serie=True,
@@ -634,15 +632,15 @@ if __name__ == "__main__":
     args.name = "eco_test_markus"
     args.index = "EVI"
     args.k_pca = False
-    args.n_samples = 1000
+    args.n_samples = 10
     args.n_components = 3
-    args.n_bins = 100
+    args.n_bins = 2
     args.compute_variance = False
     args.method = "regional"
     args.start_year = 2000
     args.is_generic_xarray_dataset = False
 
-    # args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-11-07_13:57:55_eco_HR_small"
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-25_09:50:02_eco_regional_2000_100bins"
 
     LOWER_QUANTILES_LEVEL = np.array([0.01, 0.025, 0.05])
     UPPER_QUANTILES_LEVEL = np.array([0.95, 0.975, 0.99])

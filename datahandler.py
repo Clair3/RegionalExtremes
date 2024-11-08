@@ -394,7 +394,7 @@ class EcologicalDatasetHandler(DatasetHandler):
         if self.config.index in ECOLOGICAL_INDICES:
             filepath = ECOLOGICAL_FILEPATH(self.config.index)
             self.load_data(filepath)
-            self.reduce_resolution()
+            # self.reduce_resolution()
         else:
             raise NotImplementedError(
                 f"Index {self.config.index} unavailable. Ecological Index available: {ECOLOGICAL_INDICES}."
@@ -517,9 +517,7 @@ class EarthnetDatasetHandler(DatasetHandler):
             samples_indices, df = self.sample_locations(self.n_samples)
         else:
             samples_indices, df = self.sample_locations(10000)
-
         self.df = df
-        self.prin = False
         with ThreadPoolExecutor() as executor:
             data = list(executor.map(self.load_minicube, samples_indices))
         filtered_data_arrays = [da for da in data if da is not None]
@@ -565,13 +563,9 @@ class EarthnetDatasetHandler(DatasetHandler):
         return sampled_indices, df
 
     def load_minicube(self, row):
-        try:
-            A = self.df.iloc[row]["path"]
-        except:
-            print("row: ", row)
-        return None
+
         ds = (
-            xr.open_zarr(EARTHNET_FILEPATH + self.df.iloc[row]["path"])
+            xr.open_zarr(EARTHNET_FILEPATH + self.df.loc[row]["path"])
             # .isel(x=row["x"], y=row["y"])
             .sel(time=slice(datetime.date(2017, 3, 7), datetime.date(2022, 9, 30)))
         )
@@ -648,7 +642,7 @@ class EarthnetDatasetHandler(DatasetHandler):
         )
         return deseasonalized
 
-    def compute_msc(self):
+    def compute_msc_15d_period(self):
         # Assign "day of year" as a coordinate based on the time dimension
         self.data = self.data.assign_coords(dayofyear=self.data["time"].dt.dayofyear)
 
@@ -688,6 +682,9 @@ class EarthnetDatasetHandler(DatasetHandler):
 
         self.msc = self.msc.fillna(0)
 
+    def compute_msc(self):
+        return self.data.groupby("time.dayofyear").mean("time", skipna=True)
+
     def preprocess_data(
         self,
         scale=True,
@@ -705,8 +702,11 @@ class EarthnetDatasetHandler(DatasetHandler):
         printt(
             f"Computation on the entire dataset. {self.data.sizes['location']} samples"
         )
-
-        self.compute_msc()
+        if self.n_samples:
+            self.compute_msc_15d_period()
+        else:
+            self.compute_msc()
+        print(self.compute_msc())
 
         if scale:
             self._scale_msc()
