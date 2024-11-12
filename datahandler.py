@@ -749,9 +749,9 @@ class EarthnetDatasetHandler(DatasetHandler):
             f"Computation on the entire dataset. {self.data.sizes['location']} samples"
         )
         # if self.n_samples:
-        # self.compute_msc_15d_period()
+        self.compute_msc_15d_period()
         # else:
-        self.msc = self.compute_msc()
+        self.msc_daily = self.compute_msc()
 
         if scale:
             self._scale_msc()
@@ -760,6 +760,6 @@ class EarthnetDatasetHandler(DatasetHandler):
 
         if return_time_serie:
             self.data = self.data.transpose("location", "time", ...)
-            return self.msc, self.data
+            return self.msc, self.msc_daily, self.data
         else:
             return self.msc

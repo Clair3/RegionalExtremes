@@ -221,7 +221,6 @@ class RegionalExtremes:
             )
 
         self._validate_scaled_data(scaled_data)
-
         transformed_data = xr.apply_ufunc(
             self.pca.transform,
             scaled_data.compute(),
@@ -543,34 +542,35 @@ def regional_extremes_method(args, quantile_levels):
         extremes_processor.compute_pca_and_transform(scaled_data=data_subset)
 
     # Apply the PCA to the entire dataset
-    if extremes_processor.projected_data is None:
+    # if extremes_processor.projected_data is None:
+
+    # Define the boundaries of the bins
+    if extremes_processor.limits_bins is None:
         dataset_processor = create_handler(
             config=config, n_samples=config.n_samples  # * 10  # None
         )  # all the dataset
         data = dataset_processor.preprocess_data(remove_nan=True)
         extremes_processor.apply_pca(scaled_data=data)
-
-    # Define the boundaries of the bins
-    if extremes_processor.limits_bins is None:
         extremes_processor.define_limits_bins()
 
     # Attribute a bins to each location
-    if extremes_processor.bins is None:
-        extremes_processor.find_bins()
+    # if extremes_processor.bins is None:
 
     # Apply the regional threshold and compute the extremes
     # Load the data
     dataset_processor = create_handler(
-        config=config, n_samples=100  # config.n_samples  # * 10
+        config=config, n_samples=10000  # config.n_samples  # * 10
     )  # None)  # None)
-    msc, data = dataset_processor.preprocess_data(
+    msc, msc_daily, data = dataset_processor.preprocess_data(
         scale=False,
         return_time_serie=True,
         reduce_temporal_resolution=False,
         remove_nan=False,
     )
+    extremes_processor.apply_pca(scaled_data=msc)
+    extremes_processor.find_bins()
     # Deseasonalize the data
-    deseasonalized = dataset_processor._deseasonalize(data, msc)
+    deseasonalized = dataset_processor._deseasonalize(data, msc_daily)
     # Compute the quantiles per regions/biome (=bins)
     extremes_processor.apply_regional_threshold(
         deseasonalized, quantile_levels=quantile_levels
@@ -644,7 +644,7 @@ if __name__ == "__main__":
     args.start_year = 2000
     args.is_generic_xarray_dataset = False
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-11-11_13:11:58_deep_extreme_HR"
+    # args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-11-11_13:11:58_deep_extreme_HR"
 
     LOWER_QUANTILES_LEVEL = np.array([0.01, 0.025, 0.05])
     UPPER_QUANTILES_LEVEL = np.array([0.95, 0.975, 0.99])
