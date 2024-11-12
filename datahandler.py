@@ -555,7 +555,10 @@ class EarthnetDatasetHandler(DatasetHandler):
                 "lon",
             ]
         ]
-        df = df.loc[df["check"] == 0]
+        df = df.loc[
+            (df["check"] == 0)
+            & df.apply(lambda row: self._is_in_europe(row["lon"], row["lat"]), axis=1)
+        ]
 
         # Random sampling with replacement
         sampled_indices = np.random.choice(df.index, size=n_samples, replace=True)
@@ -632,14 +635,57 @@ class EarthnetDatasetHandler(DatasetHandler):
 
         return mask
 
+    # def _deseasonalize(self, subset_data, subset_msc):
+    #    # Assuming `self.data` has a 'time' coordinate that includes multiple years
+    #    subset_data = subset_data.assign_coords(
+    #        dayofyear=subset_data["time"].dt.dayofyear
+    #    )
+    #    print(subset_data)
+    #    print(subset_data.values.shape)
+    #
+    #    # Define 15-day bins for dayofyear
+    #    bins = np.arange(1, 367, 15)  # Bin edges to create 15-day intervals
+    #    midpoints = (
+    #        bins[:-1] + 7.5
+    #    )  # Midpoints for each bin, representing the center of each 15-day interval
+    #
+    #    # Group by year first, then apply groupby_bins on dayofyear within each year
+    #    subset_data = subset_data.groupby(
+    #        "time.year"
+    #    ).apply(  # Group by each year first
+    #        lambda x: x.groupby_bins("dayofyear", bins=bins, right=False).mean(
+    #            "time", skipna=True
+    #        )
+    #    )  # Apply groupby_bins and mean on each year separately
+    #    # Rename `dayofyear_bins` to `dayofyear` and set the midpoints
+    #    subset_data = subset_data.rename({"dayofyear_bins": "dayofyear"})
+    #    subset_data["dayofyear"] = midpoints  # Set dayofyear to the midpoints
+    #    msc_expanded = subset_msc.expand_dims("year")
+    #    print(msc_expanded)
+    #    result = subset_data - msc_expanded
+    #
+    #    print(result)
+    #
+    #    # Optionally, reassign the year as a coordinate
+    #    # Step 1: Convert `year` to a regular coordinate
+    #    # subset_data = subset_data.reset_index("year")
+    #
+    #    # Step 2: Drop `year` if you don’t need it as a coordinate anymore
+    #    # subset_data = subset_data.drop_vars("year")
+    #    # subset_data = subset_data.reset_coords(["year"], drop=True)
+    #
+    #    # subset_data = subset_data.assign_coords(year=("year", subset_data["year"]))
+    #    # Align subset_msc with subset_data
+    #    # aligned_msc = subset_msc.sel(dayofyear=subset_data["time.dayofyear"])
+    #    # Subtract the seasonal cycle
+    #    # deseasonalized = subset_data - subset_msc
+    #
+    #    return deseasonalized
     def _deseasonalize(self, subset_data, subset_msc):
         # Align subset_msc with subset_data
         aligned_msc = subset_msc.sel(dayofyear=subset_data["time.dayofyear"])
         # Subtract the seasonal cycle
         deseasonalized = subset_data - aligned_msc
-        deseasonalized = deseasonalized.isel(
-            time=slice(2, len(deseasonalized.time) - 1)
-        )
         return deseasonalized
 
     def compute_msc_15d_period(self):
@@ -702,11 +748,10 @@ class EarthnetDatasetHandler(DatasetHandler):
         printt(
             f"Computation on the entire dataset. {self.data.sizes['location']} samples"
         )
-        if self.n_samples:
-            self.compute_msc_15d_period()
-        else:
-            self.compute_msc()
-        print(self.compute_msc())
+        # if self.n_samples:
+        # self.compute_msc_15d_period()
+        # else:
+        self.msc = self.compute_msc()
 
         if scale:
             self._scale_msc()

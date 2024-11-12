@@ -339,6 +339,8 @@ class RegionalExtremes:
         assert self.config.method == "regional"
         LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL = quantile_levels
         quantile_levels = np.concatenate((LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
+
+        # Intersection to select only the location where the bin is already attributed
         intersection = np.intersect1d(deseasonalized.location, self.bins.location)
         deseasonalized = deseasonalized.sel(location=intersection)
         self.bins = self.bins.sel(location=intersection)
@@ -543,7 +545,7 @@ def regional_extremes_method(args, quantile_levels):
     # Apply the PCA to the entire dataset
     if extremes_processor.projected_data is None:
         dataset_processor = create_handler(
-            config=config, n_samples=None
+            config=config, n_samples=config.n_samples  # * 10  # None
         )  # all the dataset
         data = dataset_processor.preprocess_data(remove_nan=True)
         extremes_processor.apply_pca(scaled_data=data)
@@ -558,7 +560,9 @@ def regional_extremes_method(args, quantile_levels):
 
     # Apply the regional threshold and compute the extremes
     # Load the data
-    dataset_processor = create_handler(config=config, n_samples=None)  # None)
+    dataset_processor = create_handler(
+        config=config, n_samples=100  # config.n_samples  # * 10
+    )  # None)  # None)
     msc, data = dataset_processor.preprocess_data(
         scale=False,
         return_time_serie=True,
@@ -629,18 +633,18 @@ def get_thresholds_from_generic_xarray_dataset(
 
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
-    args.name = "eco_test_markus"
-    args.index = "EVI"
+    args.name = "deep_extreme_HR"
+    args.index = "EVI_EN"
     args.k_pca = False
-    args.n_samples = 10
+    args.n_samples = 3000
     args.n_components = 3
-    args.n_bins = 2
+    args.n_bins = 50
     args.compute_variance = False
     args.method = "regional"
     args.start_year = 2000
     args.is_generic_xarray_dataset = False
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-25_09:50:02_eco_regional_2000_100bins"
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-11-11_13:11:58_deep_extreme_HR"
 
     LOWER_QUANTILES_LEVEL = np.array([0.01, 0.025, 0.05])
     UPPER_QUANTILES_LEVEL = np.array([0.95, 0.975, 0.99])
