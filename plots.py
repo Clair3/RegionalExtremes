@@ -175,20 +175,8 @@ class PlotExtremes(InitializationConfig):
         plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05)
 
         # Add coastlines and set global extent
-        ax.coastlines()
-        ax.add_feature(cartopy.feature.OCEAN, zorder=100, edgecolor="k")
-
-        # Ensure valid longitude and latitude values
-        longitude_min = float(bins.longitude.min())
-        longitude_max = float(bins.longitude.max())
-        latitude_min = float(bins.latitude.min())
-        latitude_max = float(bins.latitude.max())
-
-        # Check and print the values to verify
-        print(f"Longitude range: {longitude_min} to {longitude_max}")
-        print(f"Latitude range: {latitude_min} to {latitude_max}")
-
-        img_extent = (longitude_min, longitude_max, latitude_min, latitude_max)
+        # ax.coastlines()
+        # ax.add_feature(cartopy.feature.OCEAN, zorder=100, edgecolor="k")
 
         # Plot the RGB data
         # img_extent = (
@@ -198,18 +186,11 @@ class PlotExtremes(InitializationConfig):
         #     bins.latitude.max(),
         # )
 
-        ax.set_extent(img_extent, crs=projection)
-        print(
-            bins.longitude.values.shape,
-            bins.latitude.values.shape,
-            rgb_normalized.shape,
-        )
-
         ax.pcolormesh(
             bins.longitude.values,
             bins.latitude.values,
             rgb_normalized,
-            transform=projection,
+            # transform=projection,
         )
 
         # Add a title
@@ -637,8 +618,7 @@ class PlotExtremes(InitializationConfig):
         box_indices = self.loader._load_bins()
         # Convert box indices to RGB colors
         # Normalize indices to the range [0, 1] for RGB
-        colors = box_indices.mean(axis=1) / (n_bins + 1)
-        print(colors.values.shape)
+        colors = box_indices / (n_bins + 1)
         # Plotting
         fig = plt.figure()
         ax = fig.add_subplot(111, projection="3d")
@@ -648,7 +628,7 @@ class PlotExtremes(InitializationConfig):
             pca_projection.isel(component=0).values.T,
             pca_projection.isel(component=1).values.T,
             pca_projection.isel(component=2).values.T,
-            c=colors.values.T,
+            c=colors.values,
             s=50,
             edgecolor="k",
         )
@@ -723,11 +703,9 @@ class PlotExtremes(InitializationConfig):
         pca_projection, explained_variance = self.loader._load_pca_projection(
             explained_variance=True
         )
-        print(pca_projection)
 
         n_bins = self.config.n_bins
         box_indices = self.loader._load_bins()
-        print(box_indices)
         # Convert box indices to RGB colors
         # Normalize indices to the range [0, 1] for RGB
         colors = box_indices / (n_bins + 1)
@@ -738,7 +716,7 @@ class PlotExtremes(InitializationConfig):
         sc = ax.scatter(
             pca_projection.isel(component=0).values.T,
             pca_projection.isel(component=1).values.T,
-            c=colors.values.T,
+            c=colors.values,
             s=75,
             edgecolor="k",
         )
@@ -1201,9 +1179,9 @@ if __name__ == "__main__":
     # limits_bins = loader._load_limits_bins()
     # print(limits_bins)
     plot = PlotExtremes(config=config)
-    # plot.map_bins()
-    plot.plot_3D_pca()
-    plot.plot_2D_component()
+    plot.map_bins()
+    # plot.plot_3D_pca()
+    # plot.plot_2D_component()
     # plot.map_component()
     # plot.map_bins()
 

@@ -41,7 +41,7 @@ class Loader:
         Parameters:
         filepath (str): Path to the data file.
         """
-        projection_path = self.config.saving_path / "pca_projection_2.zarr"
+        projection_path = self.config.saving_path / "pca_projection_3.zarr"
         if not os.path.exists(projection_path):
             printt(f"PCA projection not found at {projection_path}")
             return None
@@ -84,7 +84,7 @@ class Loader:
         return limits_bins
 
     def _load_bins(self):
-        bins_path = self.config.saving_path / "bins_1.zarr"
+        bins_path = self.config.saving_path / "bins_2.zarr"
         if not os.path.exists(bins_path):
             bins_path = self.config.saving_path / "boxes.zarr"
             if not os.path.exists(bins_path):

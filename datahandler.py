@@ -464,8 +464,8 @@ class EcologicalDatasetHandler(DatasetHandler):
             )
         )
         # Then remove specific years using boolean indexing
-        years_to_exclude = [2003, 2018, 2019, 2020, 2022]
-        self.data = self.data.sel(time=~self.data.time.dt.year.isin(years_to_exclude))
+        # years_to_exclude = [2003, 2018, 2019, 2020, 2022]
+        # self.data = self.data.sel(time=~self.data.time.dt.year.isin(years_to_exclude))
 
         self.data = self._spatial_filtering(self.data)
 
@@ -517,15 +517,16 @@ class EarthnetDatasetHandler(DatasetHandler):
         """
         self.variable_name = "evi_earthnet"
         if self.n_samples:
-            samples_indices, df = self.sample_locations(self.n_samples)
+            samples_indices, self.df = self.sample_locations(self.n_samples)
         else:
-            samples_indices, df = self.sample_locations(10000)
-        self.df = df
+            samples_indices, self.df = self.sample_locations(10000)
 
         printt("dataset loading")
         with ThreadPoolExecutor() as executor:
             data = list(executor.map(self.load_minicube, samples_indices))
         filtered_data_arrays = [da for da in data if da is not None]
+        if filtered_data_arrays == []:
+            raise ValueError("Dataset empty")
         ds = xr.concat(filtered_data_arrays, dim="location")
         self.data = ds.to_dataset(name=self.variable_name)
 
@@ -561,6 +562,18 @@ class EarthnetDatasetHandler(DatasetHandler):
         # # filtered_data_arrays = [da for da in data if da is not None]
         # ds = xr.concat(data, dim="location")
         # self.data = ds.to_dataset(name=self.variable_name)
+        return self.data
+
+    def _minicube_specific_loading(self):
+        self.variable_name = "evi_earthnet"
+        data = None
+        i = 0
+        while (i < 5) and (data is None):
+            i += 1
+            samples_indice, self.df = self.sample_locations(1)
+            data = self.load_minicube(samples_indice, process_entire_minicube=True)
+        data = data.stack(location=("longitude", "latitude"))
+        self.data = data.to_dataset(name=self.variable_name)
         return self.data
 
     def sample_locations(self, n_samples):
@@ -600,58 +613,85 @@ class EarthnetDatasetHandler(DatasetHandler):
 
         # Random sampling with replacement
         sampled_indices = np.random.choice(df.index, size=n_samples, replace=True)
-
         return sampled_indices, df
 
-    def load_minicube(self, row):
-
-        ds = (
-            xr.open_zarr(EARTHNET_FILEPATH + self.df.loc[row]["path"])
-            # .isel(x=row["x"], y=row["y"])
-            .sel(time=slice(datetime.date(2017, 3, 7), datetime.date(2022, 9, 30)))
-        )
-        ds = self._select_randomly_vegetation_location(ds)
+    def load_minicube(self, row, process_entire_minicube=False):
+        # Load data
+        ds = self._load_data(row)
         if ds is None:
             return None
-        evi = (2.5 * (ds.B8A - ds.B04)) / (ds.B8A + 6 * ds.B04 - 7.5 * ds.B02 + 1)
-        # evi = (ds.B8A - ds.B04) / (ds.B8A + ds.B04)
-        # Mask
-        # cloudmask_en > 1 where there is a cloud, 0 where data
-        mask = ds.cloudmask_en.where(ds.cloudmask_en == 0, np.nan)
-        mask = mask.where(ds.SCL == (4 or 5), np.nan)
-        mask = mask.where(mask != 0, 1)
 
-        nan_percentage = mask.isnull().mean().values * 100
-        if nan_percentage > 80:
-            return None
+        if not process_entire_minicube:
+            # Select a random vegetation location
+            ds = self._get_random_vegetation_pixel_series(ds)
         else:
-            return evi * mask
+            # Filter based on vegetation occurrence
+            if not self._has_sufficient_vegetation(ds):
+                return None
 
-    def _select_randomly_vegetation_location(self, ds):
-        # Count occurrences of 4 and 5 at each location across the 'time' dimension
-        count_of_4 = (ds.SCL == 4).sum(dim="time")  # vegetation classification
-        mask = count_of_4 > 24
+        # Calculate EVI and apply cloud/vegetation mask
+        evi = self._calculate_evi(ds)
+        masked_evi = self._apply_masks(ds, evi)
 
-        # Get indices of locations that satisfy the condition
+        # Check for excessive missing data
+        if self._has_excessive_nan(masked_evi):
+            return None
+
+        return masked_evi
+
+    def _load_data(self, row):
+        """Loads the dataset and selects the relevant time slice."""
+        try:
+            ds = xr.open_zarr(EARTHNET_FILEPATH + self.df.loc[row, "path"].values[0])
+            ds = ds.sel(
+                time=slice(datetime.date(2017, 3, 7), datetime.date(2022, 9, 30))
+            )
+            ds = ds.rename({"x": "longitude", "y": "latitude"})
+            return ds
+        except Exception as e:
+            print(f"Error loading data: {e}")
+            return None
+
+    def _get_random_vegetation_pixel_series(self, ds):
+        """Selects a random time serie vegetation pixel location in the minicube based on SCL classification."""
+        count_of_4 = (ds.SCL == 4).sum(dim="time")  # Count vegetation occurrences
+        mask = count_of_4 > 24  # Threshold for sufficient vegetation
+
         eligible_indices = np.argwhere(mask.values)
         if eligible_indices.size > 0:
             random_index = eligible_indices[np.random.choice(eligible_indices.shape[0])]
-            selected_data = ds.isel(x=random_index[0], y=random_index[1])
-
-            # Expand x and y as singleton dimensions to enable stacking
+            selected_data = ds.isel(longitude=random_index[0], latitude=random_index[1])
+            # Expand dimensions and rename for clarity
             selected_data = selected_data.expand_dims(
-                x=[selected_data.x.values.item()],
-                y=[selected_data.y.values.item()],
+                longitude=[selected_data.longitude.values.item()],
+                latitude=[selected_data.latitude.values.item()],
             )
+            # Stack spatial dimensions for easier processing
+            return selected_data.stack(location=("longitude", "latitude"))
+        return None
 
-            # Rename x and y to longitude and latitude
-            selected_data = selected_data.rename({"x": "longitude", "y": "latitude"})
+    def _has_sufficient_vegetation(self, ds):
+        """Checks if sufficient vegetation exists across the dataset."""
+        count_of_4 = (ds.SCL == 4).sum(dim="time")
+        mask = count_of_4 > 24
+        eligible_indices = np.argwhere(mask.values)
+        return eligible_indices.size > 0
 
-            # Stack x and y into a single location dimension
-            selected_data = selected_data.stack(location=("longitude", "latitude"))
-            return selected_data
-        else:
-            return None
+    def _calculate_evi(self, ds):
+        """Calculates the Enhanced Vegetation Index (EVI)."""
+        return (2.5 * (ds.B8A - ds.B04)) / (ds.B8A + 6 * ds.B04 - 7.5 * ds.B02 + 1)
+
+    def _apply_masks(self, ds, evi):
+        """Applies cloud and vegetation masks to the EVI data."""
+        mask = ds.cloudmask_en.where(ds.cloudmask_en == 0, np.nan)
+        mask = mask.where(ds.SCL.isin([4, 5]), np.nan)
+        mask = mask.where(mask != 0, 1)
+        return evi * mask
+
+    def _has_excessive_nan(self, data):
+        """Checks if the masked data contains excessive NaN values."""
+        nan_percentage = data.isnull().mean().values * 100
+        return nan_percentage > 80
 
     def filter_dataset_specific(self):
         """
@@ -835,12 +875,16 @@ class EarthnetDatasetHandler(DatasetHandler):
         reduce_temporal_resolution=True,
         return_time_serie=False,
         remove_nan=True,
+        process_entire_minicube=False,
     ):
         """
         Preprocess data based on the index.
         """
         printt("start of the preprocess")
-        self._dataset_specific_loading()
+        if process_entire_minicube:
+            self._minicube_specific_loading()
+        else:
+            self._dataset_specific_loading()
         self.filter_dataset_specific()  # useless, legacy...
 
         self.data = self.data[self.variable_name]
@@ -848,8 +892,6 @@ class EarthnetDatasetHandler(DatasetHandler):
         printt(
             f"Computation on the entire dataset. {self.data.sizes['location']} samples"
         )
-
-        # else:
         self.data, self.msc = self.apply_cleaning_pipeline(self.data)
         # if scale:
         #    self._scale_msc()

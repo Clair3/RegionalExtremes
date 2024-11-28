@@ -575,6 +575,41 @@ def regional_extremes_method(args, quantile_levels):
     return extremes_processor
 
 
+def regional_extremes_minicube(args, quantile_levels):
+    """Fit the PCA with a subset of the data, then project the full dataset,
+    then define the bins on the full dataset projected."""
+    # Initialization of the configs, load and save paths, log.txt.
+    config = InitializationConfig(args)
+    assert config.method == "regional"
+    # Initialization of RegionalExtremes, load data if already computed.
+    extremes_processor = RegionalExtremes(
+        config=config,
+        n_components=config.n_components,
+        n_bins=config.n_bins,
+    )
+
+    # Apply the regional threshold and compute the extremes
+    # Load the data
+    dataset_processor = create_handler(
+        config=config, n_samples=1  # config.n_samples
+    )  # None)  # None)
+    msc, data = dataset_processor.preprocess_data(
+        scale=False,
+        return_time_serie=True,
+        reduce_temporal_resolution=False,
+        remove_nan=False,
+        process_entire_minicube=True,
+    )
+    extremes_processor.apply_pca(scaled_data=msc)
+    extremes_processor.find_bins()
+    # Deseasonalize the data
+    deseasonalized = dataset_processor._deseasonalize(data, msc)
+    # Compute the quantiles per regions/biome (=bins)
+    extremes_processor.apply_regional_threshold(
+        deseasonalized, quantile_levels=quantile_levels
+    )
+
+
 def local_extremes_method(args, quantile_levels):
     # Initialization of the configs, load and save paths, log.txt.
     config = InitializationConfig(args)
@@ -647,7 +682,8 @@ if __name__ == "__main__":
 
     if args.method == "regional":
         # Apply the regional extremes method
-        regional_extremes_method(args, (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
+        # regional_extremes_method(args, (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
+        regional_extremes_minicube(args, (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
     elif args.method == "local":
         # Apply the uniform threshold method
         local_extremes_method(args, (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
