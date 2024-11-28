@@ -1,14 +1,17 @@
 import xarray as xr
-import zarr
-import dask
+
+import dask.array as da
 import numpy as np
-import random
 import datetime
 import regionmask
+from scipy.signal import savgol_filter
+from typing import Union, Optional
+import warnings
 import sys
-from typing import Union
 import pandas as pd
+from concurrent.futures import ThreadPoolExecutor
 from abc import ABC, abstractmethod
+from pathlib import Path
 from config import (
     InitializationConfig,
     CLIMATIC_INDICES,
@@ -16,11 +19,11 @@ from config import (
     EARTHNET_INDICES,
 )
 from loader_and_saver import Loader, Saver
-from concurrent.futures import ThreadPoolExecutor
+from utils import printt
 
 np.random.seed(2024)
 np.set_printoptions(threshold=sys.maxsize)
-from utils import printt
+
 
 NORTH_POLE_THRESHOLD = 66.5
 SOUTH_POLE_THRESHOLD = -66.5
@@ -518,11 +521,46 @@ class EarthnetDatasetHandler(DatasetHandler):
         else:
             samples_indices, df = self.sample_locations(10000)
         self.df = df
+
+        printt("dataset loading")
         with ThreadPoolExecutor() as executor:
             data = list(executor.map(self.load_minicube, samples_indices))
         filtered_data_arrays = [da for da in data if da is not None]
         ds = xr.concat(filtered_data_arrays, dim="location")
         self.data = ds.to_dataset(name=self.variable_name)
+
+        # data = [self.load_minicube(index) for index in samples_indices]
+        # tasks = [dask.delayed(self.load_minicube)(index) for index in samples_indices]
+        # data = dask.compute(*tasks, scheduler="threads")
+
+        # Define the data loading tasks
+        # with ThreadPoolExecutor() as executor:
+        #    # Use dask.delayed for delayed computation and map it over indices
+        #    tasks = [
+        #        dask.delayed(self.load_minicube)(index) for index in samples_indices
+        #    ]
+        ## Compute the tasks using Dask's compute method and the threads scheduler
+        # data = dask.compute(*tasks)  # scheduler="threads", pool=executor)
+        #
+        # delayed_data = [
+        #    dask.delayed(self.load_minicube)(index) for index in samples_indices
+        # ]
+        #
+        ## Filter out `None` values lazily
+        # delayed_filtered_data = [d for d in delayed_data if d is not None]
+        # data = dask.compute(*delayed_filtered_data, scheduler="threads")
+
+        # Convert each delayed item to a Dask-backed xarray DataArray
+        # filtered_data_arrays = [
+        #     xr.DataArray(
+        #         da.from_delayed(d, dtype=float, shape=(407, 1)),
+        #         dims=["location", "time"],
+        #     )
+        #     for d in delayed_filtered_data
+        # ]
+        # # filtered_data_arrays = [da for da in data if da is not None]
+        # ds = xr.concat(data, dim="location")
+        # self.data = ds.to_dataset(name=self.variable_name)
         return self.data
 
     def sample_locations(self, n_samples):
@@ -635,101 +673,161 @@ class EarthnetDatasetHandler(DatasetHandler):
 
         return mask
 
-    # def _deseasonalize(self, subset_data, subset_msc):
-    #    # Assuming `self.data` has a 'time' coordinate that includes multiple years
-    #    subset_data = subset_data.assign_coords(
-    #        dayofyear=subset_data["time"].dt.dayofyear
-    #    )
-    #    print(subset_data)
-    #    print(subset_data.values.shape)
-    #
-    #    # Define 15-day bins for dayofyear
-    #    bins = np.arange(1, 367, 15)  # Bin edges to create 15-day intervals
-    #    midpoints = (
-    #        bins[:-1] + 7.5
-    #    )  # Midpoints for each bin, representing the center of each 15-day interval
-    #
-    #    # Group by year first, then apply groupby_bins on dayofyear within each year
-    #    subset_data = subset_data.groupby(
-    #        "time.year"
-    #    ).apply(  # Group by each year first
-    #        lambda x: x.groupby_bins("dayofyear", bins=bins, right=False).mean(
-    #            "time", skipna=True
-    #        )
-    #    )  # Apply groupby_bins and mean on each year separately
-    #    # Rename `dayofyear_bins` to `dayofyear` and set the midpoints
-    #    subset_data = subset_data.rename({"dayofyear_bins": "dayofyear"})
-    #    subset_data["dayofyear"] = midpoints  # Set dayofyear to the midpoints
-    #    msc_expanded = subset_msc.expand_dims("year")
-    #    print(msc_expanded)
-    #    result = subset_data - msc_expanded
-    #
-    #    print(result)
-    #
-    #    # Optionally, reassign the year as a coordinate
-    #    # Step 1: Convert `year` to a regular coordinate
-    #    # subset_data = subset_data.reset_index("year")
-    #
-    #    # Step 2: Drop `year` if you don’t need it as a coordinate anymore
-    #    # subset_data = subset_data.drop_vars("year")
-    #    # subset_data = subset_data.reset_coords(["year"], drop=True)
-    #
-    #    # subset_data = subset_data.assign_coords(year=("year", subset_data["year"]))
-    #    # Align subset_msc with subset_data
-    #    # aligned_msc = subset_msc.sel(dayofyear=subset_data["time.dayofyear"])
-    #    # Subtract the seasonal cycle
-    #    # deseasonalized = subset_data - subset_msc
-    #
-    #    return deseasonalized
-    def _deseasonalize(self, subset_data, subset_msc):
+    def _deseasonalize(self, data, msc):
+        daily_msc = msc.interp(dayofyear=np.arange(1, 366, 1))
         # Align subset_msc with subset_data
-        aligned_msc = subset_msc.sel(dayofyear=subset_data["time.dayofyear"])
+        aligned_msc = daily_msc.sel(dayofyear=data["time.dayofyear"])
         # Subtract the seasonal cycle
-        deseasonalized = subset_data - aligned_msc
+        deseasonalized = data - aligned_msc
         return deseasonalized
 
-    def compute_msc_15d_period(self):
-        # Assign "day of year" as a coordinate based on the time dimension
-        self.data = self.data.assign_coords(dayofyear=self.data["time"].dt.dayofyear)
+    def clean_and_smooth_timeseries(
+        self,
+        data: xr.DataArray,
+        rolling_window: int = 3,
+        bin_size: int = 5,
+        smoothing_window: int = 12,
+        poly_order: int = 2,
+    ) -> xr.DataArray:
+        """
+        Clean and smooth a time series using rolling windows, neighbor comparison,
+        and Savitzky-Golay filtering.
 
-        # Create 15-day bins by dividing day of year into 15-day intervals
-        # (Adjust the range if you want it to exactly match the last days of the year)
-        bins = np.arange(1, 367, 15)  # Adjusts for 366 days if leap year included
+        Parameters
+        ----------
+        data : xr.DataArray
+            Input time series data
+        rolling_window : int, optional
+            Size of rolling window for initial smoothing, default 3
+        bin_size : int, optional
+            Size of bins for grouping days, default 16
+        smoothing_window : int, optional
+            Window size for Savitzky-Golay filter, default 10
+        poly_order : int, optional
+            Polynomial order for Savitzky-Golay filter, default 2
 
-        # Use `groupby_bins` to group days into 15-day bins, then take the mean over each bin
-        self.msc = (
-            self.data.groupby_bins("dayofyear", bins=bins, right=False)
-            .mean("time", skipna=True)
-            .rename({"dayofyear_bins": "dayofyear"})
+        Returns
+        -------
+        xr.DataArray
+            Cleaned and smoothed time series
+        """
+
+        def remove_local_minima(series: xr.DataArray) -> xr.DataArray:
+            """Replace values that are smaller than both neighbors with neighbor mean."""
+            # Shift the data to get neighbors
+            left_neighbor = series.shift(time=1, fill_value=float("inf"))
+            right_neighbor = series.shift(time=-1, fill_value=float("inf"))
+
+            # Find where the value is smaller than both neighbors
+            is_smaller = (series < left_neighbor) & (series < right_neighbor)
+            masked_series = xr.where(is_smaller, float("nan"), series)
+            mean_neighbors = masked_series.rolling(
+                time=5, center=True, min_periods=1
+            ).mean()
+            return xr.where(is_smaller, mean_neighbors, series)
+
+        def fill_nans(series: xr.DataArray, window: int) -> xr.DataArray:
+            """Fill NaN values using rolling mean."""
+            rolling_mean = series.rolling(
+                time=window, center=True, min_periods=1
+            ).mean()
+            return series.where(~np.isnan(series), other=rolling_mean)
+
+        try:
+            # Input validation
+            if not isinstance(data, xr.DataArray):
+                raise TypeError("Input must be an xarray DataArray")
+
+            # Step 1: Initial rolling window maximum
+            # clean_data = (
+            #     data.rolling(time=rolling_window, center=True, min_periods=1)
+            #     .construct("window_dim")
+            #     .max(dim="window_dim")
+            # )
+
+            # Step 2: Remove local minima
+            clean_data = remove_local_minima(data)
+
+            # Step 3: Handle NaN values
+            clean_data = fill_nans(clean_data, rolling_window)
+            clean_data = fill_nans(
+                clean_data, rolling_window
+            )  # Second pass for remaining NaNs
+
+            # Step 4: Remove local minima again after NaN filling
+            clean_data = remove_local_minima(clean_data)
+
+            # Step 5: Compute mean seasonal cycle
+            bins = np.arange(1, 367, bin_size)
+            clean_data = clean_data.assign_coords(
+                dayofyear=clean_data["time"].dt.dayofyear
+            )
+            mean_seasonal_cycle = (
+                clean_data.groupby_bins("time.dayofyear", bins=bins, right=False)
+                .mean("time", skipna=True)
+                .rename({"dayofyear_bins": "dayofyear"})
+            )
+
+            # Set dayofyear to bin midpoints
+            mean_seasonal_cycle["dayofyear"] = [
+                interval.mid for interval in mean_seasonal_cycle.dayofyear.values
+            ]
+            # Fill any remaining NaNs with 0
+            mean_seasonal_cycle = mean_seasonal_cycle.fillna(0)
+
+            # Step 6: Apply Savitzky-Golay smoothing
+            mean_seasonal_cycle_values = savgol_filter(
+                mean_seasonal_cycle.values, smoothing_window, poly_order, axis=0
+            )
+            mean_seasonal_cycle = mean_seasonal_cycle.copy(
+                data=mean_seasonal_cycle_values
+            )
+
+            # Ensure all values are non-negative
+            mean_seasonal_cycle = mean_seasonal_cycle.where(mean_seasonal_cycle > 0, 0)
+
+            return clean_data, mean_seasonal_cycle
+
+        except Exception as e:
+            raise RuntimeError(f"Error processing time series: {str(e)}") from e
+
+    def apply_cleaning_pipeline(
+        self, data: xr.DataArray, config: Optional[dict] = None
+    ) -> xr.DataArray:
+        """
+        Apply the complete cleaning pipeline with optional configuration.
+
+        Parameters
+        ----------
+        data : xr.DataArray
+            Input time series data
+        config : dict, optional
+            Configuration parameters for the cleaning process
+
+        Returns
+        -------
+        xr.DataArray
+            Cleaned and smoothed time series
+        """
+        default_config = {
+            "rolling_window": 3,
+            "bin_size": 5,
+            "smoothing_window": 12,
+            "poly_order": 2,
+        }
+
+        if config is None:
+            config = default_config
+        else:
+            config = {**default_config, **config}  # Merge with defaults
+
+        return self.clean_and_smooth_timeseries(
+            data,
+            rolling_window=config["rolling_window"],
+            bin_size=config["bin_size"],
+            smoothing_window=config["smoothing_window"],
+            poly_order=config["poly_order"],
         )
-        # Set the 'dayofyear' to the midpoint of each bin
-        self.msc["dayofyear"] = [interval.mid for interval in self.msc.dayofyear.values]
-
-        # Step 3: Extend the data to facilitate circular interpolation
-        # To simulate circular continuity, set indices just outside the original range
-        # Adjust 'dayofyear' for wrapping data
-        prepend = self.msc.isel(dayofyear=-1).assign_coords(
-            dayofyear=self.msc.dayofyear[0] - 15
-        )
-        append = self.msc.isel(dayofyear=0).assign_coords(
-            dayofyear=self.msc.dayofyear[-1] + 15
-        )
-
-        # Concatenate with adjusted indices for circular continuity
-        self.msc_ext = xr.concat([prepend, self.msc, append], dim="dayofyear")
-
-        # Step 4: Perform linear interpolation along the extended 'dayofyear' dimension
-        self.msc_ext = self.msc_ext.chunk(dict(dayofyear=-1)).interpolate_na(
-            dim="dayofyear", method="linear"
-        )
-
-        # Step 5: Remove the extra bins to return to the original dataset shape
-        self.msc = self.msc_ext.isel(dayofyear=slice(1, -1))
-
-        self.msc = self.msc.fillna(0)
-
-    def compute_msc(self):
-        return self.data.groupby("time.dayofyear").mean("time", skipna=True)
 
     def preprocess_data(
         self,
@@ -741,25 +839,27 @@ class EarthnetDatasetHandler(DatasetHandler):
         """
         Preprocess data based on the index.
         """
+        printt("start of the preprocess")
         self._dataset_specific_loading()
         self.filter_dataset_specific()  # useless, legacy...
 
         self.data = self.data[self.variable_name]
+        self.saver._save_data(self.data, "training_data")
         printt(
             f"Computation on the entire dataset. {self.data.sizes['location']} samples"
         )
-        # if self.n_samples:
-        self.compute_msc_15d_period()
+
         # else:
-        self.msc_daily = self.compute_msc()
-
-        if scale:
-            self._scale_msc()
-
+        self.data, self.msc = self.apply_cleaning_pipeline(self.data)
+        # if scale:
+        #    self._scale_msc()
         self.msc = self.msc.transpose("location", "dayofyear", ...)
 
+        self.saver._save_data(self.msc, "msc")
+        self.saver._save_data(self.data, "clean_data")
+        printt("data saved")
         if return_time_serie:
             self.data = self.data.transpose("location", "time", ...)
-            return self.msc, self.msc_daily, self.data
+            return self.msc, self.data
         else:
             return self.msc

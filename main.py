@@ -5,11 +5,13 @@ from sklearn.decomposition import PCA, KernelPCA
 import pickle as pk
 import dask.array as da
 import flox.xarray
-
 import sys
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from utils import initialize_logger, printt, int_or_none
-from loader_and_saver import InMemorySaver, Loader, Saver
+from loader_and_saver import Loader, Saver
 from datahandler import create_handler
 from config import (
     InitializationConfig,
@@ -144,9 +146,7 @@ class RegionalExtremes:
         self.n_components = n_components
         self.n_bins = n_bins
         self.loader = Loader(config)
-        self.saver = (
-            InMemorySaver(config) if config.is_generic_xarray_dataset else Saver(config)
-        )
+        self.saver = Saver(config)
 
         if self.config.path_load_experiment:
             # Load every variable if already available, otherwise return None.
@@ -215,11 +215,6 @@ class RegionalExtremes:
         Returns:
             np.ndarray: Transformed data after applying PCA.
         """
-        if self.projected_data is not None:
-            raise ValueError(
-                "self.projected_data is not None, projected_data already have been computed.",
-            )
-
         self._validate_scaled_data(scaled_data)
         transformed_data = xr.apply_ufunc(
             self.pca.transform,
@@ -330,7 +325,7 @@ class RegionalExtremes:
             },
             name="bins",
         )
-        self.saver._save_bins(self.bins)
+        self.saver._save_data(self.bins, "bins")
         return self.bins
 
     def apply_regional_threshold(self, deseasonalized, quantile_levels):
@@ -390,9 +385,9 @@ class RegionalExtremes:
             extremes_array.values = results["extremes"].values
 
         # save the array
-        self.saver._save_thresholds(thresholds_array)
+        self.saver._save_data(thresholds_array, "thresholds")
         if not compute_only_thresholds:
-            self.saver._save_extremes(extremes_array)
+            self.saver._save_data(extremes_array, "extremes")
 
     def apply_local_threshold(self, deseasonalized, quantile_levels):
         assert self.config.method == "local"
@@ -431,9 +426,9 @@ class RegionalExtremes:
 
         # save the array
         printt("Saving in progress")
-        self.saver._save_thresholds(thresholds_array)
+        self.saver._save_data(thresholds_array, "thresholds")
         if not compute_only_thresholds:
-            self.saver._save_extremes(extremes_array)
+            self.saver._save_data(extremes_array, "extremes")
 
     def _compute_thresholds(
         self,
@@ -458,8 +453,13 @@ class RegionalExtremes:
 
         if method == "regional":
             deseasonalized_dask = deseasonalized.data
+            # Mask NaN values by flattening and dropping them
+            flattened_nonan = deseasonalized_dask.flatten()[
+                ~da.isnan(deseasonalized_dask.flatten())
+            ]
+
             quantiles = da.percentile(
-                deseasonalized_dask.flatten(),
+                flattened_nonan,
                 np.array([*LOWER_QUANTILES_LEVEL, *UPPER_QUANTILES_LEVEL]) * 100,
                 method="linear",
             )
@@ -473,7 +473,6 @@ class RegionalExtremes:
             )
         else:
             raise NotImplementedError("Global threshold method is not yet implemented.")
-        # print(dim)
         # lower_quantiles = deseasonalized.quantile(LOWER_QUANTILES_LEVEL)
         # upper_quantiles = deseasonalized.quantile(UPPER_QUANTILES_LEVEL)
         # all_quantiles = xr.concat([lower_quantiles, upper_quantiles], dim="quantile")
@@ -547,21 +546,18 @@ def regional_extremes_method(args, quantile_levels):
     # Define the boundaries of the bins
     if extremes_processor.limits_bins is None:
         dataset_processor = create_handler(
-            config=config, n_samples=config.n_samples  # * 10  # None
+            config=config, n_samples=1000  # config.n_samples  # None
         )  # all the dataset
         data = dataset_processor.preprocess_data(remove_nan=True)
         extremes_processor.apply_pca(scaled_data=data)
         extremes_processor.define_limits_bins()
 
-    # Attribute a bins to each location
-    # if extremes_processor.bins is None:
-
     # Apply the regional threshold and compute the extremes
     # Load the data
     dataset_processor = create_handler(
-        config=config, n_samples=10000  # config.n_samples  # * 10
+        config=config, n_samples=1000  # config.n_samples
     )  # None)  # None)
-    msc, msc_daily, data = dataset_processor.preprocess_data(
+    msc, data = dataset_processor.preprocess_data(
         scale=False,
         return_time_serie=True,
         reduce_temporal_resolution=False,
@@ -570,7 +566,7 @@ def regional_extremes_method(args, quantile_levels):
     extremes_processor.apply_pca(scaled_data=msc)
     extremes_processor.find_bins()
     # Deseasonalize the data
-    deseasonalized = dataset_processor._deseasonalize(data, msc_daily)
+    deseasonalized = dataset_processor._deseasonalize(data, msc)
     # Compute the quantiles per regions/biome (=bins)
     extremes_processor.apply_regional_threshold(
         deseasonalized, quantile_levels=quantile_levels
@@ -636,7 +632,7 @@ if __name__ == "__main__":
     args.name = "deep_extreme_HR"
     args.index = "EVI_EN"
     args.k_pca = False
-    args.n_samples = 3000
+    args.n_samples = 100
     args.n_components = 3
     args.n_bins = 50
     args.compute_variance = False
@@ -644,7 +640,7 @@ if __name__ == "__main__":
     args.start_year = 2000
     args.is_generic_xarray_dataset = False
 
-    # args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-11-11_13:11:58_deep_extreme_HR"
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-11-25_18:41:43_deep_extreme_HR"
 
     LOWER_QUANTILES_LEVEL = np.array([0.01, 0.025, 0.05])
     UPPER_QUANTILES_LEVEL = np.array([0.95, 0.975, 0.99])

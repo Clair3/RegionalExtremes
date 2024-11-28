@@ -8,11 +8,12 @@ import datetime
 from sklearn.decomposition import PCA
 import pandas as pd
 import pickle as pk
-from pathlib import Path
 from typing import Union
 import time
 import sys
 import os
+from pathlib import Path
+
 from utils import initialize_logger, printt, int_or_none
 
 CURRENT_DIRECTORY_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__)))
