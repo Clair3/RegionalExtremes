@@ -19,8 +19,8 @@ from config import (
     ECOLOGICAL_INDICES,
     EARTHNET_INDICES,
 )
-from loader_and_saver import Loader, Saver
-from utils import printt
+from RegionalExtremesPackage.utils import Loader, Saver
+from RegionalExtremesPackage.utils.logger import printt
 
 
 np.random.seed(2024)

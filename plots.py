@@ -17,9 +17,9 @@ import cartopy
 import random
 
 from config import InitializationConfig
-from loader_and_saver import Loader, Saver
+from RegionalExtremesPackage.utils.loader import Loader, Saver
 from main import parser_arguments
-from utils import printt
+from RegionalExtremesPackage.utils.logger import printt
 from RegionalExtremesPackage.Datahandlers.base import create_handler
 
 

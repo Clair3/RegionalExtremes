@@ -14,7 +14,7 @@ import sys
 import os
 from pathlib import Path
 
-from utils import initialize_logger, printt, int_or_none
+from RegionalExtremesPackage.utils.logger import initialize_logger, printt
 
 CURRENT_DIRECTORY_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__)))
 PARENT_DIRECTORY_PATH = os.path.abspath(os.path.join(CURRENT_DIRECTORY_PATH, os.pardir))

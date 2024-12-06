@@ -6,14 +6,16 @@ from .sentinel2 import EarthnetDatasetHandler
 
 
 @staticmethod
-def create_handler(config, n_samples):
+def create_handler(
+    config: InitializationConfig, loader: Loader, saver: Saver, n_samples: int
+):
     if config.is_generic_xarray_dataset:
-        return GenericDatasetHandler(config=config, n_samples=n_samples)
+        return GenericDatasetHandler(config, loader, saver, n_samples=n_samples)
     elif config.index in ECOLOGICAL_INDICES:
-        return EcologicalDatasetHandler(config=config, n_samples=n_samples)
+        return EcologicalDatasetHandler(config, loader, saver, n_samples=n_samples)
     elif config.index in CLIMATIC_INDICES:
-        return ClimaticDatasetHandler(config=config, n_samples=n_samples)
+        return ClimaticDatasetHandler(config, loader, saver, n_samples=n_samples)
     elif config.index in EARTHNET_INDICES:
-        return EarthnetDatasetHandler(config=config, n_samples=n_samples)
+        return EarthnetDatasetHandler(config, loader, saver, n_samples=n_samples)
     else:
         raise ValueError("Invalid index")

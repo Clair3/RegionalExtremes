@@ -5,7 +5,13 @@ from .common_imports import *
 
 
 class DatasetHandler(ABC):
-    def __init__(self, config: InitializationConfig, n_samples: Union[int, None]):
+    def __init__(
+        self,
+        config: InitializationConfig,
+        loader: Loader,
+        saver: Saver,
+        n_samples: Union[int, None],
+    ):
         """
         Initialize DatasetHandler.
 
@@ -18,9 +24,9 @@ class DatasetHandler(ABC):
         # Number of samples to load. If None, the full dataset is loaded.
         self.n_samples = n_samples
         # Loader class to load intermediate steps.
-        self.loader = Loader(config)
+        self.loader = loader
         # Saver class to save intermediate steps.
-        self.saver = Saver(config)
+        self.saver = saver
 
         self.start_year = self.config.start_year
 

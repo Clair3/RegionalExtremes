@@ -10,8 +10,8 @@ from pathlib import Path
 print(str(Path(__file__).resolve().parent))
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from utils import initialize_logger, printt, int_or_none
-from loader_and_saver import Loader, Saver
+from RegionalExtremesPackage.utils.logger import initialize_logger, printt, int_or_none
+from RegionalExtremesPackage.utils import Loader, Saver
 from Datahandlers import create_handler
 from config import (
     InitializationConfig,
@@ -130,6 +130,8 @@ class RegionalExtremes:
     def __init__(
         self,
         config: InitializationConfig,
+        loader: Loader,
+        saver: Saver,
         n_components: int,
         n_bins: int,
     ):
@@ -143,6 +145,10 @@ class RegionalExtremes:
             n_bins (int): Number of bins per component to define the boxes. Number of boxes = n_bins**n_components
         """
         self.config = config
+        # Loader class to load intermediate steps.
+        self.loader = loader
+        # Saver class to save intermediate steps.
+        self.saver = saver
         self.n_components = n_components
         self.n_bins = n_bins
         self.loader = Loader(config)
@@ -520,10 +526,17 @@ def regional_extremes_method(args, quantile_levels):
     then define the bins on the full dataset projected."""
     # Initialization of the configs, load and save paths, log.txt.
     config = InitializationConfig(args)
+    # Loader class to load intermediate steps.
+    loader = Loader(config)
+    # Saver class to save intermediate steps.
+    saver = Saver(config)
+
     assert config.method == "regional"
     # Initialization of RegionalExtremes, load data if already computed.
     extremes_processor = RegionalExtremes(
         config=config,
+        loader=loader,
+        saver=saver,
         n_components=config.n_components,
         n_bins=config.n_bins,
     )
@@ -533,6 +546,8 @@ def regional_extremes_method(args, quantile_levels):
         # Initialization of the climatic or ecological DatasetHandler
         dataset = create_handler(
             config=config,
+            loader=loader,
+            saver=saver,
             n_samples=config.n_samples,  # args.n_samples,  # all the dataset
         )
         # Load and preprocess the dataset
@@ -546,7 +561,10 @@ def regional_extremes_method(args, quantile_levels):
     # Define the boundaries of the bins
     if extremes_processor.limits_bins is None:
         dataset_processor = create_handler(
-            config=config, n_samples=1000  # config.n_samples  # None
+            config=config,
+            loader=loader,
+            saver=saver,
+            n_samples=1000,  # config.n_samples  # None
         )  # all the dataset
         data = dataset_processor.preprocess_data(remove_nan=True)
         extremes_processor.apply_pca(scaled_data=data)
@@ -555,7 +573,7 @@ def regional_extremes_method(args, quantile_levels):
     # Apply the regional threshold and compute the extremes
     # Load the data
     dataset_processor = create_handler(
-        config=config, n_samples=1000  # config.n_samples
+        config=config, loader=loader, saver=saver, n_samples=1000  # config.n_samples
     )  # None)  # None)
     msc, data = dataset_processor.preprocess_data(
         scale=False,
@@ -581,9 +599,17 @@ def regional_extremes_minicube(args, quantile_levels):
     # Initialization of the configs, load and save paths, log.txt.
     config = InitializationConfig(args)
     assert config.method == "regional"
+
+    # Loader class to load intermediate steps.
+    loader = Loader(config)
+    # Saver class to save intermediate steps.
+    saver = Saver(config)
+
     # Initialization of RegionalExtremes, load data if already computed.
     extremes_processor = RegionalExtremes(
         config=config,
+        loader=loader,
+        saver=saver,
         n_components=config.n_components,
         n_bins=config.n_bins,
     )
@@ -591,7 +617,7 @@ def regional_extremes_minicube(args, quantile_levels):
     # Apply the regional threshold and compute the extremes
     # Load the data
     dataset_processor = create_handler(
-        config=config, n_samples=1  # config.n_samples
+        config=config, loader=loader, saver=saver, n_samples=1  # config.n_samples
     )  # None)  # None)
     msc, data = dataset_processor.preprocess_data(
         scale=False,

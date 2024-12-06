@@ -97,6 +97,8 @@ class EarthnetDatasetHandler(DatasetHandler):
             # Select a random vegetation location
             ds = self._get_random_vegetation_pixel_series(ds)
         else:
+            self.variable_name = ds.attrs["data_id"]
+            self.saver.update_saving_path(ds.attrs["data_id"])
             self.confi_pg = ds.attrs["data_id"]
             # Filter based on vegetation occurrence
             if not self._has_sufficient_vegetation(ds):
