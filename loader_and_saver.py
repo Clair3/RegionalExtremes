@@ -83,6 +83,19 @@ class Loader:
         printt("Limits bins loaded.")
         return limits_bins
 
+    def _load_data(self, data, name):
+        """Save the xarray in a file."""
+        # Unstack location for longitude and latitude as dimensions
+        data.name = name
+        path = self.config.saving_path / f"{name}_{data.data_id}.zarr"
+        if not os.path.exists(path):
+            printt(f"Data not found at {path}")
+            return None
+        data = xr.open_zarr(path)
+        data = cfxr.decode_compress_to_multi_index(data, "location")
+        print(f"{name}.zarr loaded.")
+        return data
+
     def _load_bins(self):
         bins_path = self.config.saving_path / "bins_2.zarr"
         if not os.path.exists(bins_path):
@@ -229,7 +242,7 @@ class Saver:
         printt(f"Limits bins saved to {limits_bins_path}")
 
     def _save_data(self, data, name):
-        """Saves the extremes quantile to a file."""
+        """Saves the data to a file."""
         # Unstack location for longitude and latitude as dimensions
         data.name = name
         if isinstance(data, xr.DataArray):

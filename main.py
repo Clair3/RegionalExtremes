@@ -4,15 +4,15 @@ import numpy as np
 from sklearn.decomposition import PCA, KernelPCA
 import pickle as pk
 import dask.array as da
-import flox.xarray
 import sys
 from pathlib import Path
 
+print(str(Path(__file__).resolve().parent))
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from utils import initialize_logger, printt, int_or_none
 from loader_and_saver import Loader, Saver
-from datahandler import create_handler
+from Datahandlers import create_handler
 from config import (
     InitializationConfig,
     CLIMATIC_INDICES,
@@ -473,11 +473,10 @@ class RegionalExtremes:
             )
         else:
             raise NotImplementedError("Global threshold method is not yet implemented.")
-        # lower_quantiles = deseasonalized.quantile(LOWER_QUANTILES_LEVEL)
-        # upper_quantiles = deseasonalized.quantile(UPPER_QUANTILES_LEVEL)
-        # all_quantiles = xr.concat([lower_quantiles, upper_quantiles], dim="quantile")
 
-        masks = self._create_quantile_masks(deseasonalized, quantiles_xr)
+        masks = self._create_quantile_masks(
+            deseasonalized, quantiles_xr, quantile_levels=quantile_levels
+        )
 
         extremes = xr.full_like(deseasonalized.astype(float), np.nan)
         for i, mask in enumerate(masks):
@@ -486,7 +485,7 @@ class RegionalExtremes:
         results = xr.Dataset({"extremes": extremes, "thresholds": quantiles_xr})
         return results
 
-    def _create_quantile_masks(self, data, quantiles):
+    def _create_quantile_masks(self, data, quantiles, quantile_levels):
         """
         Create masks for each quantile level.
 
@@ -498,6 +497,7 @@ class RegionalExtremes:
         Returns:
             list: List of boolean masks for each quantile level.
         """
+        LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL = quantile_levels
         lower_quantiles = quantiles.sel(quantile=LOWER_QUANTILES_LEVEL)
         upper_quantiles = quantiles.sel(quantile=UPPER_QUANTILES_LEVEL)
         masks = [
@@ -667,7 +667,7 @@ if __name__ == "__main__":
     args.name = "deep_extreme_HR"
     args.index = "EVI_EN"
     args.k_pca = False
-    args.n_samples = 100
+    args.n_samples = 1000
     args.n_components = 3
     args.n_bins = 50
     args.compute_variance = False
