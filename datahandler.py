@@ -516,6 +516,9 @@ class EarthnetDatasetHandler(DatasetHandler):
         Preprocess data based on the index.
         """
         self.variable_name = "evi_earthnet"
+        if 
+        self.loader.load_da_data(self.data, "training_data")
+
         if self.n_samples:
             samples_indices, self.df = self.sample_locations(self.n_samples)
         else:
@@ -529,6 +532,7 @@ class EarthnetDatasetHandler(DatasetHandler):
             raise ValueError("Dataset empty")
         ds = xr.concat(filtered_data_arrays, dim="location")
         self.data = ds.to_dataset(name=self.variable_name)
+        self.saver._save_data(self.data, "training_data")
 
         # data = [self.load_minicube(index) for index in samples_indices]
         # tasks = [dask.delayed(self.load_minicube)(index) for index in samples_indices]
@@ -888,7 +892,6 @@ class EarthnetDatasetHandler(DatasetHandler):
         self.filter_dataset_specific()  # useless, legacy...
 
         self.data = self.data[self.variable_name]
-        self.saver._save_data(self.data, "training_data")
         printt(
             f"Computation on the entire dataset. {self.data.sizes['location']} samples"
         )
