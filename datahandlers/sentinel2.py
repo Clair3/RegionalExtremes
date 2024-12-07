@@ -1,5 +1,8 @@
 from .common_imports import *
 from .base import DatasetHandler
+import warnings
+
+warnings.filterwarnings("error", category=RuntimeWarning)
 
 
 class EarthnetDatasetHandler(DatasetHandler):
@@ -25,7 +28,9 @@ class EarthnetDatasetHandler(DatasetHandler):
 
         # Concurrently load minicubes and filter out empty results
         with ProcessPoolExecutor() as executor:
-            data = list(filter(None, executor.map(self.load_minicube, samples_indices)))
+            # data = list(filter(None, executor.map(self.load_minicube, samples_indices)))
+            data = list(executor.map(self.load_minicube, samples_indices))
+            data = list(filter(lambda x: isinstance(x, xr.DataArray), data))
 
         if not data:
             raise ValueError("Dataset is empty")
@@ -42,7 +47,7 @@ class EarthnetDatasetHandler(DatasetHandler):
         while (i < 5) and (data is None):
             i += 1
             samples_indice, self.df = self.sample_locations(1)
-            data = self.load_minicube(samples_indice, process_entire_minicube=True)
+            data = self.load_minicube(samples_indice[0], process_entire_minicube=True)
 
         data = data.stack(location=("longitude", "latitude"))
         self.data = data.to_dataset(name=self.variable_name)
@@ -68,7 +73,7 @@ class EarthnetDatasetHandler(DatasetHandler):
         metadata_file = (
             "/Net/Groups/BGI/work_2/scratch/DeepExtremes/mc_earthnet_biome.csv"
         )
-        df = pd.read_csv(metadata_file, delimiter=",")[
+        df = pd.read_csv(metadata_file, delimiter=",", low_memory=False)[
             [
                 "path",
                 "group",
@@ -85,7 +90,7 @@ class EarthnetDatasetHandler(DatasetHandler):
 
         # Random sampling with replacement
         sampled_indices = np.random.choice(df.index, size=n_samples, replace=True)
-        return sampled_indices, df
+        return sampled_indices, df["path"]
 
     def load_minicube(self, row, process_entire_minicube=False):
         # Load data
@@ -96,14 +101,14 @@ class EarthnetDatasetHandler(DatasetHandler):
         if not process_entire_minicube:
             # Select a random vegetation location
             ds = self._get_random_vegetation_pixel_series(ds)
+            if ds is None:
+                return None
         else:
             self.variable_name = ds.attrs["data_id"]
             self.saver.update_saving_path(ds.attrs["data_id"])
-            self.confi_pg = ds.attrs["data_id"]
             # Filter based on vegetation occurrence
             if not self._has_sufficient_vegetation(ds):
                 return None
-
         # Calculate EVI and apply cloud/vegetation mask
         evi = self._calculate_evi(ds)
         masked_evi = self._apply_masks(ds, evi)
@@ -111,14 +116,13 @@ class EarthnetDatasetHandler(DatasetHandler):
         # Check for excessive missing data
         if self._has_excessive_nan(masked_evi):
             return None
-
         return masked_evi
 
     def _load_data(self, row):
         """Loads the dataset and selects the relevant time slice."""
         try:
-            # print(EARTHNET_FILEPATH + self.df.loc[row, "path"].values[0])
-            ds = xr.open_zarr(EARTHNET_FILEPATH + self.df.loc[row, "path"].values[0])
+            path = self.df.at[row]
+            ds = xr.open_zarr(EARTHNET_FILEPATH + path)
             ds = ds.sel(
                 time=slice(datetime.date(2017, 3, 7), datetime.date(2022, 9, 30))
             )
@@ -155,7 +159,9 @@ class EarthnetDatasetHandler(DatasetHandler):
 
     def _calculate_evi(self, ds):
         """Calculates the Enhanced Vegetation Index (EVI)."""
-        return (2.5 * (ds.B8A - ds.B04)) / (ds.B8A + 6 * ds.B04 - 7.5 * ds.B02 + 1)
+        return (2.5 * (ds.B8A - ds.B04)) / (
+            ds.B8A + 6 * ds.B04 - 7.5 * ds.B02 + 1 + 10e-8
+        )
 
     def _apply_masks(self, ds, evi):
         """Applies cloud and vegetation masks to the EVI data."""

@@ -12,7 +12,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from RegionalExtremesPackage.utils.logger import initialize_logger, printt, int_or_none
 from RegionalExtremesPackage.utils import Loader, Saver
-from Datahandlers import create_handler
+from datahandlers import create_handler
 from config import (
     InitializationConfig,
     CLIMATIC_INDICES,
@@ -481,7 +481,9 @@ class RegionalExtremes:
             raise NotImplementedError("Global threshold method is not yet implemented.")
 
         masks = self._create_quantile_masks(
-            deseasonalized, quantiles_xr, quantile_levels=quantile_levels
+            deseasonalized,
+            quantiles_xr,
+            quantile_levels=(LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL),
         )
 
         extremes = xr.full_like(deseasonalized.astype(float), np.nan)
@@ -708,8 +710,8 @@ if __name__ == "__main__":
 
     if args.method == "regional":
         # Apply the regional extremes method
-        # regional_extremes_method(args, (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
-        regional_extremes_minicube(args, (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
+        regional_extremes_method(args, (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
+        # regional_extremes_minicube(args, (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
     elif args.method == "local":
         # Apply the uniform threshold method
         local_extremes_method(args, (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))

@@ -95,9 +95,10 @@ class Saver:
     def _save_data(self, data, name):
         """Saves the data to a file."""
         # Unstack location for longitude and latitude as dimensions
-        data.name = name
         if isinstance(data, xr.DataArray):
+            data.name = name
             data = data.to_dataset()
+
         data = cfxr.encode_multi_index_as_compress(data, "location")
         data = data.chunk("auto")
         path = self._generate_unique_save_path(name)

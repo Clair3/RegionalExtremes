@@ -20,7 +20,7 @@ from config import InitializationConfig
 from RegionalExtremesPackage.utils.loader import Loader, Saver
 from main import parser_arguments
 from RegionalExtremesPackage.utils.logger import printt
-from RegionalExtremesPackage.Datahandlers.base import create_handler
+from RegionalExtremesPackage.datahandlers.base import create_handler
 
 
 class PlotExtremes(InitializationConfig):
