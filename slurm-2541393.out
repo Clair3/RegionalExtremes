@@ -1,0 +1,29 @@
+2024-12-09 18:42:26,678 - distributed.nanny - INFO -         Start Nanny at: 'tcp://10.0.30.53:41361'
+2024-12-09 18:42:26,688 - distributed.nanny - INFO -         Start Nanny at: 'tcp://10.0.30.53:46415'
+2024-12-09 18:42:26,705 - distributed.nanny - INFO -         Start Nanny at: 'tcp://10.0.30.53:46149'
+2024-12-09 18:42:26,740 - distributed.nanny - INFO -         Start Nanny at: 'tcp://10.0.30.53:46667'
+2024-12-09 18:42:27,195 - distributed.diskutils - INFO - Found stale lock file and directory '/tmp/dask-scratch-space/worker-dfx96_7x', purging
+2024-12-09 18:42:27,195 - distributed.diskutils - INFO - Found stale lock file and directory '/tmp/dask-scratch-space/worker-ymq4kxev', purging
+2024-12-09 18:42:27,195 - distributed.diskutils - INFO - Found stale lock file and directory '/tmp/dask-scratch-space/worker-pbpbsh3l', purging
+2024-12-09 18:42:27,195 - distributed.diskutils - INFO - Found stale lock file and directory '/tmp/dask-scratch-space/worker-5alisvha', purging
+2024-12-09 18:42:27,607 - distributed.worker - INFO -       Start worker at:     tcp://10.0.30.53:44329
+2024-12-09 18:42:27,607 - distributed.worker - INFO -          Listening to:     tcp://10.0.30.53:44329
+2024-12-09 18:42:27,607 - distributed.worker - INFO -           Worker name:           SLURMCluster-0-2
+2024-12-09 18:42:27,607 - distributed.worker - INFO -          dashboard at:           10.0.30.53:40205
+2024-12-09 18:42:27,607 - distributed.worker - INFO - Waiting to connect to:     tcp://10.0.30.56:33243
+2024-12-09 18:42:27,607 - distributed.worker - INFO - -------------------------------------------------
+2024-12-09 18:42:27,607 - distributed.worker - INFO -               Threads:                          1
+2024-12-09 18:42:27,607 - distributed.worker - INFO -                Memory:                   1.16 GiB
+2024-12-09 18:42:27,607 - distributed.worker - INFO -       Local Directory: /tmp/dask-scratch-space/worker-dugygssb
+2024-12-09 18:42:27,607 - distributed.worker - INFO - -------------------------------------------------
+2024-12-09 18:42:27,688 - distributed.worker - INFO -       Start worker at:     tcp://10.0.30.53:44573
+2024-12-09 18:42:27,688 - distributed.worker - INFO -          Listening to:     tcp://10.0.30.53:44573
+2024-12-09 18:42:27,688 - distributed.worker - INFO -           Worker name:           SLURMCluster-0-0
+2024-12-09 18:42:27,688 - distributed.worker - INFO -          dashboard at:           10.0.30.53:45643
+2024-12-09 18:42:27,688 - distributed.worker - INFO - Waiting to connect to:     tcp://10.0.30.56:33243
+2024-12-09 18:42:27,688 - distributed.worker - INFO - -------------------------------------------------
+2024-12-09 18:42:27,688 - distributed.worker - INFO -               Threads:                          1
+2024-12-09 18:42:27,688 - distributed.worker - INFO -                Memory:                   1.16 GiB
+2024-12-09 18:42:27,688 - distributed.worker - INFO -       Local Directory: /tmp/dask-scratch-space/worker-gvquag56
+2024-12-09 18:42:27,688 - distributed.worker - INFO - -------------------------------------------------
+slurmstepd: error: *** JOB 2541393 ON node-r6-he33 CANCELLED AT 2024-12-09T18:42:27 ***

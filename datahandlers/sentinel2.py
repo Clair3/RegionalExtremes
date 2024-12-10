@@ -1,8 +1,7 @@
 from .common_imports import *
 from .base import DatasetHandler
-import warnings
-
-warnings.filterwarnings("error", category=RuntimeWarning)
+from tqdm import tqdm
+from dask import delayed, compute
 
 
 class EarthnetDatasetHandler(DatasetHandler):
@@ -15,29 +14,42 @@ class EarthnetDatasetHandler(DatasetHandler):
         self.variable_name = "evi_earthnet"
 
         # Attempt to load preprocessed training data
-        # training_data = self.loader.load_data("training_data")
-        # if training_data is not None:
-        #     self.data = training_data
-        #     return self.data
+        training_data = self.loader._load_data("temp_file")
+        if training_data is not None:
+            self.data = training_data
+            return self.data
 
         # Determine the number of samples to process (default: 10,000)
         sample_count = self.n_samples or 10_000
+        print(f"count: {sample_count}")
         samples_indices, self.df = self.sample_locations(sample_count)
 
         printt("Loading dataset...")
 
-        # Concurrently load minicubes and filter out empty results
-        with ProcessPoolExecutor() as executor:
-            # data = list(filter(None, executor.map(self.load_minicube, samples_indices)))
-            data = list(executor.map(self.load_minicube, samples_indices))
-            data = list(filter(lambda x: isinstance(x, xr.DataArray), data))
+        # Use dask.delayed to parallelize the loading and processing
+        data = [delayed(self.load_minicube)(idx) for idx in samples_indices]
+
+        # Compute the tasks in parallel (this will trigger Dask's parallel computation)
+        data = compute(
+            *data, scheduler="processes"
+        )  # You can use 'threads' or 'processes' depending on your setup
+        data = list(filter(lambda x: isinstance(x, xr.DataArray), data))
+
+        # data = list(
+        #     map(self.load_minicube, tqdm(samples_indices, desc="Loading Minicubes"))
+        # )
+        #
+        # # data = list(map(self.load_minicube, samples_indices))
+        # data = list(filter(lambda x: isinstance(x, xr.DataArray), data))
 
         if not data:
             raise ValueError("Dataset is empty")
 
         # Combine the data into an xarray dataset and save it
         self.data = xr.concat(data, dim="location").to_dataset(name=self.variable_name)
-        self.saver._save_data(self.data, "training_data")
+        self.saver._save_data(self.data, "temp_file")
+        self.data = self.loader._load_data("temp_file")
+        printt("Dataset loaded.")
 
         return self.data
 
@@ -94,29 +106,31 @@ class EarthnetDatasetHandler(DatasetHandler):
 
     def load_minicube(self, row, process_entire_minicube=False):
         # Load data
-        ds = self._load_data(row)
-        if ds is None:
-            return None
+        with xr.open_zarr(EARTHNET_FILEPATH + self.df.at[row]) as ds:
+            ds = ds.rename({"x": "longitude", "y": "latitude"})
+            # ds = self._load_data(row)
+            # if ds is None:
+            #     return None
 
-        if not process_entire_minicube:
-            # Select a random vegetation location
-            ds = self._get_random_vegetation_pixel_series(ds)
-            if ds is None:
-                return None
-        else:
-            self.variable_name = ds.attrs["data_id"]
-            self.saver.update_saving_path(ds.attrs["data_id"])
-            # Filter based on vegetation occurrence
-            if not self._has_sufficient_vegetation(ds):
-                return None
-        # Calculate EVI and apply cloud/vegetation mask
-        evi = self._calculate_evi(ds)
-        masked_evi = self._apply_masks(ds, evi)
+            if not process_entire_minicube:
+                # Select a random vegetation location
+                ds = self._get_random_vegetation_pixel_series(ds)
+                if ds is None:
+                    return None
+            else:
+                self.variable_name = ds.attrs["data_id"]
+                self.saver.update_saving_path(ds.attrs["data_id"])
+                # Filter based on vegetation occurrence
+                if not self._has_sufficient_vegetation(ds):
+                    return None
+            # Calculate EVI and apply cloud/vegetation mask
+            evi = self._calculate_evi(ds)
+            masked_evi = self._apply_masks(ds, evi)
 
-        # Check for excessive missing data
-        if self._has_excessive_nan(masked_evi):
-            return None
-        return masked_evi
+            # Check for excessive missing data
+            if self._has_excessive_nan(masked_evi):
+                return None
+            return masked_evi
 
     def _load_data(self, row):
         """Loads the dataset and selects the relevant time slice."""
@@ -129,7 +143,7 @@ class EarthnetDatasetHandler(DatasetHandler):
             ds = ds.rename({"x": "longitude", "y": "latitude"})
             return ds
         except Exception as e:
-            print(f"Error loading data: {e}")
+            printt(f"Error loading data: {e}")
             return None
 
     def _get_random_vegetation_pixel_series(self, ds):
@@ -184,7 +198,7 @@ class EarthnetDatasetHandler(DatasetHandler):
         # Assert dimensions are as expected after loading and transformation
         assert all(
             dim in self.data.sizes for dim in ("time", "location")
-        ), "Dimension missing"
+        ), f"Dimension missing. dimension are: {self.data.size}"
 
     def _remove_low_vegetation_location(self, threshold, msc):
         # Calculate mean data across the dayofyear dimension
@@ -243,10 +257,10 @@ class EarthnetDatasetHandler(DatasetHandler):
             # Find where the value is smaller than both neighbors
             is_smaller = (series < left_neighbor) & (series < right_neighbor)
             masked_series = xr.where(is_smaller, float("nan"), series)
-            mean_neighbors = masked_series.rolling(
-                time=5, center=True, min_periods=1
-            ).mean()
-            return xr.where(is_smaller, mean_neighbors, series)
+            # mean_neighbors = masked_series.rolling(
+            #     time=5, center=True, min_periods=1
+            # ).mean()
+            return masked_series  # xr.where(is_smaller, mean_neighbors, series)
 
         def fill_nans(series: xr.DataArray, window: int) -> xr.DataArray:
             """Fill NaN values using rolling mean."""
@@ -278,7 +292,6 @@ class EarthnetDatasetHandler(DatasetHandler):
 
             # Step 4: Remove local minima again after NaN filling
             clean_data = remove_local_minima(clean_data)
-
             # Step 5: Compute mean seasonal cycle
             bins = np.arange(1, 367, bin_size)
             clean_data = clean_data.assign_coords(
@@ -296,7 +309,6 @@ class EarthnetDatasetHandler(DatasetHandler):
             ]
             # Fill any remaining NaNs with 0
             mean_seasonal_cycle = mean_seasonal_cycle.fillna(0)
-
             # Step 6: Apply Savitzky-Golay smoothing
             mean_seasonal_cycle_values = savgol_filter(
                 mean_seasonal_cycle.values, smoothing_window, poly_order, axis=0
@@ -304,7 +316,6 @@ class EarthnetDatasetHandler(DatasetHandler):
             mean_seasonal_cycle = mean_seasonal_cycle.copy(
                 data=mean_seasonal_cycle_values
             )
-
             # Ensure all values are non-negative
             mean_seasonal_cycle = mean_seasonal_cycle.where(mean_seasonal_cycle > 0, 0)
 
@@ -373,14 +384,12 @@ class EarthnetDatasetHandler(DatasetHandler):
         printt(
             f"Computation on the entire dataset. {self.data.sizes['location']} samples"
         )
-        self.data, self.msc = self.apply_cleaning_pipeline(self.data)
-        # if scale:
-        #    self._scale_msc()
-        self.msc = self.msc.transpose("location", "dayofyear", ...)
 
+        self.data, self.msc = self.apply_cleaning_pipeline(self.data)
+
+        self.msc = self.msc.transpose("location", "dayofyear", ...)
         self.saver._save_data(self.msc, "msc")
         self.saver._save_data(self.data, "clean_data")
-        printt("data saved")
         if return_time_serie:
             self.data = self.data.transpose("location", "time", ...)
             return self.msc, self.data

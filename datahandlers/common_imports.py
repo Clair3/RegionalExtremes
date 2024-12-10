@@ -10,7 +10,6 @@ from typing import Union, Optional
 import warnings
 import sys
 import pandas as pd
-from concurrent.futures import ProcessPoolExecutor
 from abc import ABC, abstractmethod
 from pathlib import Path
 from config import (

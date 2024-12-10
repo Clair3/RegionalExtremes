@@ -98,12 +98,14 @@ class Saver:
         if isinstance(data, xr.DataArray):
             data.name = name
             data = data.to_dataset()
-
         data = cfxr.encode_multi_index_as_compress(data, "location")
         data = data.chunk("auto")
-        path = self._generate_unique_save_path(name)
+        if not name == "temp_file":
+            path = self._generate_unique_save_path(name)
+        else:
+            path = self.config.saving_path / "temp_file.zarr"
 
-        data.to_zarr(path)
+        data.to_zarr(path, mode="w")
         printt(f"{name} computed and saved.")
 
     def _save_spatial_masking(self, mask):

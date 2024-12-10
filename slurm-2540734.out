@@ -1,0 +1,21 @@
+2024-12-09 15:09:17,140 - distributed.nanny - INFO -         Start Nanny at: 'tcp://10.0.30.39:40763'
+2024-12-09 15:09:19,053 - distributed.worker - INFO -       Start worker at:     tcp://10.0.30.39:37833
+2024-12-09 15:09:19,053 - distributed.worker - INFO -          Listening to:     tcp://10.0.30.39:37833
+2024-12-09 15:09:19,053 - distributed.worker - INFO -           Worker name:             SLURMCluster-0
+2024-12-09 15:09:19,053 - distributed.worker - INFO -          dashboard at:           10.0.30.39:33641
+2024-12-09 15:09:19,053 - distributed.worker - INFO - Waiting to connect to:     tcp://10.0.30.56:46453
+2024-12-09 15:09:19,053 - distributed.worker - INFO - -------------------------------------------------
+2024-12-09 15:09:19,053 - distributed.worker - INFO -               Threads:                          1
+2024-12-09 15:09:19,053 - distributed.worker - INFO -                Memory:                   4.66 GiB
+2024-12-09 15:09:19,053 - distributed.worker - INFO -       Local Directory: /tmp/dask-scratch-space/worker-6ya940d8
+2024-12-09 15:09:19,053 - distributed.worker - INFO - -------------------------------------------------
+2024-12-09 15:09:20,838 - distributed.worker - INFO - Starting Worker plugin shuffle
+2024-12-09 15:09:20,839 - distributed.worker - INFO -         Registered to:     tcp://10.0.30.56:46453
+2024-12-09 15:09:20,840 - distributed.worker - INFO - -------------------------------------------------
+2024-12-09 15:09:20,840 - distributed.core - INFO - Starting established connection to tcp://10.0.30.56:46453
+2024-12-09 15:11:55,547 - distributed.worker - INFO - Stopping worker at tcp://10.0.30.39:37833. Reason: scheduler-remove-worker
+2024-12-09 15:11:55,563 - distributed.nanny - INFO - Closing Nanny gracefully at 'tcp://10.0.30.39:40763'. Reason: scheduler-remove-worker
+2024-12-09 15:11:55,564 - distributed.worker - INFO - Removing Worker plugin shuffle
+2024-12-09 15:11:55,567 - distributed.nanny - INFO - Worker closed
+slurmstepd: error: *** JOB 2540734 ON node-r5-he39 CANCELLED AT 2024-12-09T15:11:55 ***
+2024-12-09 15:11:55,567 - distributed.core - INFO - Connection to tcp://10.0.30.56:46453 has been closed.

@@ -45,6 +45,7 @@ class DatasetHandler(ABC):
         reduce_temporal_resolution=True,
         return_time_serie=False,
         remove_nan=True,
+        process_entire_minicube=False,
     ):
         """
         Preprocess data based on the index.

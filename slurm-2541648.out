@@ -1,0 +1,59 @@
+2024-12-09 20:44:15,213 - distributed.nanny - INFO -         Start Nanny at: 'tcp://10.0.30.39:34369'
+2024-12-09 20:44:15,963 - distributed.diskutils - INFO - Found stale lock file and directory '/tmp/dask-scratch-space/worker-mqr9uwp0', purging
+2024-12-09 20:44:17,044 - distributed.worker - INFO -       Start worker at:     tcp://10.0.30.39:32915
+2024-12-09 20:44:17,044 - distributed.worker - INFO -          Listening to:     tcp://10.0.30.39:32915
+2024-12-09 20:44:17,044 - distributed.worker - INFO -           Worker name:            SLURMCluster-35
+2024-12-09 20:44:17,044 - distributed.worker - INFO -          dashboard at:           10.0.30.39:35295
+2024-12-09 20:44:17,045 - distributed.worker - INFO - Waiting to connect to:     tcp://10.0.30.56:34195
+2024-12-09 20:44:17,045 - distributed.worker - INFO - -------------------------------------------------
+2024-12-09 20:44:17,045 - distributed.worker - INFO -               Threads:                          1
+2024-12-09 20:44:17,045 - distributed.worker - INFO -                Memory:                  46.57 GiB
+2024-12-09 20:44:17,045 - distributed.worker - INFO -       Local Directory: /tmp/dask-scratch-space/worker-ov7rulqd
+2024-12-09 20:44:17,045 - distributed.worker - INFO - -------------------------------------------------
+2024-12-09 20:44:18,657 - distributed.worker - INFO - Starting Worker plugin shuffle
+2024-12-09 20:44:18,658 - distributed.worker - INFO -         Registered to:     tcp://10.0.30.56:34195
+2024-12-09 20:44:18,658 - distributed.worker - INFO - -------------------------------------------------
+2024-12-09 20:44:18,659 - distributed.core - INFO - Starting established connection to tcp://10.0.30.56:34195
+2024-12-09 22:50:04,261 - distributed.core - INFO - Connection to tcp://10.0.30.56:34195 has been closed.
+2024-12-09 22:50:04,276 - distributed.worker - INFO - Stopping worker at tcp://10.0.30.39:32915. Reason: worker-handle-scheduler-connection-broken
+2024-12-09 22:50:04,276 - distributed.worker - ERROR - Failed to communicate with scheduler during heartbeat.
+Traceback (most recent call last):
+  File "/Net/Groups/BGI/scratch/crobin/miniconda3/envs/ExtremesEnv2/lib/python3.12/site-packages/tornado/iostream.py", line 861, in _read_to_buffer
+    bytes_read = self.read_from_fd(buf)
+                 ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Net/Groups/BGI/scratch/crobin/miniconda3/envs/ExtremesEnv2/lib/python3.12/site-packages/tornado/iostream.py", line 1116, in read_from_fd
+    return self.socket.recv_into(buf, len(buf))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [Errno 104] Connection reset by peer
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Net/Groups/BGI/scratch/crobin/miniconda3/envs/ExtremesEnv2/lib/python3.12/site-packages/distributed/worker.py", line 1269, in heartbeat
+    response = await retry_operation(
+               ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Net/Groups/BGI/scratch/crobin/miniconda3/envs/ExtremesEnv2/lib/python3.12/site-packages/distributed/utils_comm.py", line 441, in retry_operation
+    return await retry(
+           ^^^^^^^^^^^^
+  File "/Net/Groups/BGI/scratch/crobin/miniconda3/envs/ExtremesEnv2/lib/python3.12/site-packages/distributed/utils_comm.py", line 420, in retry
+    return await coro()
+           ^^^^^^^^^^^^
+  File "/Net/Groups/BGI/scratch/crobin/miniconda3/envs/ExtremesEnv2/lib/python3.12/site-packages/distributed/core.py", line 1259, in send_recv_from_rpc
+    return await send_recv(comm=comm, op=key, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Net/Groups/BGI/scratch/crobin/miniconda3/envs/ExtremesEnv2/lib/python3.12/site-packages/distributed/core.py", line 1018, in send_recv
+    response = await comm.read(deserializers=deserializers)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Net/Groups/BGI/scratch/crobin/miniconda3/envs/ExtremesEnv2/lib/python3.12/site-packages/distributed/comm/tcp.py", line 236, in read
+    convert_stream_closed_error(self, e)
+  File "/Net/Groups/BGI/scratch/crobin/miniconda3/envs/ExtremesEnv2/lib/python3.12/site-packages/distributed/comm/tcp.py", line 140, in convert_stream_closed_error
+    raise CommClosedError(f"in {obj}: {exc.__class__.__name__}: {exc}") from exc
+distributed.comm.core.CommClosedError: in <TCP (closed) ConnectionPool.heartbeat_worker local=tcp://10.0.30.39:42574 remote=tcp://10.0.30.56:34195>: ConnectionResetError: [Errno 104] Connection reset by peer
+2024-12-09 22:50:04,303 - distributed.nanny - INFO - Closing Nanny gracefully at 'tcp://10.0.30.39:34369'. Reason: worker-handle-scheduler-connection-broken
+2024-12-09 22:50:04,304 - distributed.worker.state_machine - WARNING - Async instruction for <Task cancelled name="execute(('broadcast_to-getitem-open_dataset-transpose-reshape-94ca9bc812596276fc790189cabd71b7', 2, 0))" coro=<Worker.execute() done, defined at /Net/Groups/BGI/scratch/crobin/miniconda3/envs/ExtremesEnv2/lib/python3.12/site-packages/distributed/worker_state_machine.py:3606>> ended with CancelledError
+2024-12-09 22:50:04,304 - distributed.worker - INFO - Removing Worker plugin shuffle
+2024-12-09 22:50:04,468 - distributed.nanny - INFO - Worker closed
+2024-12-09 22:50:06,469 - distributed.nanny - ERROR - Worker process died unexpectedly
+2024-12-09 22:50:08,799 - distributed.nanny - INFO - Closing Nanny at 'tcp://10.0.30.39:34369'. Reason: nanny-close-gracefully
+2024-12-09 22:50:08,800 - distributed.nanny - INFO - Nanny at 'tcp://10.0.30.39:34369' closed.
+2024-12-09 22:50:08,801 - distributed.dask_worker - INFO - End worker

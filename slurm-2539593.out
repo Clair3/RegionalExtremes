@@ -1,0 +1,53 @@
+2024-12-09 11:20:10,152 - distributed.nanny - INFO -         Start Nanny at: 'tcp://10.0.30.39:34075'
+2024-12-09 11:20:12,017 - distributed.worker - INFO -       Start worker at:     tcp://10.0.30.39:39593
+2024-12-09 11:20:12,017 - distributed.worker - INFO -          Listening to:     tcp://10.0.30.39:39593
+2024-12-09 11:20:12,017 - distributed.worker - INFO -           Worker name:             SLURMCluster-0
+2024-12-09 11:20:12,017 - distributed.worker - INFO -          dashboard at:           10.0.30.39:43769
+2024-12-09 11:20:12,018 - distributed.worker - INFO - Waiting to connect to:     tcp://10.0.30.56:34535
+2024-12-09 11:20:12,018 - distributed.worker - INFO - -------------------------------------------------
+2024-12-09 11:20:12,018 - distributed.worker - INFO -               Threads:                          1
+2024-12-09 11:20:12,018 - distributed.worker - INFO -                Memory:                   0.93 GiB
+2024-12-09 11:20:12,018 - distributed.worker - INFO -       Local Directory: /tmp/dask-scratch-space/worker-5hi6h9c6
+2024-12-09 11:20:12,018 - distributed.worker - INFO - -------------------------------------------------
+2024-12-09 11:20:13,934 - distributed.worker - INFO - Starting Worker plugin shuffle
+2024-12-09 11:20:13,934 - distributed.worker - INFO -         Registered to:     tcp://10.0.30.56:34535
+2024-12-09 11:20:13,935 - distributed.worker - INFO - -------------------------------------------------
+2024-12-09 11:20:13,936 - distributed.core - INFO - Starting established connection to tcp://10.0.30.56:34535
+2024-12-09 11:23:37,984 - distributed.worker.memory - WARNING - Unmanaged memory use is high. This may indicate a memory leak or the memory may not be released to the OS; see https://distributed.dask.org/en/latest/worker-memory.html#memory-not-released-back-to-the-os for more information. -- Unmanaged memory: 668.05 MiB -- Worker memory limit: 0.93 GiB
+2024-12-09 11:23:48,052 - distributed.worker.memory - WARNING - Unmanaged memory use is high. This may indicate a memory leak or the memory may not be released to the OS; see https://distributed.dask.org/en/latest/worker-memory.html#memory-not-released-back-to-the-os for more information. -- Unmanaged memory: 687.42 MiB -- Worker memory limit: 0.93 GiB
+2024-12-09 11:23:58,137 - distributed.worker.memory - WARNING - Unmanaged memory use is high. This may indicate a memory leak or the memory may not be released to the OS; see https://distributed.dask.org/en/latest/worker-memory.html#memory-not-released-back-to-the-os for more information. -- Unmanaged memory: 704.86 MiB -- Worker memory limit: 0.93 GiB
+2024-12-09 11:24:05,604 - distributed.worker - INFO - Stopping worker at tcp://10.0.30.39:39593. Reason: scheduler-remove-worker
+2024-12-09 11:24:05,608 - distributed.nanny - INFO - Closing Nanny gracefully at 'tcp://10.0.30.39:34075'. Reason: scheduler-remove-worker
+2024-12-09 11:24:05,609 - distributed.worker - ERROR - Failed to communicate with scheduler during heartbeat.
+Traceback (most recent call last):
+  File "/Net/Groups/BGI/scratch/crobin/miniconda3/envs/ExtremesEnv2/lib/python3.12/site-packages/distributed/comm/tcp.py", line 225, in read
+    frames_nosplit_nbytes_bin = await stream.read_bytes(fmt_size)
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tornado.iostream.StreamClosedError: Stream is closed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Net/Groups/BGI/scratch/crobin/miniconda3/envs/ExtremesEnv2/lib/python3.12/site-packages/distributed/worker.py", line 1250, in heartbeat
+    response = await retry_operation(
+               ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Net/Groups/BGI/scratch/crobin/miniconda3/envs/ExtremesEnv2/lib/python3.12/site-packages/distributed/utils_comm.py", line 459, in retry_operation
+    return await retry(
+           ^^^^^^^^^^^^
+  File "/Net/Groups/BGI/scratch/crobin/miniconda3/envs/ExtremesEnv2/lib/python3.12/site-packages/distributed/utils_comm.py", line 438, in retry
+    return await coro()
+           ^^^^^^^^^^^^
+  File "/Net/Groups/BGI/scratch/crobin/miniconda3/envs/ExtremesEnv2/lib/python3.12/site-packages/distributed/core.py", line 1254, in send_recv_from_rpc
+    return await send_recv(comm=comm, op=key, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Net/Groups/BGI/scratch/crobin/miniconda3/envs/ExtremesEnv2/lib/python3.12/site-packages/distributed/core.py", line 1013, in send_recv
+    response = await comm.read(deserializers=deserializers)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Net/Groups/BGI/scratch/crobin/miniconda3/envs/ExtremesEnv2/lib/python3.12/site-packages/distributed/comm/tcp.py", line 236, in read
+    convert_stream_closed_error(self, e)
+  File "/Net/Groups/BGI/scratch/crobin/miniconda3/envs/ExtremesEnv2/lib/python3.12/site-packages/distributed/comm/tcp.py", line 142, in convert_stream_closed_error
+    raise CommClosedError(f"in {obj}: {exc}") from exc
+distributed.comm.core.CommClosedError: in <TCP (closed) ConnectionPool.heartbeat_worker local=tcp://10.0.30.39:51662 remote=tcp://10.0.30.56:34535>: Stream is closed
+2024-12-09 11:24:05,621 - distributed.nanny - INFO - Worker closed
+2024-12-09 11:24:05,621 - distributed.core - INFO - Connection to tcp://10.0.30.56:34535 has been closed.
+slurmstepd: error: *** JOB 2539593 ON node-r5-he39 CANCELLED AT 2024-12-09T11:24:06 ***

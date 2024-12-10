@@ -1,0 +1,21 @@
+2024-12-09 15:13:48,054 - distributed.nanny - INFO -         Start Nanny at: 'tcp://10.0.30.39:40267'
+2024-12-09 15:13:49,933 - distributed.worker - INFO -       Start worker at:     tcp://10.0.30.39:37111
+2024-12-09 15:13:49,934 - distributed.worker - INFO -          Listening to:     tcp://10.0.30.39:37111
+2024-12-09 15:13:49,934 - distributed.worker - INFO -           Worker name:             SLURMCluster-0
+2024-12-09 15:13:49,934 - distributed.worker - INFO -          dashboard at:           10.0.30.39:43031
+2024-12-09 15:13:49,934 - distributed.worker - INFO - Waiting to connect to:     tcp://10.0.30.56:40853
+2024-12-09 15:13:49,934 - distributed.worker - INFO - -------------------------------------------------
+2024-12-09 15:13:49,934 - distributed.worker - INFO -               Threads:                          1
+2024-12-09 15:13:49,934 - distributed.worker - INFO -                Memory:                   4.66 GiB
+2024-12-09 15:13:49,934 - distributed.worker - INFO -       Local Directory: /tmp/dask-scratch-space/worker-zx4owa2j
+2024-12-09 15:13:49,934 - distributed.worker - INFO - -------------------------------------------------
+2024-12-09 15:13:51,531 - distributed.worker - INFO - Starting Worker plugin shuffle
+2024-12-09 15:13:51,532 - distributed.worker - INFO -         Registered to:     tcp://10.0.30.56:40853
+2024-12-09 15:13:51,532 - distributed.worker - INFO - -------------------------------------------------
+2024-12-09 15:13:51,533 - distributed.core - INFO - Starting established connection to tcp://10.0.30.56:40853
+2024-12-09 15:22:00,698 - distributed.worker - INFO - Stopping worker at tcp://10.0.30.39:37111. Reason: scheduler-remove-worker
+2024-12-09 15:22:00,720 - distributed.nanny - INFO - Closing Nanny gracefully at 'tcp://10.0.30.39:40267'. Reason: scheduler-remove-worker
+slurmstepd: error: *** JOB 2540754 ON node-r5-he39 CANCELLED AT 2024-12-09T15:22:00 ***
+2024-12-09 15:22:00,721 - distributed.worker - INFO - Removing Worker plugin shuffle
+2024-12-09 15:22:00,724 - distributed.nanny - INFO - Worker closed
+2024-12-09 15:22:00,724 - distributed.core - INFO - Connection to tcp://10.0.30.56:40853 has been closed.

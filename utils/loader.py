@@ -69,11 +69,11 @@ class Loader:
         printt("Limits bins loaded.")
         return limits_bins
 
-    def _load_data(self, data, name):
+    def _load_data(self, name):
         """Save the xarray in a file."""
         # Unstack location for longitude and latitude as dimensions
-        data.name = name
-        path = self.config.saving_path / f"{name}_{data.data_id}.zarr"
+        path = self.config.saving_path / f"{name}.zarr"  # f"{name}_{data.data_id}.zarr"
+        print(path)
         if not os.path.exists(path):
             printt(f"Data not found at {path}")
             return None

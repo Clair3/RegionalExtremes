@@ -1,0 +1,22 @@
+2024-12-09 14:05:32,818 - distributed.nanny - INFO -         Start Nanny at: 'tcp://10.0.30.39:42349'
+2024-12-09 14:05:34,961 - distributed.worker - INFO -       Start worker at:     tcp://10.0.30.39:43651
+2024-12-09 14:05:34,961 - distributed.worker - INFO -          Listening to:     tcp://10.0.30.39:43651
+2024-12-09 14:05:34,961 - distributed.worker - INFO -           Worker name:             SLURMCluster-0
+2024-12-09 14:05:34,961 - distributed.worker - INFO -          dashboard at:           10.0.30.39:44103
+2024-12-09 14:05:34,961 - distributed.worker - INFO - Waiting to connect to:     tcp://10.0.30.56:42439
+2024-12-09 14:05:34,961 - distributed.worker - INFO - -------------------------------------------------
+2024-12-09 14:05:34,961 - distributed.worker - INFO -               Threads:                          1
+2024-12-09 14:05:34,962 - distributed.worker - INFO -                Memory:                   4.66 GiB
+2024-12-09 14:05:34,962 - distributed.worker - INFO -       Local Directory: /tmp/dask-scratch-space/worker-qvl8hj58
+2024-12-09 14:05:34,962 - distributed.worker - INFO - -------------------------------------------------
+2024-12-09 14:05:37,542 - distributed.worker - INFO - Starting Worker plugin shuffle
+2024-12-09 14:05:37,543 - distributed.worker - INFO -         Registered to:     tcp://10.0.30.56:42439
+2024-12-09 14:05:37,544 - distributed.worker - INFO - -------------------------------------------------
+2024-12-09 14:05:37,544 - distributed.core - INFO - Starting established connection to tcp://10.0.30.56:42439
+2024-12-09 14:06:46,160 - distributed.worker - WARNING - Scheduler was unaware of this worker; shutting down.
+2024-12-09 14:06:46,162 - distributed.worker - INFO - Stopping worker at tcp://10.0.30.39:43651. Reason: worker-heartbeat-missing
+2024-12-09 14:06:46,165 - distributed.nanny - INFO - Closing Nanny gracefully at 'tcp://10.0.30.39:42349'. Reason: worker-heartbeat-missing
+2024-12-09 14:06:46,166 - distributed.worker - INFO - Removing Worker plugin shuffle
+2024-12-09 14:06:46,167 - distributed.core - INFO - Connection to tcp://10.0.30.56:42439 has been closed.
+2024-12-09 14:06:46,169 - distributed.nanny - INFO - Worker closed
+slurmstepd: error: *** JOB 2540480 ON node-r5-he39 CANCELLED AT 2024-12-09T14:06:47 ***

@@ -1,0 +1,21 @@
+2024-12-09 19:27:20,338 - distributed.nanny - INFO -         Start Nanny at: 'tcp://10.0.30.53:33715'
+2024-12-09 19:27:21,630 - distributed.worker - INFO -       Start worker at:     tcp://10.0.30.53:35061
+2024-12-09 19:27:21,630 - distributed.worker - INFO -          Listening to:     tcp://10.0.30.53:35061
+2024-12-09 19:27:21,630 - distributed.worker - INFO -           Worker name:            SLURMCluster-19
+2024-12-09 19:27:21,631 - distributed.worker - INFO -          dashboard at:           10.0.30.53:36801
+2024-12-09 19:27:21,631 - distributed.worker - INFO - Waiting to connect to:     tcp://10.0.30.56:34195
+2024-12-09 19:27:21,631 - distributed.worker - INFO - -------------------------------------------------
+2024-12-09 19:27:21,631 - distributed.worker - INFO -               Threads:                          1
+2024-12-09 19:27:21,631 - distributed.worker - INFO -                Memory:                  46.57 GiB
+2024-12-09 19:27:21,631 - distributed.worker - INFO -       Local Directory: /tmp/dask-scratch-space/worker-7ikcm9uu
+2024-12-09 19:27:21,631 - distributed.worker - INFO - -------------------------------------------------
+2024-12-09 19:27:23,360 - distributed.worker - INFO - Starting Worker plugin shuffle
+2024-12-09 19:27:23,362 - distributed.worker - INFO -         Registered to:     tcp://10.0.30.56:34195
+2024-12-09 19:27:23,362 - distributed.worker - INFO - -------------------------------------------------
+2024-12-09 19:27:23,363 - distributed.core - INFO - Starting established connection to tcp://10.0.30.56:34195
+2024-12-09 19:51:15,973 - distributed.worker - INFO - Stopping worker at tcp://10.0.30.53:35061. Reason: scheduler-remove-worker
+2024-12-09 19:51:15,982 - distributed.nanny - INFO - Closing Nanny gracefully at 'tcp://10.0.30.53:33715'. Reason: scheduler-remove-worker
+2024-12-09 19:51:15,984 - distributed.worker - INFO - Removing Worker plugin shuffle
+2024-12-09 19:51:15,988 - distributed.nanny - INFO - Worker closed
+2024-12-09 19:51:15,988 - distributed.core - INFO - Connection to tcp://10.0.30.56:34195 has been closed.
+slurmstepd: error: *** JOB 2541588 ON node-r6-he33 CANCELLED AT 2024-12-09T19:51:15 ***

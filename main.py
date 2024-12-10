@@ -7,7 +7,6 @@ import dask.array as da
 import sys
 from pathlib import Path
 
-print(str(Path(__file__).resolve().parent))
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from RegionalExtremesPackage.utils.logger import initialize_logger, printt, int_or_none
@@ -575,7 +574,7 @@ def regional_extremes_method(args, quantile_levels):
     # Apply the regional threshold and compute the extremes
     # Load the data
     dataset_processor = create_handler(
-        config=config, loader=loader, saver=saver, n_samples=1000  # config.n_samples
+        config=config, loader=loader, saver=saver, n_samples=config.n_samples
     )  # None)  # None)
     msc, data = dataset_processor.preprocess_data(
         scale=False,
@@ -695,7 +694,7 @@ if __name__ == "__main__":
     args.name = "deep_extreme_HR"
     args.index = "EVI_EN"
     args.k_pca = False
-    args.n_samples = 1000
+    args.n_samples = 100
     args.n_components = 3
     args.n_bins = 50
     args.compute_variance = False

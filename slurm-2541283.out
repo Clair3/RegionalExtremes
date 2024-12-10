@@ -1,0 +1,7 @@
+2024-12-09 18:31:07,475 - distributed.nanny - INFO -         Start Nanny at: 'tcp://10.0.30.39:39741'
+2024-12-09 18:31:07,482 - distributed.nanny - INFO -         Start Nanny at: 'tcp://10.0.30.39:40763'
+2024-12-09 18:31:07,486 - distributed.nanny - INFO -         Start Nanny at: 'tcp://10.0.30.39:43619'
+2024-12-09 18:31:07,491 - distributed.nanny - INFO -         Start Nanny at: 'tcp://10.0.30.39:33833'
+2024-12-09 18:31:08,052 - distributed.diskutils - INFO - Found stale lock file and directory '/tmp/dask-scratch-space/worker-9b1jx_kk', purging
+2024-12-09 18:31:08,052 - distributed.diskutils - INFO - Found stale lock file and directory '/tmp/dask-scratch-space/worker-uksn6lam', purging
+slurmstepd: error: *** JOB 2541283 ON node-r5-he39 CANCELLED AT 2024-12-09T18:31:08 ***

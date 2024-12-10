@@ -1,0 +1,22 @@
+2024-12-07 13:05:17,412 - distributed.nanny - INFO -         Start Nanny at: 'tcp://10.0.30.52:37599'
+2024-12-07 13:05:18,669 - distributed.worker - INFO -       Start worker at:     tcp://10.0.30.52:38961
+2024-12-07 13:05:18,669 - distributed.worker - INFO -          Listening to:     tcp://10.0.30.52:38961
+2024-12-07 13:05:18,669 - distributed.worker - INFO -           Worker name:             SLURMCluster-0
+2024-12-07 13:05:18,669 - distributed.worker - INFO -          dashboard at:           10.0.30.52:43035
+2024-12-07 13:05:18,669 - distributed.worker - INFO - Waiting to connect to:     tcp://10.0.30.56:40889
+2024-12-07 13:05:18,669 - distributed.worker - INFO - -------------------------------------------------
+2024-12-07 13:05:18,669 - distributed.worker - INFO -               Threads:                          1
+2024-12-07 13:05:18,669 - distributed.worker - INFO -                Memory:                   0.93 GiB
+2024-12-07 13:05:18,669 - distributed.worker - INFO -       Local Directory: /tmp/dask-scratch-space/worker-elzc9vuq
+2024-12-07 13:05:18,669 - distributed.worker - INFO - -------------------------------------------------
+2024-12-07 13:05:20,236 - distributed.worker - INFO - Starting Worker plugin shuffle
+2024-12-07 13:05:20,236 - distributed.worker - INFO -         Registered to:     tcp://10.0.30.56:40889
+2024-12-07 13:05:20,236 - distributed.worker - INFO - -------------------------------------------------
+2024-12-07 13:05:20,237 - distributed.core - INFO - Starting established connection to tcp://10.0.30.56:40889
+2024-12-07 13:05:45,745 - distributed.worker - WARNING - Scheduler was unaware of this worker; shutting down.
+2024-12-07 13:05:45,746 - distributed.worker - INFO - Stopping worker at tcp://10.0.30.52:38961. Reason: worker-heartbeat-missing
+2024-12-07 13:05:45,749 - distributed.worker - ERROR - Invalid Worker.status transition: Status.closing -> Status.closing_gracefully
+2024-12-07 13:05:45,758 - distributed.nanny - INFO - Closing Nanny gracefully at 'tcp://10.0.30.52:37599'. Reason: worker-heartbeat-missing
+2024-12-07 13:05:45,761 - distributed.nanny - INFO - Worker closed
+2024-12-07 13:05:45,761 - distributed.core - INFO - Connection to tcp://10.0.30.56:40889 has been closed.
+slurmstepd: error: *** JOB 2534755 ON node-r6-he32 CANCELLED AT 2024-12-07T13:05:45 ***
