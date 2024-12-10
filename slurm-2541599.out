@@ -1,3 +1,0 @@
-2024-12-09 19:48:41,138 - distributed.nanny - INFO -         Start Nanny at: 'tcp://10.0.30.53:34269'
-2024-12-09 19:48:41,901 - distributed.diskutils - INFO - Found stale lock file and directory '/tmp/dask-scratch-space/worker-xp86u2du', purging
-slurmstepd: error: *** JOB 2541599 ON node-r6-he33 CANCELLED AT 2024-12-09T19:48:41 ***
