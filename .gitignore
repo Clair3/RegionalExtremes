@@ -14,6 +14,9 @@ __pycache__/
 # C extensions
 *.so
 
+# Slurm extension
+*.out
+
 # Distribution / packaging
 .Python
 build/
