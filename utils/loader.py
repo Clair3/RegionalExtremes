@@ -79,6 +79,7 @@ class Loader:
             return None
         data = xr.open_zarr(path)
         data = cfxr.decode_compress_to_multi_index(data, "location")
+        data = data.sel(location=~data.get_index("location").duplicated())
         print(f"{name}.zarr loaded.")
         return data
 

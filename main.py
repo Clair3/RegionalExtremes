@@ -338,13 +338,14 @@ class RegionalExtremes:
         assert self.config.method == "regional"
         LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL = quantile_levels
         quantile_levels = np.concatenate((LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
-        print(self.bins.location.shape)
-        print(deseasonalized.location.shape)
 
-        # Intersection to select only the location where the bin is already attributed
-        intersection = np.intersect1d(deseasonalized.location, self.bins.location)
-        deseasonalized = deseasonalized.sel(location=intersection)
-        self.bins = self.bins.sel(location=intersection)
+        # # Intersection to select only the location where the bin is already attributed
+        # intersection = np.intersect1d(deseasonalized.location, self.bins.location)
+        # # Find duplicates
+        # intersection, counts = np.unique(intersection, return_counts=True)
+        # # duplicates = intersection[counts > 1]
+        # deseasonalized = deseasonalized.sel(location=intersection)
+        # self.bins = self.bins.sel(location=intersection)
 
         # Create a new DataArrays to store the quantile values (0.025 or 0.975) for extreme values
         extremes_array = xr.full_like(deseasonalized.astype(float), np.nan)

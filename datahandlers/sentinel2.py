@@ -51,6 +51,9 @@ class EarthnetDatasetHandler(DatasetHandler):
 
         # Combine the data into an xarray dataset and save it
         self.data = xr.concat(data, dim="location").to_dataset(name=self.variable_name)
+        self.data = self.data.sel(
+            location=~self.data.get_index("location").duplicated()
+        )
         self.saver._save_data(self.data, "temp_file")
         self.data = self.loader._load_data("temp_file")
         printt("Dataset loaded.")
@@ -108,7 +111,7 @@ class EarthnetDatasetHandler(DatasetHandler):
         return df.loc[sampled_indices, "path"].values
 
     def load_minicube(self, row, process_entire_minicube=False):
-        # row = "/full/1.2.2/mc_-2.68_5.62_1.2.2_20230705_0.zarr"
+        row = "/full/1.3/mc_25.61_44.32_1.3_20231018_0.zarr"
         # Load data
         with xr.open_zarr(EARTHNET_FILEPATH + row) as ds:
             ds = ds.rename({"x": "longitude", "y": "latitude"})
@@ -126,7 +129,7 @@ class EarthnetDatasetHandler(DatasetHandler):
                 self.saver.update_saving_path(ds.attrs["data_id"])
                 # Filter based on vegetation occurrence
                 if not self._has_sufficient_vegetation(ds):
-                    printt(f"{row} do not contain sufficient vegetation")
+                    # printt(f"{row} do not contain sufficient vegetation")
                     return None
             # Calculate EVI and apply cloud/vegetation mask
             evi = self._calculate_evi(ds)
