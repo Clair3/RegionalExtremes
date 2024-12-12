@@ -12,7 +12,7 @@ import sys
 import pandas as pd
 from abc import ABC, abstractmethod
 from pathlib import Path
-from config import (
+from RegionalExtremesPackage.utils.config import (
     InitializationConfig,
     CLIMATIC_INDICES,
     ECOLOGICAL_INDICES,

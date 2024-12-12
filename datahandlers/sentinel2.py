@@ -1,7 +1,7 @@
 from .common_imports import *
 from .base import DatasetHandler
-from tqdm import tqdm
 from dask import delayed, compute
+from dask.diagnostics import ProgressBar
 
 
 class EarthnetDatasetHandler(DatasetHandler):
@@ -22,17 +22,21 @@ class EarthnetDatasetHandler(DatasetHandler):
         # Determine the number of samples to process (default: 10,000)
         sample_count = self.n_samples or 10_000
         print(f"count: {sample_count}")
-        samples_indices, self.df = self.sample_locations(sample_count)
+        samples_paths = self.sample_locations(sample_count)
 
         printt("Loading dataset...")
 
         # Use dask.delayed to parallelize the loading and processing
-        data = [delayed(self.load_minicube)(idx) for idx in samples_indices]
+        data = [delayed(self.load_minicube)(path) for path in samples_paths]
 
-        # Compute the tasks in parallel (this will trigger Dask's parallel computation)
-        data = compute(
-            *data, scheduler="processes"
-        )  # You can use 'threads' or 'processes' depending on your setup
+        with ProgressBar():
+            # Compute the tasks in parallel (this will trigger Dask's parallel computation)
+            data = compute(*data, scheduler="processes")  # , scheduler="processes"
+        # # Compute the tasks in parallel (this will trigger Dask's parallel computation)
+        # data = compute(
+        #     *data  # , scheduler="processes"
+        # )  # You can use 'threads' or 'processes' depending on your setup
+
         data = list(filter(lambda x: isinstance(x, xr.DataArray), data))
 
         # data = list(
@@ -58,9 +62,8 @@ class EarthnetDatasetHandler(DatasetHandler):
         i = 0
         while (i < 5) and (data is None):
             i += 1
-            samples_indice, self.df = self.sample_locations(1)
+            samples_indice = self.sample_locations(1)
             data = self.load_minicube(samples_indice[0], process_entire_minicube=True)
-
         data = data.stack(location=("longitude", "latitude"))
         self.data = data.to_dataset(name=self.variable_name)
         return self.data
@@ -102,11 +105,12 @@ class EarthnetDatasetHandler(DatasetHandler):
 
         # Random sampling with replacement
         sampled_indices = np.random.choice(df.index, size=n_samples, replace=True)
-        return sampled_indices, df["path"]
+        return df.loc[sampled_indices, "path"].values
 
     def load_minicube(self, row, process_entire_minicube=False):
+        # row = "/full/1.2.2/mc_-2.68_5.62_1.2.2_20230705_0.zarr"
         # Load data
-        with xr.open_zarr(EARTHNET_FILEPATH + self.df.at[row]) as ds:
+        with xr.open_zarr(EARTHNET_FILEPATH + row) as ds:
             ds = ds.rename({"x": "longitude", "y": "latitude"})
             # ds = self._load_data(row)
             # if ds is None:
@@ -122,6 +126,7 @@ class EarthnetDatasetHandler(DatasetHandler):
                 self.saver.update_saving_path(ds.attrs["data_id"])
                 # Filter based on vegetation occurrence
                 if not self._has_sufficient_vegetation(ds):
+                    printt(f"{row} do not contain sufficient vegetation")
                     return None
             # Calculate EVI and apply cloud/vegetation mask
             evi = self._calculate_evi(ds)
@@ -129,6 +134,7 @@ class EarthnetDatasetHandler(DatasetHandler):
 
             # Check for excessive missing data
             if self._has_excessive_nan(masked_evi):
+                # print("excessive nan")
                 return None
             return masked_evi
 
@@ -136,7 +142,7 @@ class EarthnetDatasetHandler(DatasetHandler):
         """Loads the dataset and selects the relevant time slice."""
         try:
             path = self.df.at[row]
-            ds = xr.open_zarr(EARTHNET_FILEPATH + path)
+            ds = xr.open_zarr(EARTHNET_FILEPATH + path, chuncks={"time": -1})
             ds = ds.sel(
                 time=slice(datetime.date(2017, 3, 7), datetime.date(2022, 9, 30))
             )
@@ -389,7 +395,11 @@ class EarthnetDatasetHandler(DatasetHandler):
 
         self.msc = self.msc.transpose("location", "dayofyear", ...)
         self.saver._save_data(self.msc, "msc")
-        self.saver._save_data(self.data, "clean_data")
+        # self.saver._save_data(self.data, "clean_data")
+        # with ProgressBar():
+        #     # Compute the tasks in parallel (this will trigger Dask's parallel computation)
+        #     data = compute(*data, scheduler="processes")  # , scheduler="processes"
+
         if return_time_serie:
             self.data = self.data.transpose("location", "time", ...)
             return self.msc, self.data

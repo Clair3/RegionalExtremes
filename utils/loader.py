@@ -27,7 +27,7 @@ class Loader:
         Parameters:
         filepath (str): Path to the data file.
         """
-        projection_path = self.config.saving_path / "pca_projection_3.zarr"
+        projection_path = self.config.saving_path / "pca_projection_0.zarr"
         if not os.path.exists(projection_path):
             printt(f"PCA projection not found at {projection_path}")
             return None

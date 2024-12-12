@@ -11,8 +11,8 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from RegionalExtremesPackage.utils.logger import initialize_logger, printt, int_or_none
 from RegionalExtremesPackage.utils import Loader, Saver
-from datahandlers import create_handler
-from config import (
+from RegionalExtremesPackage.datahandlers import create_handler
+from RegionalExtremesPackage.utils.config import (
     InitializationConfig,
     CLIMATIC_INDICES,
     ECOLOGICAL_INDICES,
@@ -338,6 +338,8 @@ class RegionalExtremes:
         assert self.config.method == "regional"
         LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL = quantile_levels
         quantile_levels = np.concatenate((LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
+        print(self.bins.location.shape)
+        print(deseasonalized.location.shape)
 
         # Intersection to select only the location where the bin is already attributed
         intersection = np.intersect1d(deseasonalized.location, self.bins.location)
@@ -694,7 +696,7 @@ if __name__ == "__main__":
     args.name = "deep_extreme_HR"
     args.index = "EVI_EN"
     args.k_pca = False
-    args.n_samples = 100
+    args.n_samples = 500
     args.n_components = 3
     args.n_bins = 50
     args.compute_variance = False
@@ -709,8 +711,8 @@ if __name__ == "__main__":
 
     if args.method == "regional":
         # Apply the regional extremes method
-        regional_extremes_method(args, (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
-        # regional_extremes_minicube(args, (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
+        # regional_extremes_method(args, (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
+        regional_extremes_minicube(args, (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
     elif args.method == "local":
         # Apply the uniform threshold method
         local_extremes_method(args, (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))

@@ -16,7 +16,7 @@ from matplotlib.widgets import Slider
 import cartopy
 import random
 
-from config import InitializationConfig
+from RegionalExtremesPackage.utils.config import InitializationConfig
 from RegionalExtremesPackage.utils.loader import Loader, Saver
 from main import parser_arguments
 from RegionalExtremesPackage.utils.logger import printt

@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from config import InitializationConfig
+from RegionalExtremesPackage.utils.config import InitializationConfig
 from typing import Union, Optional
 from .common_imports import *
 

@@ -4,9 +4,9 @@ import xarray as xr
 import pickle as pk
 from pathlib import Path
 import cf_xarray as cfxr
-
-from config import InitializationConfig
 from RegionalExtremesPackage.utils.logger import printt
+from RegionalExtremesPackage.utils.config import InitializationConfig
+
 
 CLIMATIC_FILEPATH = "/Net/Groups/BGI/scratch/mweynants/DeepExtremes/v3/PEICube.zarr"
 ECOLOGICAL_FILEPATH = (

@@ -45,7 +45,6 @@ class InitializationConfig:
         Args:
             args (argparse.Namespace): Parsed arguments from argparse.ArgumentParser().parse_args()
         """
-        print(args)
         for key, value in vars(args).items():
             setattr(self, key, value)
         # self.time_resolution = args.time_resolution
