@@ -30,21 +30,9 @@ class EarthnetDatasetHandler(DatasetHandler):
         data = [delayed(self.load_minicube)(path) for path in samples_paths]
 
         with ProgressBar():
-            # Compute the tasks in parallel (this will trigger Dask's parallel computation)
-            data = compute(*data, scheduler="processes")  # , scheduler="processes"
-        # # Compute the tasks in parallel (this will trigger Dask's parallel computation)
-        # data = compute(
-        #     *data  # , scheduler="processes"
-        # )  # You can use 'threads' or 'processes' depending on your setup
+            data = compute(*data, scheduler="processes")
 
         data = list(filter(lambda x: isinstance(x, xr.DataArray), data))
-
-        # data = list(
-        #     map(self.load_minicube, tqdm(samples_indices, desc="Loading Minicubes"))
-        # )
-        #
-        # # data = list(map(self.load_minicube, samples_indices))
-        # data = list(filter(lambda x: isinstance(x, xr.DataArray), data))
 
         if not data:
             raise ValueError("Dataset is empty")
@@ -111,13 +99,10 @@ class EarthnetDatasetHandler(DatasetHandler):
         return df.loc[sampled_indices, "path"].values
 
     def load_minicube(self, row, process_entire_minicube=False):
-        row = "/full/1.3/mc_25.61_44.32_1.3_20231018_0.zarr"
+        # row = "/full/1.3/mc_25.61_44.32_1.3_20231018_0.zarr"
         # Load data
         with xr.open_zarr(EARTHNET_FILEPATH + row) as ds:
             ds = ds.rename({"x": "longitude", "y": "latitude"})
-            # ds = self._load_data(row)
-            # if ds is None:
-            #     return None
 
             if not process_entire_minicube:
                 # Select a random vegetation location
@@ -129,7 +114,6 @@ class EarthnetDatasetHandler(DatasetHandler):
                 self.saver.update_saving_path(ds.attrs["data_id"])
                 # Filter based on vegetation occurrence
                 if not self._has_sufficient_vegetation(ds):
-                    # printt(f"{row} do not contain sufficient vegetation")
                     return None
             # Calculate EVI and apply cloud/vegetation mask
             evi = self._calculate_evi(ds)
@@ -137,7 +121,6 @@ class EarthnetDatasetHandler(DatasetHandler):
 
             # Check for excessive missing data
             if self._has_excessive_nan(masked_evi):
-                # print("excessive nan")
                 return None
             return masked_evi
 

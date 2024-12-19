@@ -39,19 +39,19 @@ client = daskClient(cluster)
 print(cluster)
 
 # Remove Jupyter's arguments before parsing your own
-sys.argv = sys.argv[:1]
-
+# sys.argv = sys.argv[:1]
 args = parser_arguments().parse_args()
 args.name = "deep_extreme_HR"
 args.index = "EVI_EN"
 args.k_pca = False
-args.n_samples = 1000
+args.n_samples = 20000
 args.n_components = 3
-args.n_bins = 50
+args.n_eco_clusters = 50
 args.compute_variance = False
 args.method = "regional"
 args.start_year = 2000
 args.is_generic_xarray_dataset = False
+
 # args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-11-25_18:41:43_deep_extreme_HR"
 
 LOWER_QUANTILES_LEVEL = np.array([0.01, 0.025, 0.05])
@@ -59,7 +59,7 @@ UPPER_QUANTILES_LEVEL = np.array([0.95, 0.975, 0.99])
 if args.method == "regional":
     # Apply the regional extremes method
     regional_extremes_method(args, (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
-    regional_extremes_minicube(args, (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
+    # regional_extremes_minicube(args, (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
 elif args.method == "local":
     # Apply the uniform threshold method
     local_extremes_method(args, (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))

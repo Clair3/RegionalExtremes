@@ -499,14 +499,12 @@ class RegionalExtremes:
         )
 
         # Save thresholds by cluster
-        self.saver._save_data(thresholds_by_cluster, "thresholds", , location=False)
+        self.saver._save_data(thresholds_by_cluster, "thresholds", location=False)
 
         # Assign and save location-specific results if thresholds are not computed only
         if not compute_only_thresholds:
             thresholds_array.values = results["thresholds"].values
-            self.saver._save_data(
-                thresholds_array, "thresholds_locations"
-            )
+            self.saver._save_data(thresholds_array, "thresholds_locations")
 
             extremes_array.values = results["extremes"].values
             self.saver._save_data(extremes_array, "extremes")
