@@ -48,7 +48,6 @@ class Saver:
         printt(f"PCA saved: {pca_path}")
 
     def _save_pca_projection(self, pca_projection, explained_variance_ratio_) -> None:
-        """Saves the limits bins to a file."""
         # Split the components into separate DataArrays
         # Create a new coordinate for the 'component' dimension
         component = np.arange(pca_projection.shape[1])
@@ -82,15 +81,15 @@ class Saver:
         pca_projection.to_zarr(path)
         printt(f"PCA Projection computed and saved to {path}.")
 
-    def _save_limits_bins(self, limits_bins: list[np.ndarray]) -> None:
-        """Saves the limits bins to a file."""
-        limits_bins_path = self.config.saving_path / "limits_bins.npz"
-        if os.path.exists(limits_bins_path):
+    def _save_limits_eco_clusters(self, limits_eco_clusters: list[np.ndarray]) -> None:
+        """Saves the limits eco_clusters to a file."""
+        limits_eco_clusters_path = self.config.saving_path / "limits_eco_clusters.npz"
+        if os.path.exists(limits_eco_clusters_path):
             raise FileExistsError(
-                f"The file {limits_bins_path} already exists. Rewriting is not allowed."
+                f"The file {limits_eco_clusters_path} already exists. Rewriting is not allowed."
             )
-        np.savez(limits_bins_path, *limits_bins)
-        printt(f"Limits bins saved to {limits_bins_path}")
+        np.savez(limits_eco_clusters_path, *limits_eco_clusters)
+        printt(f"Limits eco_clusters saved to {limits_eco_clusters_path}")
 
     def _save_data(self, data, name):
         """Saves the data to a file."""

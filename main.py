@@ -88,10 +88,10 @@ def parser_arguments():
     )
 
     parser.add_argument(
-        "--n_bins",
+        "--n_eco_clusters",
         type=int,
         default=25,
-        help="number of bins to define the regions of similar seasonal cycle. n_bins is proportional. ",
+        help="number of eco_clusters to define the regions of similar seasonal cycle. n_eco_clusters is proportional. ",
     )
 
     parser.add_argument(
@@ -132,7 +132,7 @@ class RegionalExtremes:
         loader: Loader,
         saver: Saver,
         n_components: int,
-        n_bins: int,
+        n_eco_clusters: int,
     ):
         """
         Compute the regional extremes by defining boxes of similar region using a PCA computed on the mean seasonal cycle of the samples.
@@ -141,7 +141,7 @@ class RegionalExtremes:
         Args:
             config (InitializationConfig): Shared attributes across the classes.
             n_components (int): number of components of the PCA
-            n_bins (int): Number of bins per component to define the boxes. Number of boxes = n_bins**n_components
+            n_eco_clusters (int): Number of eco_clusters per component to define the boxes. Number of boxes = n_eco_clusters**n_components
         """
         self.config = config
         # Loader class to load intermediate steps.
@@ -149,7 +149,7 @@ class RegionalExtremes:
         # Saver class to save intermediate steps.
         self.saver = saver
         self.n_components = n_components
-        self.n_bins = n_bins
+        self.n_eco_clusters = n_eco_clusters
         self.loader = Loader(config)
         self.saver = Saver(config)
 
@@ -157,8 +157,8 @@ class RegionalExtremes:
             # Load every variable if already available, otherwise return None.
             self.pca = self.loader._load_pca_matrix()
             self.projected_data = self.loader._load_pca_projection()
-            self.limits_bins = self.loader._load_limits_bins()
-            self.bins = self.loader._load_bins()
+            self.limits_eco_clusters = self.loader._load_limits_eco_clusters()
+            self.eco_clusters = self.loader._load_eco_clusters()
             self.thresholds = self.loader._load_thresholds()
 
         else:
@@ -168,8 +168,8 @@ class RegionalExtremes:
             else:
                 self.pca = PCA(n_components=self.n_components)
             self.projected_data = None
-            self.limits_bins = None
-            self.bins = None
+            self.limits_eco_clusters = None
+            self.eco_clusters = None
             self.thresholds = None
 
     def compute_pca_and_transform(
@@ -251,7 +251,7 @@ class RegionalExtremes:
                     f"scaled_data should have {expected_shape} columns, but has {scaled_data.shape[1]} columns."
                 )
 
-    def define_limits_bins(self) -> list[np.ndarray]:
+    def define_limits_eco_clusters(self) -> list[np.ndarray]:
         """
         Define the bounds of each bin on the projected data for each component.
         Ideally applied on the largest possible amount of data to capture
@@ -262,14 +262,16 @@ class RegionalExtremes:
         """
         self._validate_inputs(self.projected_data)
 
-        self.limits_bins = self._calculate_limits_bins(self.projected_data)
+        self.limits_eco_clusters = self._calculate_limits_eco_clusters(
+            self.projected_data
+        )
 
-        self.saver._save_limits_bins(self.limits_bins)
+        self.saver._save_limits_eco_clusters(self.limits_eco_clusters)
         printt("Limits are computed and saved.")
-        return self.limits_bins
+        return self.limits_eco_clusters
 
     def _validate_inputs(self, projected_data: np.ndarray) -> None:
-        """Validates the inputs for define_limits_bins."""
+        """Validates the inputs for define_limits_eco_clusters."""
         if isinstance(self.pca, PCA) and not hasattr(self.pca, "explained_variance_"):
             raise ValueError("PCA model has not been trained yet.")
 
@@ -278,17 +280,22 @@ class RegionalExtremes:
                 "projected_data should have the same number of columns as n_components"
             )
 
-        if self.n_bins <= 0:
-            raise ValueError("n_bins should be greater than 0")
+        if self.n_eco_clusters <= 0:
+            raise ValueError("n_eco_clusters should be greater than 0")
 
-    def _calculate_limits_bins(self, projected_data: np.ndarray) -> list[np.ndarray]:
-        """Calculates the limits bins for each component."""
+    def _calculate_limits_eco_clusters(
+        self, projected_data: np.ndarray
+    ) -> list[np.ndarray]:
+        """Calculates the limits eco_clusters for each component."""
         if isinstance(self.pca, PCA):
             return [
                 np.linspace(
                     np.quantile(projected_data[:, component], 0.05),
                     np.quantile(projected_data[:, component], 0.95),
-                    round(self.pca.explained_variance_ratio_[component] * self.n_bins)
+                    round(
+                        self.pca.explained_variance_ratio_[component]
+                        * self.n_eco_clusters
+                    )
                     + 1,
                 )
                 for component in range(self.n_components)
@@ -299,53 +306,46 @@ class RegionalExtremes:
                 np.linspace(
                     np.quantile(projected_data[:, component], 0.05),
                     np.quantile(projected_data[:, component], 0.95),
-                    self.n_bins + 1,
+                    self.n_eco_clusters + 1,
                 )
                 for component in range(self.n_components)
             ]
 
-    def find_bins(self):
+    def find_eco_clusters(self):
         """Function to attribute at every location the bin it belong to."""
-        assert self.projected_data.shape[1] == len(self.limits_bins)
+        assert self.projected_data.shape[1] == len(self.limits_eco_clusters)
         assert (
-            len(self.limits_bins) == self.n_components
-        ), "the lenght of limits_bins list is not equal to the number of components"
+            len(self.limits_eco_clusters) == self.n_components
+        ), "the lenght of limits_eco_clusters list is not equal to the number of components"
 
         boxes_indices = np.zeros(
             (self.projected_data.shape[0], self.projected_data.shape[1]), dtype=int
         )
         # defines boxes
-        for i, limits_bin in enumerate(self.limits_bins):
-            # get the indices of the bins to which each value in input array belongs.
+        for i, limits_bin in enumerate(self.limits_eco_clusters):
+            # get the indices of the eco_clusters to which each value in input array belongs.
             boxes_indices[:, i] = np.digitize(self.projected_data[:, i], limits_bin)
 
         component = np.arange(boxes_indices.shape[1])
 
-        self.bins = xr.DataArray(
+        self.eco_clusters = xr.DataArray(
             data=boxes_indices,
             dims=["location", "component"],
             coords={
                 "location": self.projected_data.location,
                 "component": component,
             },
-            name="bins",
+            name="eco_clusters",
         )
-        self.saver._save_data(self.bins, "bins")
-        return self.bins
+        self.saver._save_data(self.eco_clusters, "eco_clusters")
+        return self.eco_clusters
 
-    def apply_regional_threshold(self, deseasonalized, quantile_levels):
+    def apply_regional_threshold(self, deseasonalized):
+        # Load thresholds
         """Compute and save a xarray (location, time) indicating the quantiles of extremes using the regional threshold definition."""
         assert self.config.method == "regional"
         LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL = quantile_levels
         quantile_levels = np.concatenate((LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
-
-        # # Intersection to select only the location where the bin is already attributed
-        # intersection = np.intersect1d(deseasonalized.location, self.bins.location)
-        # # Find duplicates
-        # intersection, counts = np.unique(intersection, return_counts=True)
-        # # duplicates = intersection[counts > 1]
-        # deseasonalized = deseasonalized.sel(location=intersection)
-        # self.bins = self.bins.sel(location=intersection)
 
         # Create a new DataArrays to store the quantile values (0.025 or 0.975) for extreme values
         extremes_array = xr.full_like(deseasonalized.astype(float), np.nan)
@@ -361,24 +361,122 @@ class RegionalExtremes:
         )
 
         # Get unique id for each region
-        unique_regions, counts = np.unique(self.bins.values, axis=0, return_counts=True)
+        unique_eco_cluster, _ = np.unique(
+            self.eco_clusters.values, axis=0, return_counts=True
+        )
 
         # Create a DataArray of region labels
-        region_labels = xr.DataArray(
+        eco_cluster_labels = xr.DataArray(
             np.argmax(
                 np.all(
-                    self.bins.values[:, :, None] == unique_regions.T[None, :, :], axis=1
+                    self.eco_clusters.values[:, :, None]
+                    == unique_eco_cluster.T[None, :, :],
+                    axis=1,
                 ),
                 axis=1,
             ),
             dims=("location",),
-            coords={"location": self.bins.location},
+            coords={"location": self.eco_clusters.location},
         )
 
         compute_only_thresholds = self.config.is_generic_xarray_dataset
 
         # Group the deseasonalized data by region labels
-        grouped = deseasonalized.groupby(region_labels)
+        grouped = deseasonalized.groupby(eco_cluster_labels)
+        # Apply the quantile calculation to each group
+        # results = grouped.map(
+        #     lambda grp: self._compute_thresholds(
+        #         grp,
+        #         (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL),
+        #         return_only_thresholds=compute_only_thresholds,
+        #     )
+        # )
+
+        def compute_both(grp):
+            # Compute thresholds for the group
+            results = self._compute_thresholds(
+                grp,
+                (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL),
+                return_only_thresholds=compute_only_thresholds,
+            )
+
+            # Compute a single representative threshold for the group
+            results["group_threshold"] = results["thresholds"].mean(
+                dim="location"
+            )  # Example: Use mean for aggregation
+
+            return results
+
+        # return results, group_threshold
+
+        # Apply the function to each group
+        results = grouped.map(compute_both)
+        print(results)
+        print(results["group_threshold"])
+
+        # Assign the results back to the quantile_array
+        thresholds_array.values = results["thresholds"].values
+        if not compute_only_thresholds:
+            extremes_array.values = results["extremes"].values
+
+        # save the array
+        self.saver._save_data(thresholds_array, "thresholds")
+        self.saver._save_data(thresholds_array, "thresholds_eco_clusters")
+        if not compute_only_thresholds:
+            self.saver._save_data(extremes_array, "extremes")
+
+    def compute_regional_threshold(self, deseasonalized, quantile_levels):
+        """Compute and save a xarray (location, time) indicating the quantiles of extremes using the regional threshold definition."""
+        assert self.config.method == "regional"
+        LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL = quantile_levels
+        quantile_levels = np.concatenate((LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
+
+        # Create a new DataArrays to store the quantile values (0.025 or 0.975) for extreme values
+        extremes_array = xr.full_like(deseasonalized.astype(float), np.nan)
+
+        # Create a new DataArray to store the threshold related to each quantiles.
+        thresholds_array = xr.DataArray(
+            data=np.full((len(deseasonalized.location), len(quantile_levels)), np.nan),
+            dims=["location", "quantile"],
+            coords={
+                "location": deseasonalized.location,
+                "quantile": quantile_levels,
+            },
+        )
+
+        # Get unique id for each region
+        unique_regions, _ = np.unique(
+            self.eco_clusters.values, axis=0, return_counts=True
+        )
+
+        # Create a DataArray of region labels
+        eco_cluster_labels = xr.DataArray(
+            np.argmax(
+                np.all(
+                    self.eco_clusters.values[:, :, None]
+                    == unique_regions.T[None, :, :],
+                    axis=1,
+                ),
+                axis=1,
+            ),
+            dims=("location",),
+            coords={"location": self.eco_clusters.location},
+        )
+
+        compute_only_thresholds = self.config.is_generic_xarray_dataset
+
+        # Group the deseasonalized data by region labels
+        grouped = deseasonalized.groupby(eco_cluster_labels)
+        # Apply the quantile calculation to each group
+        # results = grouped.map(
+        #     lambda grp: self._compute_thresholds(
+        #         grp,
+        #         (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL),
+        #         return_only_thresholds=compute_only_thresholds,
+        #     )
+        # )
+        # Group the deseasonalized data by region labels
+        grouped = deseasonalized.groupby(eco_cluster_labels)
         # Apply the quantile calculation to each group
         results = grouped.map(
             lambda grp: self._compute_thresholds(
@@ -387,6 +485,13 @@ class RegionalExtremes:
                 return_only_thresholds=compute_only_thresholds,
             )
         )
+        # group_thresholds = results["thresholds"].groupby(eco_cluster_labels)
+        group_thresholds = results["thresholds"].groupby(eco_cluster_labels).mean()
+        print([tuple(id_) for id_ in unique_regions])
+        group_thresholds = group_thresholds.assign_coords(
+            eco_cluster_id=("group", [tuple(id_) for id_ in unique_regions])
+        )
+
         # Assign the results back to the quantile_array
         thresholds_array.values = results["thresholds"].values
         if not compute_only_thresholds:
@@ -394,10 +499,11 @@ class RegionalExtremes:
 
         # save the array
         self.saver._save_data(thresholds_array, "thresholds")
+        self.saver._save_data(thresholds_array, "thresholds_eco_clusters")
         if not compute_only_thresholds:
             self.saver._save_data(extremes_array, "extremes")
 
-    def apply_local_threshold(self, deseasonalized, quantile_levels):
+    def compute_local_threshold(self, deseasonalized, quantile_levels):
         assert self.config.method == "local"
         """Compute and save a xarray (location, time) indicating the quantiles of extremes using a uniform threshold definition."""
         LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL = quantile_levels
@@ -491,7 +597,6 @@ class RegionalExtremes:
         extremes = xr.full_like(deseasonalized.astype(float), np.nan)
         for i, mask in enumerate(masks):
             extremes = xr.where(mask, quantile_levels[i], extremes)
-
         results = xr.Dataset({"extremes": extremes, "thresholds": quantiles_xr})
         return results
 
@@ -527,7 +632,7 @@ class RegionalExtremes:
 
 def regional_extremes_method(args, quantile_levels):
     """Fit the PCA with a subset of the data, then project the full dataset,
-    then define the bins on the full dataset projected."""
+    then define the eco_clusters on the full dataset projected."""
     # Initialization of the configs, load and save paths, log.txt.
     config = InitializationConfig(args)
     # Loader class to load intermediate steps.
@@ -542,7 +647,7 @@ def regional_extremes_method(args, quantile_levels):
         loader=loader,
         saver=saver,
         n_components=config.n_components,
-        n_bins=config.n_bins,
+        n_eco_clusters=config.n_eco_clusters,
     )
 
     # Load a subset of the dataset and fit the PCA
@@ -562,8 +667,8 @@ def regional_extremes_method(args, quantile_levels):
     # Apply the PCA to the entire dataset
     # if extremes_processor.projected_data is None:
 
-    # Define the boundaries of the bins
-    if extremes_processor.limits_bins is None:
+    # Define the boundaries of the eco_clusters
+    if extremes_processor.limits_eco_clusters is None:
         dataset_processor = create_handler(
             config=config,
             loader=loader,
@@ -572,7 +677,7 @@ def regional_extremes_method(args, quantile_levels):
         )  # all the dataset
         data = dataset_processor.preprocess_data(remove_nan=True)
         extremes_processor.apply_pca(scaled_data=data)
-        extremes_processor.define_limits_bins()
+        extremes_processor.define_limits_eco_clusters()
 
     # Apply the regional threshold and compute the extremes
     # Load the data
@@ -586,11 +691,11 @@ def regional_extremes_method(args, quantile_levels):
         remove_nan=False,
     )
     extremes_processor.apply_pca(scaled_data=msc)
-    extremes_processor.find_bins()
+    extremes_processor.find_eco_clusters()
     # Deseasonalize the data
     deseasonalized = dataset_processor._deseasonalize(data, msc)
-    # Compute the quantiles per regions/biome (=bins)
-    extremes_processor.apply_regional_threshold(
+    # Compute the quantiles per regions/biome (=eco_clusters)
+    extremes_processor.compute_regional_threshold(
         deseasonalized, quantile_levels=quantile_levels
     )
 
@@ -599,7 +704,7 @@ def regional_extremes_method(args, quantile_levels):
 
 def regional_extremes_minicube(args, quantile_levels):
     """Fit the PCA with a subset of the data, then project the full dataset,
-    then define the bins on the full dataset projected."""
+    then define the eco_clusters on the full dataset projected."""
     # Initialization of the configs, load and save paths, log.txt.
     config = InitializationConfig(args)
     assert config.method == "regional"
@@ -615,8 +720,10 @@ def regional_extremes_minicube(args, quantile_levels):
         loader=loader,
         saver=saver,
         n_components=config.n_components,
-        n_bins=config.n_bins,
+        n_eco_clusters=config.n_eco_clusters,
     )
+    if extremes_processor.eco_clusters is None:
+        raise FileNotFoundError("limits_eco_clusters file unavailable.")
 
     # Apply the regional threshold and compute the extremes
     # Load the data
@@ -631,11 +738,11 @@ def regional_extremes_minicube(args, quantile_levels):
         process_entire_minicube=True,
     )
     extremes_processor.apply_pca(scaled_data=msc)
-    extremes_processor.find_bins()
+    extremes_processor.find_eco_clusters()
     # Deseasonalize the data
     deseasonalized = dataset_processor._deseasonalize(data, msc)
-    # Compute the quantiles per regions/biome (=bins)
-    extremes_processor.apply_regional_threshold(
+    # Compute the quantiles per regions/biome (=eco_clusters)
+    extremes_processor.compute_regional_threshold(
         deseasonalized, quantile_levels=quantile_levels
     )
 
@@ -649,7 +756,7 @@ def local_extremes_method(args, quantile_levels):
     extremes_processor = RegionalExtremes(
         config=config,
         n_components=config.n_components,
-        n_bins=config.n_bins,
+        n_eco_clusters=config.n_eco_clusters,
     )
 
     dataset_processor = create_handler(config=config, n_samples=None)  # all the dataset
@@ -663,33 +770,9 @@ def local_extremes_method(args, quantile_levels):
     # Deseasonalized data
     deseasonalized = dataset_processor._deseasonalize(data, msc)
     # Apply the local threshold
-    extremes_processor.apply_local_threshold(deseasonalized, quantile_levels)
+    extremes_processor.compute_local_threshold(deseasonalized, quantile_levels)
 
     return extremes_processor
-
-
-def get_thresholds_from_generic_xarray_dataset(
-    data: xr.Dataset, quantile_levels: tuple[float, float], method: str
-) -> xr.Dataset:
-    args = {
-        "is_generic_xarray_dataset": True,
-        "in_memory_results": True,
-        "data": data,
-        "index": None,
-        "name": "test",
-        "k_pca": False,
-        "n_samples": 5,
-        "n_components": 2,
-        "n_bins": 50,
-        "compute_variance": False,
-        "path_load_experiment": None,
-    }
-    if method == "regional":
-        p = regional_extremes_method(args, quantile_levels)
-        return p.saver.thresholds
-    elif method == "local":
-        local_extremes_method(args, quantile_levels)
-        return p.saver.thresholds
 
 
 if __name__ == "__main__":
@@ -699,7 +782,7 @@ if __name__ == "__main__":
     args.k_pca = False
     args.n_samples = 500
     args.n_components = 3
-    args.n_bins = 50
+    args.n_eco_clusters = 50
     args.compute_variance = False
     args.method = "regional"
     args.start_year = 2000

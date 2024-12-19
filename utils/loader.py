@@ -58,16 +58,19 @@ class Loader:
         printt("Mask loaded.")
         return mask
 
-    def _load_limits_bins(self) -> list[np.ndarray]:
-        """Loads the limits bins from a file."""
-        limits_bins_path = self.config.saving_path / "limits_bins.npz"
-        if not os.path.exists(limits_bins_path):
-            printt(f"Limits bins not found at {limits_bins_path}")
-            return None
-        data = np.load(limits_bins_path)
-        limits_bins = [data[f"arr_{i}"] for i in range(len(data.files))]
-        printt("Limits bins loaded.")
-        return limits_bins
+    def _load_limits_eco_clusters(self) -> list[np.ndarray]:
+        """Loads the limits eco_clusters from a file."""
+        limits_eco_clusters_path = self.config.saving_path / "limits_eco_clusters.npz"
+        if not os.path.exists(limits_eco_clusters_path):
+            limits_eco_clusters_path = self.config.saving_path / "limits_bins.npz"
+            if not os.path.exists(limits_eco_clusters_path):
+                printt(f"Limits eco_clusters not found at {limits_eco_clusters_path}")
+                return None
+
+        data = np.load(limits_eco_clusters_path)
+        limits_eco_clusters = [data[f"arr_{i}"] for i in range(len(data.files))]
+        printt("Limits eco_clusters loaded.")
+        return limits_eco_clusters
 
     def _load_data(self, name):
         """Save the xarray in a file."""
@@ -83,23 +86,26 @@ class Loader:
         print(f"{name}.zarr loaded.")
         return data
 
-    def _load_bins(self):
-        bins_path = self.config.saving_path / "bins_2.zarr"
-        if not os.path.exists(bins_path):
-            bins_path = self.config.saving_path / "boxes.zarr"
-            if not os.path.exists(bins_path):
-                printt(f"The file {bins_path} not found.")
+    def _load_eco_clusters(self):
+        eco_clusters_path = self.config.saving_path / "eco_clusters_0.zarr"
+        if not os.path.exists(eco_clusters_path):
+            eco_clusters_path = self.config.saving_path / "bins_0.zarr"
+            if not os.path.exists(eco_clusters_path):
+                printt(f"The file {eco_clusters_path} not found.")
                 return None
-            Warning(
-                'boxes.zarr is an inconsistent legacy name, change it for "bins.zarr"'
-            )
 
-        data = xr.open_zarr(bins_path)
+        data = xr.open_zarr(eco_clusters_path)
         data = cfxr.decode_compress_to_multi_index(data, "location")
-        data = data.bins.transpose("location", "component", ...)
+
+        # Determine the actual variable name ('eco_clusters' or 'bins')
+        var_name = "eco_clusters" if "eco_clusters" in data.variables else "bins"
+
+        # Access the variable dynamically
+        data = getattr(data, var_name).transpose("location", "component", ...)
+        # data = data.eco_clusters.transpose("location", "component", ...)
         condition = ~data.isnull().any(dim="component").compute()
         data = data.where(condition, drop=True)
-        printt("Bins loaded.")
+        printt("eco_clusters loaded.")
         return data
 
     def _load_thresholds(self):
