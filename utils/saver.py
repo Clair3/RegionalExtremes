@@ -91,13 +91,14 @@ class Saver:
         np.savez(limits_eco_clusters_path, *limits_eco_clusters)
         printt(f"Limits eco_clusters saved to {limits_eco_clusters_path}")
 
-    def _save_data(self, data, name):
+    def _save_data(self, data, name, location=True):
         """Saves the data to a file."""
         # Unstack location for longitude and latitude as dimensions
         if isinstance(data, xr.DataArray):
             data.name = name
             data = data.to_dataset()
-        data = cfxr.encode_multi_index_as_compress(data, "location")
+        if location:
+            data = cfxr.encode_multi_index_as_compress(data, "location")
         data = data.chunk("auto")
         if not name == "temp_file":
             path = self._generate_unique_save_path(name)

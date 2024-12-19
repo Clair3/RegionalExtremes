@@ -426,17 +426,25 @@ class RegionalExtremes:
             self.saver._save_data(extremes_array, "extremes")
 
     def compute_regional_threshold(self, deseasonalized, quantile_levels):
-        """Compute and save a xarray (location, time) indicating the quantiles of extremes using the regional threshold definition."""
+        """
+        Compute and save an xarray indicating the quantiles of extremes using the regional threshold definition.
+
+        Parameters:
+        - deseasonalized: xarray.DataArray
+            The deseasonalized dataset.
+        - quantile_levels: tuple
+            A tuple containing lower and upper quantile levels (e.g., (0.025, 0.975)).
+        """
         assert self.config.method == "regional"
-        LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL = quantile_levels
-        quantile_levels = np.concatenate((LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
 
-        # Create a new DataArrays to store the quantile values (0.025 or 0.975) for extreme values
-        extremes_array = xr.full_like(deseasonalized.astype(float), np.nan)
+        # Unpack and concatenate quantile levels
+        lower_quantiles, upper_quantiles = quantile_levels
+        quantile_levels = np.concatenate((lower_quantiles, upper_quantiles))
 
-        # Create a new DataArray to store the threshold related to each quantiles.
+        # Initialize data arrays for results
+        extremes_array = xr.full_like(deseasonalized, np.nan, dtype=float)
         thresholds_array = xr.DataArray(
-            data=np.full((len(deseasonalized.location), len(quantile_levels)), np.nan),
+            np.full((len(deseasonalized.location), len(quantile_levels)), np.nan),
             dims=["location", "quantile"],
             coords={
                 "location": deseasonalized.location,
@@ -444,17 +452,15 @@ class RegionalExtremes:
             },
         )
 
-        # Get unique id for each region
-        unique_regions, _ = np.unique(
+        # Generate unique regional cluster IDs
+        unique_clusters, _ = np.unique(
             self.eco_clusters.values, axis=0, return_counts=True
         )
-
-        # Create a DataArray of region labels
         eco_cluster_labels = xr.DataArray(
-            np.argmax(
+            data=np.argmax(
                 np.all(
                     self.eco_clusters.values[:, :, None]
-                    == unique_regions.T[None, :, :],
+                    == unique_clusters.T[None, :, :],
                     axis=1,
                 ),
                 axis=1,
@@ -463,44 +469,46 @@ class RegionalExtremes:
             coords={"location": self.eco_clusters.location},
         )
 
-        compute_only_thresholds = self.config.is_generic_xarray_dataset
+        # Group deseasonalized data by cluster labels
+        grouped_data = deseasonalized.groupby(eco_cluster_labels)
 
-        # Group the deseasonalized data by region labels
-        grouped = deseasonalized.groupby(eco_cluster_labels)
-        # Apply the quantile calculation to each group
-        # results = grouped.map(
-        #     lambda grp: self._compute_thresholds(
-        #         grp,
-        #         (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL),
-        #         return_only_thresholds=compute_only_thresholds,
-        #     )
-        # )
-        # Group the deseasonalized data by region labels
-        grouped = deseasonalized.groupby(eco_cluster_labels)
-        # Apply the quantile calculation to each group
-        results = grouped.map(
+        # Compute thresholds and extremes for each group
+        compute_only_thresholds = self.config.is_generic_xarray_dataset
+        results = grouped_data.map(
             lambda grp: self._compute_thresholds(
                 grp,
-                (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL),
+                (lower_quantiles, upper_quantiles),
                 return_only_thresholds=compute_only_thresholds,
             )
         )
-        # group_thresholds = results["thresholds"].groupby(eco_cluster_labels)
+
+        # Calculate mean thresholds for each cluster
         group_thresholds = results["thresholds"].groupby(eco_cluster_labels).mean()
-        print([tuple(id_) for id_ in unique_regions])
-        group_thresholds = group_thresholds.assign_coords(
-            eco_cluster_id=("group", [tuple(id_) for id_ in unique_regions])
+
+        # Create a DataArray to store thresholds by cluster
+        thresholds_by_cluster = xr.DataArray(
+            data=group_thresholds.values,
+            dims=("cluster", "quantile"),
+            coords={
+                "component_1": ("cluster", unique_clusters[:, 0]),
+                "component_2": ("cluster", unique_clusters[:, 1]),
+                "component_3": ("cluster", unique_clusters[:, 2]),
+                "quantile_levels": ("quantile", quantile_levels),
+            },
+            name="threshold_mean",
         )
 
-        # Assign the results back to the quantile_array
-        thresholds_array.values = results["thresholds"].values
-        if not compute_only_thresholds:
-            extremes_array.values = results["extremes"].values
+        # Save thresholds by cluster
+        self.saver._save_data(thresholds_by_cluster, "thresholds", , location=False)
 
-        # save the array
-        self.saver._save_data(thresholds_array, "thresholds")
-        self.saver._save_data(thresholds_array, "thresholds_eco_clusters")
+        # Assign and save location-specific results if thresholds are not computed only
         if not compute_only_thresholds:
+            thresholds_array.values = results["thresholds"].values
+            self.saver._save_data(
+                thresholds_array, "thresholds_locations"
+            )
+
+            extremes_array.values = results["extremes"].values
             self.saver._save_data(extremes_array, "extremes")
 
     def compute_local_threshold(self, deseasonalized, quantile_levels):
