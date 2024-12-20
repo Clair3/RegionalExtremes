@@ -10,6 +10,14 @@ class Saver:
 
     def update_saving_path(self, name):
         self.config.saving_path = self.config.saving_path / name
+        # index_position = self.config.saving_path.parts.index(self.config.index)
+        # self.config.saving_path = (
+        #     self.config.saving_path.parents[
+        #         len(self.config.saving_path) - index_position - 1
+        #     ]
+        #     / self.config.index
+        #     / name
+        # )
 
     def _generate_unique_save_path(self, base_name):
         # Initial path setup
@@ -91,8 +99,10 @@ class Saver:
         np.savez(limits_eco_clusters_path, *limits_eco_clusters)
         printt(f"Limits eco_clusters saved to {limits_eco_clusters_path}")
 
-    def _save_data(self, data, name, location=True):
+    def _save_data(self, data, name, basepath=None, location=True):
         """Saves the data to a file."""
+        if basepath is None:
+            basepath = self.config.saving_path
         # Unstack location for longitude and latitude as dimensions
         if isinstance(data, xr.DataArray):
             data.name = name
@@ -100,10 +110,7 @@ class Saver:
         if location:
             data = cfxr.encode_multi_index_as_compress(data, "location")
         data = data.chunk("auto")
-        if not name == "temp_file":
-            path = self._generate_unique_save_path(name)
-        else:
-            path = self.config.saving_path / "temp_file.zarr"
+        path = basepath / name  # self._generate_unique_save_path(name)
 
         data.to_zarr(path, mode="w")
         printt(f"{name} computed and saved.")

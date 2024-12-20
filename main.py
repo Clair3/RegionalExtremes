@@ -340,7 +340,7 @@ class RegionalExtremes:
         self.saver._save_data(self.eco_clusters, "eco_clusters")
         return self.eco_clusters
 
-    def apply_regional_threshold(self, deseasonalized):
+    def apply_regional_threshold(self, deseasonalized, quantile_levels):
         # Load thresholds
         """Compute and save a xarray (location, time) indicating the quantiles of extremes using the regional threshold definition."""
         assert self.config.method == "regional"
@@ -359,60 +359,57 @@ class RegionalExtremes:
                 "quantile": quantile_levels,
             },
         )
-
-        # Get unique id for each region
-        unique_eco_cluster, _ = np.unique(
-            self.eco_clusters.values, axis=0, return_counts=True
+        eco_cluster_labels = np.array(
+            ["_".join(map(str, cluster)) for cluster in self.eco_clusters.values]
         )
 
-        # Create a DataArray of region labels
-        eco_cluster_labels = xr.DataArray(
-            np.argmax(
-                np.all(
-                    self.eco_clusters.values[:, :, None]
-                    == unique_eco_cluster.T[None, :, :],
-                    axis=1,
-                ),
-                axis=1,
-            ),
-            dims=("location",),
-            coords={"location": self.eco_clusters.location},
+        # Assign the eco_cluster labels as a coordinate
+        deseasonalized = deseasonalized.assign_coords(
+            eco_cluster=("location", eco_cluster_labels)
         )
+
+        # Group data by the combined eco_cluster labels
+        grouped = deseasonalized.groupby("eco_cluster")
 
         compute_only_thresholds = self.config.is_generic_xarray_dataset
 
-        # Group the deseasonalized data by region labels
-        grouped = deseasonalized.groupby(eco_cluster_labels)
-        # Apply the quantile calculation to each group
-        # results = grouped.map(
-        #     lambda grp: self._compute_thresholds(
-        #         grp,
-        #         (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL),
-        #         return_only_thresholds=compute_only_thresholds,
-        #     )
-        # )
+        # Define the function to map thresholds to clusters
+        def map_thresholds_to_clusters(grp):
+            """
+            Maps thresholds to clusters based on the string-based eco-cluster label.
 
-        def compute_both(grp):
-            # Compute thresholds for the group
-            results = self._compute_thresholds(
+            Parameters:
+                grp: xarray DataArray group for a specific eco-cluster.
+                eco_cluster_labels: Array of eco-cluster labels (string representation).
+                thresholds: xarray DataArray indexed by the components of the eco-cluster.
+
+            Returns:
+                Thresholds corresponding to the current eco-cluster group.
+            """
+            # Get the string label for the current group
+            eco_cluster_label = grp.eco_cluster.values[0]
+            print(eco_cluster_label)
+
+            # Parse the label back into its components
+            comp_values = list(map(int, eco_cluster_label.split("_")))
+            print(comp_values)
+
+            # Select thresholds corresponding to the parsed eco-cluster components
+            thresholds_grp = self.thresholds.sel(
+                comp_1=comp_values[0], comp_2=comp_values[1], comp_3=comp_values[2]
+            )
+            print(thresholds_grp)
+            return thresholds_grp
+
+        # Apply the quantile calculation to each group
+        results = grouped.map(
+            lambda grp: self._apply_thresholds(
                 grp,
+                map_thresholds_to_clusters(grp),
                 (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL),
                 return_only_thresholds=compute_only_thresholds,
             )
-
-            # Compute a single representative threshold for the group
-            results["group_threshold"] = results["thresholds"].mean(
-                dim="location"
-            )  # Example: Use mean for aggregation
-
-            return results
-
-        # return results, group_threshold
-
-        # Apply the function to each group
-        results = grouped.map(compute_both)
-        print(results)
-        print(results["group_threshold"])
+        )
 
         # Assign the results back to the quantile_array
         thresholds_array.values = results["thresholds"].values
@@ -562,38 +559,73 @@ class RegionalExtremes:
 
         Args:
             deseasonalized (xarray.DataArray): Deseasonalized data.
+            quantile_levels (tuple): Tuple of lower and upper quantile levels.
             method (str): Method for computing quantiles. Either "regional" or "local".
+            return_only_thresholds (bool): If True, only return quantile thresholds.
 
         Returns:
-            xarray.DataArray: Data with assigned quantile levels.
+            xarray.Dataset: Dataset containing extremes and thresholds.
         """
-        LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL = quantile_levels
-        quantile_levels = np.concatenate((LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
+        # Unpack quantile levels and prepare data
+        lower_quantiles, upper_quantiles = quantile_levels
+        quantile_levels_combined = np.concatenate((lower_quantiles, upper_quantiles))
         deseasonalized = deseasonalized.chunk("auto")
 
+        # Compute quantiles based on the method
         if method == "regional":
-            deseasonalized_dask = deseasonalized.data
-            # Mask NaN values by flattening and dropping them
-            flattened_nonan = deseasonalized_dask.flatten()[
-                ~da.isnan(deseasonalized_dask.flatten())
-            ]
-
-            quantiles = da.percentile(
-                flattened_nonan,
-                np.array([*LOWER_QUANTILES_LEVEL, *UPPER_QUANTILES_LEVEL]) * 100,
-                method="linear",
-            )
-            all_levels = [*LOWER_QUANTILES_LEVEL, *UPPER_QUANTILES_LEVEL]
-            quantiles_xr = xr.DataArray(
-                quantiles, coords={"quantile": all_levels}, dims=["quantile"]
+            quantiles_xr = self._compute_regional_quantiles(
+                deseasonalized.data, quantile_levels_combined
             )
         elif method == "local":
             quantiles_xr = deseasonalized.quantile(
-                np.array([*LOWER_QUANTILES_LEVEL, *UPPER_QUANTILES_LEVEL]), dim=["time"]
-            )
+                quantile_levels_combined, dim="time"
+            ).assign_coords(quantile=quantile_levels_combined)
         else:
-            raise NotImplementedError("Global threshold method is not yet implemented.")
+            raise NotImplementedError(
+                f"Threshold method '{method}' is not implemented."
+            )
 
+        # Return thresholds only if requested
+        if return_only_thresholds:
+            return xr.Dataset({"thresholds": quantiles_xr})
+
+        extremes = self._apply_thresholds(deseasonalized, quantiles_xr, quantile_levels)
+        results = xr.Dataset({"extremes": extremes, "thresholds": quantiles_xr})
+        return results
+
+    def _compute_regional_quantiles(self, data, quantile_levels):
+        """
+        Compute regional quantiles for the provided data.
+        Args:
+            data (dask.array.Array): Flattened data to compute quantiles for.
+            quantile_levels (np.ndarray): Combined lower and upper quantile levels.
+        Returns:
+            xarray.DataArray: Regional quantiles as an xarray.DataArray.
+        """
+        import dask.array as da
+
+        # Mask NaN values and flatten the data
+        flattened_nonan = data.flatten()[~da.isnan(data.flatten())]
+        # Compute quantiles using Dask
+        quantiles = da.percentile(
+            flattened_nonan,
+            quantile_levels * 100,  # Convert to percentages
+            method="linear",
+        )
+        # Wrap quantiles in an xarray.DataArray
+        quantiles_xr = xr.DataArray(
+            quantiles,
+            coords={"quantile": quantile_levels},
+            dims=["quantile"],
+        )
+        return quantiles_xr
+
+    def _apply_thresholds(
+        self,
+        deseasonalized: xr.DataArray,
+        quantiles_xr,
+        quantile_levels,
+    ):
         masks = self._create_quantile_masks(
             deseasonalized,
             quantiles_xr,
@@ -603,8 +635,7 @@ class RegionalExtremes:
         extremes = xr.full_like(deseasonalized.astype(float), np.nan)
         for i, mask in enumerate(masks):
             extremes = xr.where(mask, quantile_levels[i], extremes)
-        results = xr.Dataset({"extremes": extremes, "thresholds": quantiles_xr})
-        return results
+        return extremes
 
     def _create_quantile_masks(self, data, quantiles, quantile_levels):
         """
@@ -748,7 +779,7 @@ def regional_extremes_minicube(args, quantile_levels):
     # Deseasonalize the data
     deseasonalized = dataset_processor._deseasonalize(data, msc)
     # Compute the quantiles per regions/biome (=eco_clusters)
-    extremes_processor.compute_regional_threshold(
+    extremes_processor.apply_regional_threshold(
         deseasonalized, quantile_levels=quantile_levels
     )
 
@@ -794,7 +825,7 @@ if __name__ == "__main__":
     args.start_year = 2000
     args.is_generic_xarray_dataset = False
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-11-25_18:41:43_deep_extreme_HR"
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/RegionalExtremesPackage/experiments/2024-12-19_13:52:48_deep_extreme_HR"
 
     LOWER_QUANTILES_LEVEL = np.array([0.01, 0.025, 0.05])
     UPPER_QUANTILES_LEVEL = np.array([0.95, 0.975, 0.99])

@@ -72,17 +72,20 @@ class Loader:
         printt("Limits eco_clusters loaded.")
         return limits_eco_clusters
 
-    def _load_data(self, name):
+    def _load_data(self, name, basepath=None, location=True):
         """Save the xarray in a file."""
         # Unstack location for longitude and latitude as dimensions
-        path = self.config.saving_path / f"{name}.zarr"  # f"{name}_{data.data_id}.zarr"
+        if basepath is None:
+            basepath = self.config.saving_path
+        path = basepath / f"{name}.zarr"  # f"{name}_{data.data_id}.zarr"
         print(path)
         if not os.path.exists(path):
             printt(f"Data not found at {path}")
             return None
         data = xr.open_zarr(path)
-        data = cfxr.decode_compress_to_multi_index(data, "location")
-        data = data.sel(location=~data.get_index("location").duplicated())
+        if location:
+            data = cfxr.decode_compress_to_multi_index(data, "location")
+            # data = data.sel(location=~data.get_index("location").duplicated())
         print(f"{name}.zarr loaded.")
         return data
 
@@ -110,14 +113,11 @@ class Loader:
 
     def _load_thresholds(self):
         """Saves the threshold quantiles to a file."""
-        thresholds_path = self.config.saving_path / "thresholds.zarr"
+        thresholds_path = self.config.saving_path / "thresholds_0.zarr"
         if not os.path.exists(thresholds_path):
             printt(f"The file {thresholds_path} not found.")
             return None
         thresholds = xr.open_zarr(thresholds_path)
-        thresholds = cfxr.decode_compress_to_multi_index(thresholds, "location")
-        # Unstack location for longitude and latitude as dimensions
-        # extremes = extremes.stack(location=["longitude", "latitude"])
         printt("Thresholds loaded.")
         return thresholds
 
