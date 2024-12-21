@@ -2,6 +2,7 @@ from .common_imports import *
 from .base import DatasetHandler
 from dask import delayed, compute
 from dask.diagnostics import ProgressBar
+from pyproj import Transformer
 
 
 class EarthnetDatasetHandler(DatasetHandler):
@@ -129,14 +130,28 @@ class EarthnetDatasetHandler(DatasetHandler):
         try:
             path = self.df.at[row]
             ds = xr.open_zarr(EARTHNET_FILEPATH + path, chuncks={"time": -1})
-            ds = ds.sel(
-                time=slice(datetime.date(2017, 3, 7), datetime.date(2022, 9, 30))
+            # ds = ds.sel(
+            #     time=slice(datetime.date(2017, 3, 7), datetime.date(2022, 9, 30))
+            # )
+            transformer = Transformer.from_crs(
+                ds.attrs["spatial_ref"], 4326, always_xy=True
             )
+            lon, lat = transformer.transform(ds.x.values, ds.y.values)
+            # Update the dataset with new coordinates
+            ds = ds.assign_coords({"x": ("x", lon), "y": ("y", lat)})
             ds = ds.rename({"x": "longitude", "y": "latitude"})
+
             return ds
         except Exception as e:
             printt(f"Error loading data: {e}")
             return None
+
+    def _transform_utm_to_latlon(ds):
+        transformer = Transformer.from_crs(
+            ds.attrs["spatial_ref"], 4326, always_xy=True
+        )
+        lon, lat = transformer.transform(ds.x.values, ds.y.values)
+        return lon, lat
 
     def _get_random_vegetation_pixel_series(self, ds):
         """Selects a random time serie vegetation pixel location in the minicube based on SCL classification."""

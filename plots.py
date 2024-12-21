@@ -3,6 +3,10 @@
 # Draft, the code is not made to be shared and reused!
 ###
 import os
+import sys
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 
 import xarray as xr
@@ -16,11 +20,16 @@ from matplotlib.widgets import Slider
 import cartopy
 import random
 
+import numpy as np
+from scipy.stats import gaussian_kde
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
 from RegionalExtremesPackage.utils.config import InitializationConfig
-from RegionalExtremesPackage.utils.loader import Loader, Saver
+from RegionalExtremesPackage.utils import Loader, Saver
 from main import parser_arguments
 from RegionalExtremesPackage.utils.logger import printt
-from RegionalExtremesPackage.datahandlers.base import create_handler
+from RegionalExtremesPackage.datahandlers import create_handler
 
 
 class PlotExtremes(InitializationConfig):
@@ -143,15 +152,16 @@ class PlotExtremes(InitializationConfig):
         # Show the plot
         # plt.show()
 
-    def map_bins(self, normalization=False):
-        """Map of the bins in RBG."""
-        bins = self.loader._load_bins().T
-        bins = bins.unstack("location")
+    def map_eco_clusters(self, normalization=False):
+        """Map of the eco_clusters in RBG."""
+        eco_clusters = self.loader._load_eco_clusters().T
+        eco_clusters = eco_clusters.unstack("location")
+        print(eco_cluster)
 
         # Normalize the explained variance
         # Normalize the data to the range [0, 1]
         def _normalization(index):
-            band = bins.isel(component=index).values
+            band = eco_clusters.isel(component=index).values
             return (band - np.nanmin(band)) / (np.nanmax(band) - np.nanmin(band))
 
         normalized_red = _normalization(0)  # Red is the first component
@@ -180,15 +190,15 @@ class PlotExtremes(InitializationConfig):
 
         # Plot the RGB data
         # img_extent = (
-        #     bins.longitude.min(),
-        #     bins.longitude.max(),
-        #     bins.latitude.min(),
-        #     bins.latitude.max(),
+        #     eco_clusters.longitude.min(),
+        #     eco_clusters.longitude.max(),
+        #     eco_clusters.latitude.min(),
+        #     eco_clusters.latitude.max(),
         # )
 
         ax.pcolormesh(
-            bins.longitude.values,
-            bins.latitude.values,
+            eco_clusters.longitude.values,
+            eco_clusters.latitude.values,
             rgb_normalized,
             # transform=projection,
         )
@@ -196,7 +206,7 @@ class PlotExtremes(InitializationConfig):
         # Add a title
         plt.title("RGB Components on Earth Map")
 
-        map_saving_path = self.saving_path / "map_bins.png"
+        map_saving_path = self.saving_path / "map_eco_clusters.png"
         plt.savefig(map_saving_path)
         printt("Plot saved")
 
@@ -357,7 +367,7 @@ class PlotExtremes(InitializationConfig):
 
     def region(self, indices=None):
         """plot the samples of a single region"""
-        boxes = self.loader._load_bins().T
+        boxes = self.loader._load_eco_clusters().T
         # Select randomly a first location
         if indices is None:
             lon = random.choice(boxes.longitude.values).item()
@@ -371,7 +381,7 @@ class PlotExtremes(InitializationConfig):
         masked_lons = boxes.longitude.values[mask]
         masked_lats = boxes.latitude.values[mask]
         masked_lons_lats = list(zip(masked_lons, masked_lats))
-        # locations = self.find_bins_origin()
+        # locations = self.find_eco_clusters_origin()
         # masked_lons_lats = list(
         #    zip(locations.longitude.values, locations.latitude.values)
         # )
@@ -543,12 +553,12 @@ class PlotExtremes(InitializationConfig):
                 explained_variance=True
             )
             # pca_subset = pca_projection.sel(location=masked_lons_lats)
-            # n_bins = self.config.n_bins
-            # box_indices = self.loader._load_bins()
+            # n_eco_clusters = self.config.n_eco_clusters
+            # box_indices = self.loader._load_eco_clusters()
 
             # Convert box indices to RGB colors
             # Normalize indices to the range [0, 1] for RGB
-            # colors = box_indices / (n_bins + 1)
+            # colors = box_indices / (n_eco_clusters + 1)
             # Plotting
             fig = plt.figure()
             ax = fig.add_subplot(111, projection="3d")
@@ -594,7 +604,7 @@ class PlotExtremes(InitializationConfig):
         map_single_region(mask)
         time_series_single_region(masked_lons_lats)
 
-    def find_bins_origin(self):
+    def find_eco_clusters_origin(self):
         pca_projection, explained_variance = self.loader._load_pca_projection(
             explained_variance=True
         )
@@ -614,11 +624,11 @@ class PlotExtremes(InitializationConfig):
             explained_variance=True
         )
 
-        n_bins = self.config.n_bins
-        box_indices = self.loader._load_bins()
+        n_eco_clusters = self.config.n_eco_clusters
+        box_indices = self.loader._load_eco_clusters()
         # Convert box indices to RGB colors
         # Normalize indices to the range [0, 1] for RGB
-        colors = box_indices / (n_bins + 1)
+        colors = box_indices / (n_eco_clusters + 1)
         # Plotting
         fig = plt.figure()
         ax = fig.add_subplot(111, projection="3d")
@@ -629,7 +639,7 @@ class PlotExtremes(InitializationConfig):
             pca_projection.isel(component=1).values.T,
             pca_projection.isel(component=2).values.T,
             c=colors.values,
-            s=50,
+            s=10,
             edgecolor="k",
         )
 
@@ -646,16 +656,80 @@ class PlotExtremes(InitializationConfig):
         plt.show()
         return
 
+    def plot_3D_pca_with_density(self):
+        pca_projection, explained_variance = self.loader._load_pca_projection(
+            explained_variance=True
+        )
+
+        n_eco_clusters = self.config.n_eco_clusters
+        box_indices = self.loader._load_eco_clusters()
+        # Convert box indices to RGB colors
+        colors = box_indices / (n_eco_clusters + 1)
+
+        # Extract PCA components
+        x = pca_projection.isel(component=0).values.flatten()
+        y = pca_projection.isel(component=1).values.flatten()
+        z = pca_projection.isel(component=2).values.flatten()
+
+        # Set up the figure layout
+        fig = plt.figure(figsize=(15, 10))
+        grid = fig.add_gridspec(2, 3, width_ratios=[4, 1, 1], height_ratios=[1, 4])
+
+        # Main 3D scatter plot
+        ax_scatter = fig.add_subplot(grid[1, 0], projection="3d")
+        scatter = ax_scatter.scatter(
+            x, y, z, c=colors.values, cmap="tab20", s=10, edgecolor="k"
+        )
+        ax_scatter.set_xlabel("PCA Component 1")
+        ax_scatter.set_ylabel("PCA Component 2")
+        ax_scatter.set_zlabel("PCA Component 3")
+        ax_scatter.set_title("3D PCA Projection by Eco-Clusters")
+
+        # Density plot for PCA Component 1
+        ax_x_density = fig.add_subplot(grid[0, 0])
+        x_kde = gaussian_kde(x)
+        x_vals = np.linspace(np.min(x), np.max(x), 100)
+        ax_x_density.plot(x_vals, x_kde(x_vals), color="blue")
+        ax_x_density.set_title("Density of PCA Component 1")
+        ax_x_density.set_xlabel("PCA Component 1")
+        ax_x_density.set_yticks([])
+
+        # Density plot for PCA Component 2
+        ax_y_density = fig.add_subplot(grid[1, 1])
+        y_kde = gaussian_kde(y)
+        y_vals = np.linspace(np.min(y), np.max(y), 100)
+        ax_y_density.plot(y_kde(y_vals), y_vals, color="green")
+        ax_y_density.set_title("Density of PCA Component 2")
+        ax_y_density.set_ylabel("PCA Component 2")
+        ax_y_density.set_xticks([])
+
+        # Density plot for PCA Component 3
+        ax_z_density = fig.add_subplot(grid[1, 2])
+        z_kde = gaussian_kde(z)
+        z_vals = np.linspace(np.min(z), np.max(z), 100)
+        ax_z_density.plot(z_kde(z_vals), z_vals, color="red")
+        ax_z_density.set_title("Density of PCA Component 3")
+        ax_z_density.set_ylabel("PCA Component 3")
+        ax_z_density.set_xticks([])
+
+        # Adjust layout and save
+        plt.tight_layout()
+        saving_path = self.saving_path / "3D_pca_with_side_density.png"
+        plt.savefig(saving_path, dpi=300)
+        plt.show()
+
+        return
+
     def plot_3D_pca_other(self):
         data = xr.open_zarr(
-            "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-18_10:05:59_eco_regional_2000_hr_50bins/EVI/pca_projection.zarr"
+            "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-18_10:05:59_eco_regional_2000_hr_50eco_clusters/EVI/pca_projection.zarr"
         )
         pca_projection = data.pca.stack(location=("longitude", "latitude")).transpose(
             "location", "component", ...
         )
 
         mask = xr.open_zarr(
-            "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-17_11:14:50_eco_pca_2016_500bins_regional/EVI/mask.zarr"
+            "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-17_11:14:50_eco_pca_2016_500eco_clusters_regional/EVI/mask.zarr"
         ).EVIgapfilled_QCdyn
         mask = mask.stack(location=("longitude", "latitude"))
         mask_broadcasted = mask.broadcast_like(pca_projection)
@@ -669,7 +743,7 @@ class PlotExtremes(InitializationConfig):
         target = target.stack(location=("longitude", "latitude"))
         target = target.sel(location=pca_projection.location)
         prediction = xr.open_zarr(
-            "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-18_10:05:59_eco_regional_2000_hr_50bins/EVI/thresholds.zarr"
+            "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-18_10:05:59_eco_regional_2000_hr_50eco_clusters/EVI/thresholds.zarr"
         ).threshold.sel(quantile=0.025)
         prediction = prediction.stack(location=("longitude", "latitude"))
         prediction = prediction.sel(location=pca_projection.location)
@@ -704,11 +778,11 @@ class PlotExtremes(InitializationConfig):
             explained_variance=True
         )
 
-        n_bins = self.config.n_bins
-        box_indices = self.loader._load_bins()
+        n_eco_clusters = self.config.n_eco_clusters
+        box_indices = self.loader._load_eco_clusters()
         # Convert box indices to RGB colors
         # Normalize indices to the range [0, 1] for RGB
-        colors = box_indices / (n_bins + 1)
+        colors = box_indices / (n_eco_clusters + 1)
         # Plotting
         fig, ax = plt.subplots(figsize=(12, 8))
 
@@ -732,7 +806,7 @@ class PlotExtremes(InitializationConfig):
         plt.savefig(saving_path)
 
     def distribution_per_region(self):
-        boxes = self.loader._load_bins()
+        boxes = self.loader._load_eco_clusters()
         boxes = boxes
 
         # Count occurrences
@@ -740,17 +814,17 @@ class PlotExtremes(InitializationConfig):
 
         # Sort the unique values and counts in descending order of counts
         sorted_indices = np.argsort(counts)[::-1]
-        unique_sorted = unique[sorted_indices][:50]
-        counts_sorted = counts[sorted_indices][:50]
+        unique_sorted = unique[sorted_indices][:100]
+        counts_sorted = counts[sorted_indices][:100]
         # Convert unique values to strings for labels
-        labels = [f"({int(u[0])}, {int(u[1])})" for u in unique_sorted]
+        labels = [f"({int(u[0])}, {int(u[1])}, {int(u[2])})" for u in unique_sorted]
 
         # Plot
         plt.figure(figsize=(12, 6))
         plt.bar(range(len(counts_sorted)), counts_sorted)
         plt.xlabel("Regions")
         plt.ylabel("Number of samples")
-        plt.title("Number of Samples per Region (first 50 regions).")
+        plt.title("Number of Samples per Region (first 100 regions).")
 
         # Set x-axis ticks and labels
         plt.xticks(range(len(labels)), labels, rotation=90)
@@ -763,7 +837,7 @@ class PlotExtremes(InitializationConfig):
         plt.show()
 
     def region_distribution(self):
-        boxes = self.loader._load_bins()
+        boxes = self.loader._load_eco_clusters()
         unique, counts = np.unique(boxes.values, axis=0, return_counts=True)
 
         # Get unique counts and their frequencies
@@ -773,7 +847,8 @@ class PlotExtremes(InitializationConfig):
         sort_indices = np.argsort(unique_counts)
         unique_counts_sorted = unique_counts[sort_indices][:50]
         count_frequencies_sorted = count_frequencies[sort_indices][:50]
-
+        print(unique_counts_sorted)
+        print(count_frequencies_sorted)
         # Create the bar plot
         plt.figure(figsize=(12, 6))
         plt.bar(
@@ -806,12 +881,12 @@ class PlotExtremes(InitializationConfig):
 
         # Count occurrences
         pca_projection = self.loader._load_pca_projection()
-        n_bins = self.config.n_bins
-        box_indices = self.loader._load_bins()
+        n_eco_clusters = self.config.n_eco_clusters
+        box_indices = self.loader._load_eco_clusters()
 
         # Convert box indices to RGB colors
         # Normalize indices to the range [0, 1] for RGB
-        colors = box_indices / (n_bins + 1)
+        colors = box_indices / (n_eco_clusters + 1)
         unique, counts = np.unique(boxes.values, axis=0, return_counts=True)
 
         pass
@@ -887,7 +962,7 @@ class PlotExtremes(InitializationConfig):
 
         # Show the plot
         plt.savefig(
-            "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-09-04_15:18:47_eco_50bins/EVI/plots/extremes.png"
+            "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-09-04_15:18:47_eco_50eco_clusters/EVI/plots/extremes.png"
         )
 
     def extremes_plots(self, date):
@@ -1172,22 +1247,23 @@ def calculate_rmse(truth, data):
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-11-25_18:41:43_deep_extreme_HR"
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-18_10:05:59_eco_regional_2000_hr_50bins"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/RegionalExtremesPackage/experiments/2024-12-19_13:52:48_deep_extreme_HR"
     config = InitializationConfig(args)
     # loader = Loader(config)
     # print(loader._load_pca_matrix().explained_variance_ratio_)
-    # limits_bins = loader._load_limits_bins()
-    # print(limits_bins)
+    # limits_eco_clusters = loader._load_limits_eco_clusters()
+    # print(limits_eco_clusters)
     plot = PlotExtremes(config=config)
-    plot.map_bins()
+    # plot.map_eco_clusters()
     # plot.plot_3D_pca()
+    plot.plot_3D_pca_with_density()
     # plot.plot_2D_component()
     # plot.map_component()
-    # plot.map_bins()
+    # plot.map_eco_clusters()
 
     # plot.plot_2D_component()
 
-    # plot.find_bins_origin()
+    # plot.find_eco_clusters_origin()
 
     # indices = np.array([20, 1, 1])
     # plot.region(indices=indices)
@@ -1212,7 +1288,7 @@ if __name__ == "__main__":
     plot.region_distribution()
     plot.distribution_per_region()
     # plot.map_modis()
-    # plot.map_bins()
+    # plot.map_eco_clusters()
     # plot.threshold_time_serie()
     # plot.check_number(config, "2018-08-15")
     # plot.barplot_error_thresholds()

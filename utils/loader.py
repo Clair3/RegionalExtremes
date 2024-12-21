@@ -29,10 +29,13 @@ class Loader:
         """
         projection_path = self.config.saving_path / "pca_projection_0.zarr"
         if not os.path.exists(projection_path):
-            printt(f"PCA projection not found at {projection_path}")
-            return None
+            projection_path = self.config.saving_path / "pca_projection.zarr"
+            if not os.path.exists(projection_path):
+                printt(f"PCA projection not found at {projection_path}")
+                return None
 
         data = xr.open_zarr(projection_path)
+        # data = data.stack(location=["longitude", "latitude"])
         data = cfxr.decode_compress_to_multi_index(data, "location")
         pca_projection = data.pca.transpose("location", "component", ...)
         # Remove NaNs
@@ -94,10 +97,13 @@ class Loader:
         if not os.path.exists(eco_clusters_path):
             eco_clusters_path = self.config.saving_path / "bins_0.zarr"
             if not os.path.exists(eco_clusters_path):
-                printt(f"The file {eco_clusters_path} not found.")
-                return None
+                eco_clusters_path = self.config.saving_path / "bins.zarr"
+                if not os.path.exists(eco_clusters_path):
+                    printt(f"The file {eco_clusters_path} not found.")
+                    return None
 
         data = xr.open_zarr(eco_clusters_path)
+        # data = data.stack(location=["longitude", "latitude"])
         data = cfxr.decode_compress_to_multi_index(data, "location")
 
         # Determine the actual variable name ('eco_clusters' or 'bins')
