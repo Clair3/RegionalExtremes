@@ -110,7 +110,7 @@ class Saver:
         if location:
             data = cfxr.encode_multi_index_as_compress(data, "location")
         data = data.chunk("auto")
-        path = basepath / name  # self._generate_unique_save_path(name)
+        path = basepath / f"{name}.zarr"  # self._generate_unique_save_path(name)
 
         data.to_zarr(path, mode="w")
         printt(f"{name} computed and saved.")

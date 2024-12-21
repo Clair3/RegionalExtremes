@@ -16,8 +16,11 @@ from pathlib import Path
 
 from RegionalExtremesPackage.utils.logger import initialize_logger, printt
 
-CURRENT_DIRECTORY_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__)))
-PARENT_DIRECTORY_PATH = os.path.abspath(os.path.join(CURRENT_DIRECTORY_PATH, os.pardir))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+
+GRANDPARENT_DIRECTORY_PATH = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), os.pardir, os.pardir)
+)
 CLIMATIC_INDICES = ["pei_30", "pei_90", "pei_180"]
 ECOLOGICAL_INDICES = ["EVI", "NDVI", "kNDVI"]
 EARTHNET_INDICES = ["EVI_EN"]
@@ -80,14 +83,17 @@ class InitializationConfig:
         else:
             if args.name:
                 self.saving_path = (
-                    Path(PARENT_DIRECTORY_PATH)
+                    Path(GRANDPARENT_DIRECTORY_PATH)
                     / "experiments/"
                     / f"{args.id}_{args.name}"
                     / self.index
                 )
             else:
                 self.saving_path = (
-                    Path(PARENT_DIRECTORY_PATH) / "experiments/" / args.id / self.index
+                    Path(GRANDPARENT_DIRECTORY_PATH)
+                    / "experiments/"
+                    / args.id
+                    / self.index
                 )
         self.saving_path.mkdir(parents=True, exist_ok=True)
         args.saving_path = str(self.saving_path)

@@ -81,7 +81,6 @@ class Loader:
         if basepath is None:
             basepath = self.config.saving_path
         path = basepath / f"{name}.zarr"  # f"{name}_{data.data_id}.zarr"
-        print(path)
         if not os.path.exists(path):
             printt(f"Data not found at {path}")
             return None

@@ -182,7 +182,7 @@ class RegionalExtremes:
         assert not hasattr(
             self.pca, "explained_variance_"
         ), "A pca already have been fit."
-        assert self.config.path_load_experiment is None, "A model is already loaded."
+        # assert self.config.path_load_experiment is None, "A model is already loaded."
 
         assert (self.n_components > 0) & (
             self.n_components <= 366
@@ -388,17 +388,14 @@ class RegionalExtremes:
             """
             # Get the string label for the current group
             eco_cluster_label = grp.eco_cluster.values[0]
-            print(eco_cluster_label)
 
             # Parse the label back into its components
             comp_values = list(map(int, eco_cluster_label.split("_")))
-            print(comp_values)
 
             # Select thresholds corresponding to the parsed eco-cluster components
             thresholds_grp = self.thresholds.sel(
                 comp_1=comp_values[0], comp_2=comp_values[1], comp_3=comp_values[2]
             )
-            print(thresholds_grp)
             return thresholds_grp
 
         # Apply the quantile calculation to each group
@@ -825,15 +822,15 @@ if __name__ == "__main__":
     args.start_year = 2000
     args.is_generic_xarray_dataset = False
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/RegionalExtremesPackage/experiments/2024-12-19_13:52:48_deep_extreme_HR"
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-12-20_14:38:27_deep_extreme_global"
 
     LOWER_QUANTILES_LEVEL = np.array([0.01, 0.025, 0.05])
     UPPER_QUANTILES_LEVEL = np.array([0.95, 0.975, 0.99])
 
     if args.method == "regional":
         # Apply the regional extremes method
-        # regional_extremes_method(args, (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
-        regional_extremes_minicube(args, (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
+        regional_extremes_method(args, (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
+        # regional_extremes_minicube(args, (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
     elif args.method == "local":
         # Apply the uniform threshold method
         local_extremes_method(args, (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))

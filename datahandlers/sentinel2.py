@@ -92,7 +92,7 @@ class EarthnetDatasetHandler(DatasetHandler):
         ]
         df = df.loc[
             (df["check"] == 0)
-            # & df.apply(lambda row: self._is_in_europe(row["lon"], row["lat"]), axis=1)
+            & df.apply(lambda row: self._is_in_europe(row["lon"], row["lat"]), axis=1)
         ]
 
         # Random sampling with replacement

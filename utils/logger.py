@@ -10,8 +10,6 @@ def int_or_none(value):
 class Logger:
     def __init__(self, filepath: str = "log.txt"):
         self.filepath = filepath / "log.txt"
-
-        # Ensure the log file exists
         self.filepath.parent.mkdir(parents=True, exist_ok=True)
         self.filepath.touch(exist_ok=True)
 
