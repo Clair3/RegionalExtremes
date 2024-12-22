@@ -623,15 +623,18 @@ class RegionalExtremes:
         quantiles_xr,
         quantile_levels,
     ):
+        quantile_levels_combined = np.concatenate(
+            (quantile_levels[0], quantile_levels[1])
+        )
         masks = self._create_quantile_masks(
             deseasonalized,
             quantiles_xr,
-            quantile_levels=(LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL),
+            quantile_levels=quantile_levels,
         )
 
         extremes = xr.full_like(deseasonalized.astype(float), np.nan)
         for i, mask in enumerate(masks):
-            extremes = xr.where(mask, quantile_levels[i], extremes)
+            extremes = xr.where(mask, quantile_levels_combined[i], extremes)
         return extremes
 
     def _create_quantile_masks(self, data, quantiles, quantile_levels):
@@ -822,7 +825,7 @@ if __name__ == "__main__":
     args.start_year = 2000
     args.is_generic_xarray_dataset = False
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-12-20_14:38:27_deep_extreme_global"
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-12-21_13:11:46_deep_extreme_global"
 
     LOWER_QUANTILES_LEVEL = np.array([0.01, 0.025, 0.05])
     UPPER_QUANTILES_LEVEL = np.array([0.95, 0.975, 0.99])
