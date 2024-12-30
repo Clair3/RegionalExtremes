@@ -27,7 +27,7 @@ class Loader:
         Parameters:
         filepath (str): Path to the data file.
         """
-        projection_path = self.config.saving_path / "pca_projection_0.zarr"
+        projection_path = self.config.saving_path / "pca_projection_6.zarr"
         if not os.path.exists(projection_path):
             projection_path = self.config.saving_path / "pca_projection.zarr"
             if not os.path.exists(projection_path):
@@ -92,7 +92,7 @@ class Loader:
         return data
 
     def _load_eco_clusters(self):
-        eco_clusters_path = self.config.saving_path / "eco_clusters_0.zarr"
+        eco_clusters_path = self.config.saving_path / "eco_clusters.zarr"
         if not os.path.exists(eco_clusters_path):
             eco_clusters_path = self.config.saving_path / "bins_0.zarr"
             if not os.path.exists(eco_clusters_path):

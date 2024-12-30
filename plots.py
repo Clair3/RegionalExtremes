@@ -24,6 +24,7 @@ import numpy as np
 from scipy.stats import gaussian_kde
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.colors import Normalize
 
 from RegionalExtremesPackage.utils.config import InitializationConfig
 from RegionalExtremesPackage.utils import Loader, Saver
@@ -156,7 +157,7 @@ class PlotExtremes(InitializationConfig):
         """Map of the eco_clusters in RBG."""
         eco_clusters = self.loader._load_eco_clusters().T
         eco_clusters = eco_clusters.unstack("location")
-        print(eco_cluster)
+        print(eco_clusters)
 
         # Normalize the explained variance
         # Normalize the data to the range [0, 1]
@@ -653,6 +654,53 @@ class PlotExtremes(InitializationConfig):
         saving_path = self.saving_path / "3D_pca.png"
         plt.savefig(saving_path)
 
+        plt.show()
+        return
+
+    def plot_3D_pca_with_lat_lon_gradient(self):
+        # Load PCA projection
+        pca_projection, explained_variance = self.loader._load_pca_projection(
+            explained_variance=True
+        )
+        pca_projection = pca_projection.set_index(
+            location=["longitude", "latitude"]
+        ).unstack("location")
+
+        latitude, longitude = pca_projection.latitude, pca_projection.longitude
+
+        # Normalize latitude and longitude to [0, 1] for gradient mapping
+        norm_latitude = Normalize()(latitude)
+        norm_longitude = Normalize()(longitude)
+
+        # Map lat/lon to RGB using gradient
+        colors = np.stack(
+            (norm_latitude, norm_longitude, np.zeros_like(norm_latitude)), axis=1
+        )
+        # Example: latitude -> red, longitude -> green, fixed blue
+
+        # Plotting
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection="3d")
+
+        # Scatter plot
+        sc = ax.scatter(
+            pca_projection.isel(component=0).values.T,
+            pca_projection.isel(component=1).values.T,
+            pca_projection.isel(component=2).values.T,
+            c=colors,
+            s=10,
+            edgecolor="k",
+        )
+
+        # Adding labels and title
+        ax.set_xlabel("PCA Component 1")
+        ax.set_ylabel("PCA Component 2")
+        ax.set_zlabel("PCA Component 3")
+        ax.set_title("3D PCA Projection with Lat/Lon Gradient Colors")
+
+        # Save and show plot
+        saving_path = self.saving_path / "3D_pca_lat_lon_gradient.png"
+        plt.savefig(saving_path)
         plt.show()
         return
 
@@ -1247,7 +1295,7 @@ def calculate_rmse(truth, data):
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-10-18_10:05:59_eco_regional_2000_hr_50bins"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/RegionalExtremesPackage/experiments/2024-12-19_13:52:48_deep_extreme_HR"
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-12-21_13:11:46_deep_extreme_global"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/RegionalExtremesPackage/experiments/2024-12-19_13:52:48_deep_extreme_HR"
     config = InitializationConfig(args)
     # loader = Loader(config)
     # print(loader._load_pca_matrix().explained_variance_ratio_)
@@ -1255,8 +1303,9 @@ if __name__ == "__main__":
     # print(limits_eco_clusters)
     plot = PlotExtremes(config=config)
     # plot.map_eco_clusters()
+    plot.plot_3D_pca_with_lat_lon_gradient()
     # plot.plot_3D_pca()
-    plot.plot_3D_pca_with_density()
+    # plot.plot_3D_pca_with_density()
     # plot.plot_2D_component()
     # plot.map_component()
     # plot.map_eco_clusters()
@@ -1285,8 +1334,8 @@ if __name__ == "__main__":
     # indices = np.array([12, 1, 1])
     # plot.region(indices=indices)load_thresholds().__xarray_dataarray_variable__
 
-    plot.region_distribution()
-    plot.distribution_per_region()
+    # plot.region_distribution()
+    # plot.distribution_per_region()
     # plot.map_modis()
     # plot.map_eco_clusters()
     # plot.threshold_time_serie()

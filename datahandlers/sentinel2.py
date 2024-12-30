@@ -103,6 +103,12 @@ class EarthnetDatasetHandler(DatasetHandler):
         # row = "/full/1.3/mc_25.61_44.32_1.3_20231018_0.zarr"
         # Load data
         with xr.open_zarr(EARTHNET_FILEPATH + row) as ds:
+            transformer = Transformer.from_crs(
+                ds.attrs["spatial_ref"], 4326, always_xy=True
+            )
+            lon, lat = transformer.transform(ds.x.values, ds.y.values)
+            # Update the dataset with new coordinates
+            ds = ds.assign_coords({"x": ("x", lon), "y": ("y", lat)})
             ds = ds.rename({"x": "longitude", "y": "latitude"})
 
             if not process_entire_minicube:
@@ -136,10 +142,13 @@ class EarthnetDatasetHandler(DatasetHandler):
             transformer = Transformer.from_crs(
                 ds.attrs["spatial_ref"], 4326, always_xy=True
             )
+            print(ds.x.values, ds.y.values)
             lon, lat = transformer.transform(ds.x.values, ds.y.values)
+            print(lon, lat)
             # Update the dataset with new coordinates
             ds = ds.assign_coords({"x": ("x", lon), "y": ("y", lat)})
             ds = ds.rename({"x": "longitude", "y": "latitude"})
+            print(ds.latitude.values, ds.longitude.values)
 
             return ds
         except Exception as e:
