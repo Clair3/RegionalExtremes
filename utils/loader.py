@@ -27,7 +27,7 @@ class Loader:
         Parameters:
         filepath (str): Path to the data file.
         """
-        projection_path = self.config.saving_path / "pca_projection_6.zarr"
+        projection_path = self.config.saving_path / "pca_projection_0.zarr"
         if not os.path.exists(projection_path):
             projection_path = self.config.saving_path / "pca_projection.zarr"
             if not os.path.exists(projection_path):
@@ -80,15 +80,14 @@ class Loader:
         # Unstack location for longitude and latitude as dimensions
         if basepath is None:
             basepath = self.config.saving_path
-        path = basepath / f"{name}.zarr"  # f"{name}_{data.data_id}.zarr"
+        path = basepath / f"{name}.zarr"
         if not os.path.exists(path):
             printt(f"Data not found at {path}")
             return None
         data = xr.open_zarr(path)
         if location:
             data = cfxr.decode_compress_to_multi_index(data, "location")
-            # data = data.sel(location=~data.get_index("location").duplicated())
-        print(f"{name}.zarr loaded.")
+        printt(f"{name}.zarr loaded.")
         return data
 
     def _load_eco_clusters(self):

@@ -2,48 +2,20 @@
 # plot file to plot data, experiments etc.
 # Draft, the code is not made to be shared and reused!
 ###
-import os
-import sys
-from pathlib import Path
-
-sys.path.append(str(Path(__file__).resolve().parent.parent))
+from common_imports import *
 
 
-import xarray as xr
-import numpy as np
-import matplotlib
-import datetime
-
-import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap, BoundaryNorm
-from matplotlib.widgets import Slider
-import cartopy
-import random
-
-import numpy as np
-from scipy.stats import gaussian_kde
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-from matplotlib.colors import Normalize
-
-from RegionalExtremesPackage.utils.config import InitializationConfig
-from RegionalExtremesPackage.utils import Loader, Saver
-from main import parser_arguments
-from RegionalExtremesPackage.utils.logger import printt
-from RegionalExtremesPackage.datahandlers import create_handler
-
-
-class PlotExtremes(InitializationConfig):
-    def __init__(
-        self,
-        config: InitializationConfig,
-    ):
+class Plots(ABC):
+    def __init__(self, config: InitializationConfig, minicube_name=None):
         """
-        Initialize PlotExtremes.
+        Initialize Plots.
 
         """
         self.config = config
-        self.saving_path = self.config.saving_path / "plots"
+        if minicube_name is not None:
+            self.saving_path = self.config.saving_path / minicube_name / "plots"
+        else:
+            self.saving_path = self.config.saving_path / "plots"
         self.saving_path.mkdir(parents=True, exist_ok=True)
         self.loader = Loader(config)
 
@@ -657,53 +629,6 @@ class PlotExtremes(InitializationConfig):
         plt.show()
         return
 
-    def plot_3D_pca_with_lat_lon_gradient(self):
-        # Load PCA projection
-        pca_projection, explained_variance = self.loader._load_pca_projection(
-            explained_variance=True
-        )
-        pca_projection = pca_projection.set_index(
-            location=["longitude", "latitude"]
-        ).unstack("location")
-
-        latitude, longitude = pca_projection.latitude, pca_projection.longitude
-
-        # Normalize latitude and longitude to [0, 1] for gradient mapping
-        norm_latitude = Normalize()(latitude)
-        norm_longitude = Normalize()(longitude)
-
-        # Map lat/lon to RGB using gradient
-        colors = np.stack(
-            (norm_latitude, norm_longitude, np.zeros_like(norm_latitude)), axis=1
-        )
-        # Example: latitude -> red, longitude -> green, fixed blue
-
-        # Plotting
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection="3d")
-
-        # Scatter plot
-        sc = ax.scatter(
-            pca_projection.isel(component=0).values.T,
-            pca_projection.isel(component=1).values.T,
-            pca_projection.isel(component=2).values.T,
-            c=colors,
-            s=10,
-            edgecolor="k",
-        )
-
-        # Adding labels and title
-        ax.set_xlabel("PCA Component 1")
-        ax.set_ylabel("PCA Component 2")
-        ax.set_zlabel("PCA Component 3")
-        ax.set_title("3D PCA Projection with Lat/Lon Gradient Colors")
-
-        # Save and show plot
-        saving_path = self.saving_path / "3D_pca_lat_lon_gradient.png"
-        plt.savefig(saving_path)
-        plt.show()
-        return
-
     def plot_3D_pca_with_density(self):
         pca_projection, explained_variance = self.loader._load_pca_projection(
             explained_variance=True
@@ -762,6 +687,7 @@ class PlotExtremes(InitializationConfig):
 
         # Adjust layout and save
         plt.tight_layout()
+        print(self.saving_path)
         saving_path = self.saving_path / "3D_pca_with_side_density.png"
         plt.savefig(saving_path, dpi=300)
         plt.show()
@@ -1295,13 +1221,13 @@ def calculate_rmse(truth, data):
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-12-21_13:11:46_deep_extreme_global"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/RegionalExtremesPackage/experiments/2024-12-19_13:52:48_deep_extreme_HR"
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-12-30_11:15:47_deep_extreme_global"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/RegionalExtremesPackage/experiments/2024-12-19_13:52:48_deep_extreme_HR"
     config = InitializationConfig(args)
     # loader = Loader(config)
     # print(loader._load_pca_matrix().explained_variance_ratio_)
     # limits_eco_clusters = loader._load_limits_eco_clusters()
     # print(limits_eco_clusters)
-    plot = PlotExtremes(config=config)
+    plot = Plots(config=config)
     # plot.map_eco_clusters()
     plot.plot_3D_pca_with_lat_lon_gradient()
     # plot.plot_3D_pca()

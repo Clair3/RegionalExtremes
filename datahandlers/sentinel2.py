@@ -118,7 +118,6 @@ class EarthnetDatasetHandler(DatasetHandler):
                     return None
             else:
                 self.variable_name = ds.attrs["data_id"]
-                self.saver.update_saving_path(ds.attrs["data_id"])
                 # Filter based on vegetation occurrence
                 if not self._has_sufficient_vegetation(ds):
                     return None
@@ -129,6 +128,8 @@ class EarthnetDatasetHandler(DatasetHandler):
             # Check for excessive missing data
             if self._has_excessive_nan(masked_evi):
                 return None
+            if process_entire_minicube:
+                self.saver.update_saving_path(ds.attrs["data_id"])
             return masked_evi
 
     def _load_data(self, row):
@@ -273,10 +274,10 @@ class EarthnetDatasetHandler(DatasetHandler):
             # Find where the value is smaller than both neighbors
             is_smaller = (series < left_neighbor) & (series < right_neighbor)
             masked_series = xr.where(is_smaller, float("nan"), series)
-            # mean_neighbors = masked_series.rolling(
-            #     time=5, center=True, min_periods=1
-            # ).mean()
-            return masked_series  # xr.where(is_smaller, mean_neighbors, series)
+            mean_neighbors = masked_series.rolling(
+                time=5, center=True, min_periods=1
+            ).mean()
+            return xr.where(is_smaller, mean_neighbors, series)
 
         def fill_nans(series: xr.DataArray, window: int) -> xr.DataArray:
             """Fill NaN values using rolling mean."""

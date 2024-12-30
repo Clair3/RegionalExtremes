@@ -68,7 +68,7 @@ class Saver:
                 "location": pca_projection.location,
                 "component": component,
             },
-            name="pca",
+            name="pca_projection",
         )
 
         # Explained variance for each component
