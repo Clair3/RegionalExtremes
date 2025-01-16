@@ -13,7 +13,10 @@ class Plots(ABC):
         """
         self.config = config
         if minicube_name is not None:
-            self.saving_path = self.config.saving_path / minicube_name / "plots"
+            self.config.saving_path = self.config.saving_path / minicube_name
+            self.saving_path = self.config.saving_path / "plots"
+
+            self.minicube_name = minicube_name
         else:
             self.saving_path = self.config.saving_path / "plots"
         self.saving_path.mkdir(parents=True, exist_ok=True)

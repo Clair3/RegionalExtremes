@@ -45,7 +45,7 @@ class PlotsSentinel2(Plots):
             longitudes,
             latitudes,
             color=rgb_colors,
-            s=1,  # Size of the point
+            s=0.1,  # Size of the point
             transform=ccrs.PlateCarree(),
         )
 
@@ -115,18 +115,18 @@ class PlotsSentinel2(Plots):
         plt.show()
         return
 
-    def plot_msc(self):
+    def plot_msc(self, minicube_name=""):
         # Load and preprocess the time series dataset
-        time_series_data = self.loader._load_data("msc")
+        data = self.loader._load_data("msc")
 
-        # Randomly select 50 locations
-        random_locations = np.random.choice(
-            time_series_data.location.values, size=100, replace=False
-        )
-        subset = time_series_data.sel(location=random_locations)
+        # Randomly select n indices from the location dimension
+        random_indices = np.random.choice(len(data.location), size=500, replace=False)
+
+        # Use isel to select the subset of data based on the random indices
+        subset = data.isel(location=random_indices)
 
         data = self.loader._load_pca_projection()
-        data = data.sel(location=subset.location)
+        data = data.isel(location=random_indices)
 
         # Normalize the explained variance
         rgb_colors = self.normalize(data)
@@ -144,10 +144,10 @@ class PlotsSentinel2(Plots):
             )
 
         # Add labels and optional legend
-        plt.title("MSC Time Series for 50 Random Locations Colored by Location")
+        plt.title("MSC Time Series for 50 Random Locations Colored by PCA Components")
         plt.xlabel("Day of Year")
         plt.ylabel("MSC Value")
-        saving_path = self.saving_path / "msc.png"
+        saving_path = self.saving_path / "msc1.png"
         plt.savefig(saving_path)
         plt.show()
 
@@ -162,11 +162,13 @@ class PlotsSentinel2(Plots):
         fig, ax = plt.subplots(figsize=(10, 10))
         # adjust the plot
         plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05)
-
+        print(data.longitude.values.shape)
+        print(data.latitude.values.shape)
+        print(rgb_colors.shape)
         ax.pcolormesh(
             data.longitude.values,
             data.latitude.values,
-            rgb_colors,
+            rgb_colors.T,
         )
         # Add a title
         plt.title("Eco-clusters")
@@ -181,8 +183,8 @@ if __name__ == "__main__":
     args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-12-30_11:19:04_deep_extreme_global"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/RegionalExtremesPackage/experiments/2024-12-19_13:52:48_deep_extreme_HR"
     config = InitializationConfig(args)
     plot = PlotsSentinel2(config=config, minicube_name="mc_25.61_44.32_1.3_20231018_0")
-    plot.plot_minicube_eco_clusters("mc_25.61_44.32_1.3_20231018_0")
+    # plot.plot_minicube_eco_clusters("mc_25.61_44.32_1.3_20231018_0")
     # plot.map_component()
     # plot.map_component(colored_by_eco_cluster=False)
     # plot.plot_msc()
-    # plot.plot_3D_pca_with_lat_lon_gradient()
+    plot.plot_3D_pca_with_lat_lon_gradient()

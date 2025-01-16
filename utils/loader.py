@@ -1,4 +1,5 @@
 from .common_imports import *
+import rioxarray as rio
 
 
 class Loader:
@@ -27,6 +28,7 @@ class Loader:
         Parameters:
         filepath (str): Path to the data file.
         """
+        print(self.config.saving_path)
         projection_path = self.config.saving_path / "pca_projection_0.zarr"
         if not os.path.exists(projection_path):
             projection_path = self.config.saving_path / "pca_projection.zarr"
@@ -37,7 +39,7 @@ class Loader:
         data = xr.open_zarr(projection_path)
         # data = data.stack(location=["longitude", "latitude"])
         data = cfxr.decode_compress_to_multi_index(data, "location")
-        pca_projection = data.pca.transpose("location", "component", ...)
+        pca_projection = data.pca_projection.transpose("location", "component", ...)
         # Remove NaNs
         condition = ~pca_projection.isnull().any(dim="component").compute()
         pca_projection = pca_projection.where(condition, drop=True)
@@ -148,3 +150,62 @@ class Loader:
             return None
         min_max_data = xr.open_zarr(min_max_data_path)
         return min_max_data
+
+    def _load_and_add_landcover(self, filepath, reference_minicube):
+        # minicube_name = "mc_25.61_44.32_1.3_20231018_0.zarr"
+        minicube_name = os.path.basename(filepath)
+
+        # if minicube is None:
+        #     # grouped_reproduced_cube = xr.open_zarr(os.path.join(out_dir, f'test_4_{mc_name}'), mask_and_scale=True).compute()
+        #     reference_cube = xr.open_zarr(
+        #         os.path.join(excubes_path, versions[-1], mc_name), mask_and_scale=True
+        #     )
+        # grouped_reproduced_cube
+
+        ESA_WC_ATTRS = {
+            # 'wavelength' :  ,
+            "dims": ["y", "x"],
+            "flag_meanings": [
+                "Tree cover",
+                "Shrubland",
+                "Grassland",
+                "Cropland",
+                "Built-up",
+                "Bare / sparse vegetation",
+                "Snow and ice",
+                "Permanent water bodies",
+                "Herbaceous wetland",
+                "Mangroves",
+                "Moss and lichen",
+            ],
+            "flag_values": [10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100],
+            # 'AREA_OR_POINT' :   ,
+            # 'add_offset' :  ,
+            "dtype": "uint8",
+            "long_name": "ESA WorldCover product 2021",
+            "metadata": {
+                "color_bar_name": "LC Class",
+                "color_value_max": 100,
+                "color_value_min": 10,
+                "keywords": ["ESA WorldCover", "Classes"],
+            },
+            "name": "WorldCover21",
+            # 'scale_factor' :  1,
+            "sources": [
+                "https://planetarycomputer.microsoft.com/api/stac/v1/collections/esa-worldcover"
+            ],
+            "units": "n.a.",
+            # '_FillValue' :    0,
+            # 'NoData': 0,
+        }
+
+        worldcover_name = (
+            "/Net/Groups/BGI/work_4/scratch/mzehner/DE_cube_redo/Worldcover/extended_"
+            + minicube_name.rsplit(".", 1)[0]
+            + "_esa_wc_only.tif"
+        )
+
+        data_wc = rio.open_rasterio(worldcover_name).squeeze()
+        data_wc.attrs = ESA_WC_ATTRS
+        reference_minicube["landcover"] = data_wc
+        return reference_minicube
