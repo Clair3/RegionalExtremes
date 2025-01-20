@@ -115,7 +115,42 @@ class PlotsSentinel2(Plots):
         plt.show()
         return
 
-    def plot_msc(self, minicube_name=""):
+    def plot_3D_pca_landcover(self):
+        # Load PCA projection
+        pca_projection = self.loader._load_pca_projection()
+        pca_projection = pca_projection.set_index(
+            location=["longitude", "latitude"]
+        ).unstack("location")
+
+        landcover = self.loader._load_data("landcover")
+
+        # Plotting
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection="3d")
+
+        # Scatter plot
+        sc = ax.scatter(
+            pca_projection.isel(component=0).values.T,
+            pca_projection.isel(component=1).values.T,
+            pca_projection.isel(component=2).values.T,
+            c=landcover.values,
+            s=10,
+            edgecolor="k",
+        )
+
+        # Adding labels and title
+        ax.set_xlabel("PCA Component 1")
+        ax.set_ylabel("PCA Component 2")
+        ax.set_zlabel("PCA Component 3")
+        ax.set_title("3D PCA Projection with Lat/Lon Gradient Colors")
+
+        # Save and show plot
+        saving_path = self.saving_path / "landcover.png"
+        plt.savefig(saving_path)
+        plt.show()
+        return
+
+    def plot_msc(self):
         # Load and preprocess the time series dataset
         data = self.loader._load_data("msc")
 
@@ -147,7 +182,7 @@ class PlotsSentinel2(Plots):
         plt.title("MSC Time Series for 50 Random Locations Colored by PCA Components")
         plt.xlabel("Day of Year")
         plt.ylabel("MSC Value")
-        saving_path = self.saving_path / "msc1.png"
+        saving_path = self.saving_path / "msc.png"
         plt.savefig(saving_path)
         plt.show()
 
@@ -180,11 +215,13 @@ class PlotsSentinel2(Plots):
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-12-30_11:19:04_deep_extreme_global"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/RegionalExtremesPackage/experiments/2024-12-19_13:52:48_deep_extreme_HR"
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-16_12:19:12_deep_extreme_global"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/RegionalExtremesPackage/experiments/2024-12-19_13:52:48_deep_extreme_HR"
     config = InitializationConfig(args)
-    plot = PlotsSentinel2(config=config, minicube_name="mc_25.61_44.32_1.3_20231018_0")
+    plot = PlotsSentinel2(
+        config=config
+    )  # , minicube_name="mc_25.61_44.32_1.3_20231018_0")
     # plot.plot_minicube_eco_clusters("mc_25.61_44.32_1.3_20231018_0")
     # plot.map_component()
     # plot.map_component(colored_by_eco_cluster=False)
     # plot.plot_msc()
-    plot.plot_3D_pca_with_lat_lon_gradient()
+    plot.plot_3D_pca_landcover()

@@ -58,8 +58,7 @@ class EarthnetDatasetHandler(DatasetHandler):
             i += 1
             samples_indice = self.sample_locations(1)
             data = self.load_minicube(samples_indice[0], process_entire_minicube=True)
-        data = data.stack(location=("longitude", "latitude"))
-        self.data = data.to_dataset(name=self.variable_name)
+        self.data = data.stack(location=("longitude", "latitude"))
         return self.data
 
     def sample_locations(self, n_samples):

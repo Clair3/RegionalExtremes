@@ -154,14 +154,6 @@ class Loader:
     def _load_and_add_landcover(self, filepath, reference_minicube):
         # minicube_name = "mc_25.61_44.32_1.3_20231018_0.zarr"
         minicube_name = os.path.basename(filepath)
-
-        # if minicube is None:
-        #     # grouped_reproduced_cube = xr.open_zarr(os.path.join(out_dir, f'test_4_{mc_name}'), mask_and_scale=True).compute()
-        #     reference_cube = xr.open_zarr(
-        #         os.path.join(excubes_path, versions[-1], mc_name), mask_and_scale=True
-        #     )
-        # grouped_reproduced_cube
-
         ESA_WC_ATTRS = {
             # 'wavelength' :  ,
             "dims": ["y", "x"],
