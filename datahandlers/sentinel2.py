@@ -45,6 +45,7 @@ class EarthnetDatasetHandler(DatasetHandler):
             location=~self.data.get_index("location").duplicated()
         )
         self.data = self.data.drop("band")
+        self.data = self.data.chunk({"time": -1, "latitude": 10, "longitude": 10})
         self.saver._save_data(self.data, "temp_file")
         self.data = self.loader._load_data("temp_file")
         printt("Dataset loaded.")
@@ -58,7 +59,10 @@ class EarthnetDatasetHandler(DatasetHandler):
             i += 1
             samples_indice = self.sample_locations(1)
             data = self.load_minicube(samples_indice[0], process_entire_minicube=True)
-        self.data = data.stack(location=("longitude", "latitude"))
+        self.data = data.stack(location=("longitude", "latitude")).to_dataset(
+            name=self.variable_name
+        )
+        self.data = self.data  # .isel(location=slice(0, 100))
         return self.data
 
     def sample_locations(self, n_samples):
@@ -104,41 +108,44 @@ class EarthnetDatasetHandler(DatasetHandler):
         # minicube_path = "/full/1.3/mc_25.61_44.32_1.3_20231018_0.zarr"
         # Load data
         filepath = EARTHNET_FILEPATH + minicube_path
-        ds = xr.open_zarr(filepath, mask_and_scale=True)
-        # Add landcover
-        ds = self.loader._load_and_add_landcover(filepath, ds)
-        # Transform UTM to lat/lon
-        ds = self._transform_utm_to_latlon(ds)
+        with xr.open_zarr(filepath, chunks="auto") as ds:
+            # ds = xr.open_zarr(filepath, mask_and_scale=True)
+            # Add landcover
+            ds = self.loader._load_and_add_landcover(filepath, ds)
+            # Transform UTM to lat/lon
+            ds = self._transform_utm_to_latlon(ds)
 
-        if not process_entire_minicube:
-            # Select a random vegetation location
-            ds = self._get_random_vegetation_pixel_series(ds)
-            if ds is None:
+            if not process_entire_minicube:
+                # Select a random vegetation location
+                ds = self._get_random_vegetation_pixel_series(ds)
+                if ds is None:
+                    return None
+            else:
+                self.variable_name = ds.attrs["data_id"]
+                # Filter based on vegetation occurrence
+                if not self._has_sufficient_vegetation(ds):
+                    return None
+            # Calculate EVI and apply cloud/vegetation mask
+            evi = self._calculate_evi(ds)
+            masked_evi = self._apply_masks(ds, evi)
+            # data = xr.Dataset(
+            #     data_vars={
+            #         f"{self.variable_name}": masked_evi,  # Adding 'evi' as a variable
+            #         "landcover": ds[
+            #             "landcover"
+            #         ],  # Adding 'landcover' as another variable
+            #     }
+            # )
+
+            # ds.close()
+
+            # Check for excessive missing data
+            if self._has_excessive_nan(masked_evi):
                 return None
-        else:
-            self.variable_name = ds.attrs["data_id"]
-            # Filter based on vegetation occurrence
-            if not self._has_sufficient_vegetation(ds):
-                return None
-        # Calculate EVI and apply cloud/vegetation mask
-        evi = self._calculate_evi(ds)
-        masked_evi = self._apply_masks(ds, evi)
-        data = xr.Dataset(
-            data_vars={
-                f"{self.variable_name}": masked_evi,  # Adding 'evi' as a variable
-                "landcover": ds["landcover"],  # Adding 'landcover' as another variable
-            }
-        )
+            if process_entire_minicube:
+                self.saver.update_saving_path(ds.attrs["data_id"])
 
-        ds.close()
-
-        # Check for excessive missing data
-        if self._has_excessive_nan(masked_evi):
-            return None
-        if process_entire_minicube:
-            self.saver.update_saving_path(ds.attrs["data_id"])
-
-        return data  # masked_evi
+            return masked_evi  # data
 
     def _transform_utm_to_latlon(self, ds):
         transformer = Transformer.from_crs(
@@ -277,13 +284,6 @@ class EarthnetDatasetHandler(DatasetHandler):
             if not isinstance(data, xr.DataArray):
                 raise TypeError("Input must be an xarray DataArray")
 
-            # Step 1: Initial rolling window maximum
-            # clean_data = (
-            #     data.rolling(time=rolling_window, center=True, min_periods=1)
-            #     .construct("window_dim")
-            #     .max(dim="window_dim")
-            # )
-
             # Step 2: Remove local minima
             clean_data = remove_local_minima(data)
 
@@ -383,14 +383,13 @@ class EarthnetDatasetHandler(DatasetHandler):
             self._dataset_specific_loading()
         self.filter_dataset_specific()  # useless, legacy...
 
-        self.saver._save_data(self.data["landcover"], "landcover")
+        # self.saver._save_data(self.data["landcover"], "landcover")
         self.data = self.data[self.variable_name]
         printt(
             f"Computation on the entire dataset. {self.data.sizes['location']} samples"
         )
 
         self.data, self.msc = self.apply_cleaning_pipeline(self.data)
-
         self.msc = self.msc.transpose("location", "dayofyear", ...)
         self.saver._save_data(self.msc, "msc")
 
@@ -398,8 +397,12 @@ class EarthnetDatasetHandler(DatasetHandler):
         #     # Compute the tasks in parallel (this will trigger Dask's parallel computation)
         #     data = compute(*data, scheduler="processes")  # , scheduler="processes"
 
+        self.msc = self.msc.persist()
         if return_time_serie:
+            self.data = self.data.persist()
             self.data = self.data.transpose("location", "time", ...)
+            printt("returning time serie")
             return self.msc, self.data
         else:
+            printt("returning msc")
             return self.msc

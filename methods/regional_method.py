@@ -285,9 +285,18 @@ class RegionalExtremes:
             # Parse the label back into its components
             comp_values = list(map(int, eco_cluster_label.split("_")))
 
+            # Ensure the components are indexed
+            self.thresholds = self.thresholds.set_index(
+                cluster=["component_1", "component_2", "component_3"]
+            )
+
             # Select thresholds corresponding to the parsed eco-cluster components
             thresholds_grp = self.thresholds.sel(
-                comp_1=comp_values[0], comp_2=comp_values[1], comp_3=comp_values[2]
+                cluster=dict(
+                    component_1=comp_values[0],
+                    component_2=comp_values[1],
+                    component_3=comp_values[2],
+                )
             )
             return thresholds_grp
 
@@ -297,7 +306,7 @@ class RegionalExtremes:
                 grp,
                 map_thresholds_to_clusters(grp),
                 (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL),
-                return_only_thresholds=compute_only_thresholds,
+                # return_only_thresholds=compute_only_thresholds,
             )
         )
 
@@ -493,8 +502,23 @@ class RegionalExtremes:
             list: List of boolean masks for each quantile level.
         """
         LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL = quantile_levels
-        lower_quantiles = quantiles.sel(quantile=LOWER_QUANTILES_LEVEL)
-        upper_quantiles = quantiles.sel(quantile=UPPER_QUANTILES_LEVEL)
+        print(quantile_levels)
+        print(quantiles)
+        print(quantiles["quantile"])
+        print(LOWER_QUANTILES_LEVEL)
+        # Ensure types align
+        print("Quantiles:", quantiles["quantile"].values)
+        print("Expected lower levels:", LOWER_QUANTILES_LEVEL)
+
+        # Match the coordinate type if needed
+        if quantiles["quantile"].dtype != LOWER_QUANTILES_LEVEL.dtype:
+            LOWER_QUANTILES_LEVEL = LOWER_QUANTILES_LEVEL.astype(
+                quantiles["quantile"].dtype
+            )
+
+        lower_quantiles = quantiles.sel(quantile_levels=LOWER_QUANTILES_LEVEL)
+        upper_quantiles = quantiles.sel(quantile_levels=UPPER_QUANTILES_LEVEL)
+        print(lower_quantiles)
         masks = [
             data < lower_quantiles[0],
             *[

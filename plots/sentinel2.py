@@ -122,31 +122,67 @@ class PlotsSentinel2(Plots):
             location=["longitude", "latitude"]
         ).unstack("location")
 
-        landcover = self.loader._load_data("landcover")
+        landcover = self.loader._load_data("landcover").landcover
 
-        # Plotting
-        fig = plt.figure()
+        # Define landcover flag values and meanings
+        flag_meanings = [
+            "Tree cover",
+            "Shrubland",
+            "Grassland",
+            "Cropland",
+            "Built-up",
+            "Bare / sparse vegetation",
+            "Snow and ice",
+            "Permanent water bodies",
+            "Herbaceous wetland",
+            "Mangroves",
+            "Moss and lichen",
+        ]
+        flag_values = [10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100]
+
+        # Create a colormap and a normalization for the land cover values
+        cmap = plt.cm.get_cmap("tab20", len(flag_values) + 1)
+        boundaries = flag_values + [110]
+        norm = plt.matplotlib.colors.BoundaryNorm(boundaries=boundaries, ncolors=cmap.N)
+
+        # Calculate the tick positions as the midpoint of each bin
+        tick_positions = [
+            (boundaries[i] + boundaries[i + 1]) / 2 for i in range(len(flag_values))
+        ]
+
+        # Create the 3D scatter plot
+        fig = plt.figure(figsize=(10, 8))
         ax = fig.add_subplot(111, projection="3d")
 
-        # Scatter plot
         sc = ax.scatter(
             pca_projection.isel(component=0).values.T,
             pca_projection.isel(component=1).values.T,
             pca_projection.isel(component=2).values.T,
             c=landcover.values,
+            cmap=cmap,
+            norm=norm,
             s=10,
             edgecolor="k",
         )
 
-        # Adding labels and title
+        # Add colorbar
+        cbar = plt.colorbar(sc, ax=ax, pad=0.05, aspect=8)  # Adjust padding and aspect
+        cbar.set_ticks(tick_positions)
+        cbar.set_ticklabels(flag_meanings)
+        cbar.ax.tick_params(labelsize=10)  # Adjust tick label size
+        cbar.set_label(
+            "Land Cover", fontsize=12, rotation=270, labelpad=20
+        )  # Adjust labelpad
+
+        # Add labels and title
         ax.set_xlabel("PCA Component 1")
         ax.set_ylabel("PCA Component 2")
         ax.set_zlabel("PCA Component 3")
-        ax.set_title("3D PCA Projection with Lat/Lon Gradient Colors")
+        ax.set_title("3D PCA Projection with Landcover Colors")
 
-        # Save and show plot
+        # Save and show the plot
         saving_path = self.saving_path / "landcover.png"
-        plt.savefig(saving_path)
+        plt.savefig(saving_path, bbox_inches="tight")  # Ensures no text is cut off
         plt.show()
         return
 
@@ -155,7 +191,8 @@ class PlotsSentinel2(Plots):
         data = self.loader._load_data("msc")
 
         # Randomly select n indices from the location dimension
-        random_indices = np.random.choice(len(data.location), size=500, replace=False)
+        print(len(data.location))
+        random_indices = np.random.choice(len(data.location), size=1000, replace=False)
 
         # Use isel to select the subset of data based on the random indices
         subset = data.isel(location=random_indices)
@@ -179,10 +216,10 @@ class PlotsSentinel2(Plots):
             )
 
         # Add labels and optional legend
-        plt.title("MSC Time Series for 50 Random Locations Colored by PCA Components")
+        plt.title("MSC Time Series Colored by PCA Components")
         plt.xlabel("Day of Year")
         plt.ylabel("MSC Value")
-        saving_path = self.saving_path / "msc.png"
+        saving_path = self.saving_path / "msc4.png"
         plt.savefig(saving_path)
         plt.show()
 
@@ -197,9 +234,6 @@ class PlotsSentinel2(Plots):
         fig, ax = plt.subplots(figsize=(10, 10))
         # adjust the plot
         plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05)
-        print(data.longitude.values.shape)
-        print(data.latitude.values.shape)
-        print(rgb_colors.shape)
         ax.pcolormesh(
             data.longitude.values,
             data.latitude.values,
@@ -217,11 +251,9 @@ if __name__ == "__main__":
 
     args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-16_12:19:12_deep_extreme_global"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/RegionalExtremesPackage/experiments/2024-12-19_13:52:48_deep_extreme_HR"
     config = InitializationConfig(args)
-    plot = PlotsSentinel2(
-        config=config
-    )  # , minicube_name="mc_25.61_44.32_1.3_20231018_0")
+    plot = PlotsSentinel2(config=config, minicube_name="mc_25.61_44.32_1.3_20231018_0")
     # plot.plot_minicube_eco_clusters("mc_25.61_44.32_1.3_20231018_0")
     # plot.map_component()
     # plot.map_component(colored_by_eco_cluster=False)
-    # plot.plot_msc()
-    plot.plot_3D_pca_landcover()
+    plot.plot_msc()
+    # plot.plot_3D_pca_landcover()

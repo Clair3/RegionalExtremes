@@ -126,7 +126,7 @@ if __name__ == "__main__":
     args.start_year = 2000
     args.is_generic_xarray_dataset = False
 
-    # args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-16_12:19:12_deep_extreme_global"
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-16_12:19:12_deep_extreme_global"
 
     LOWER_QUANTILES_LEVEL = np.array([0.01, 0.025, 0.05])
     UPPER_QUANTILES_LEVEL = np.array([0.95, 0.975, 0.99])
