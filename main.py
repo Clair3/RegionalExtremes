@@ -126,15 +126,15 @@ if __name__ == "__main__":
     args.start_year = 2000
     args.is_generic_xarray_dataset = False
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-16_12:19:12_deep_extreme_global"
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-23_09:57:37_deep_extreme_global"
 
     LOWER_QUANTILES_LEVEL = np.array([0.01, 0.025, 0.05])
     UPPER_QUANTILES_LEVEL = np.array([0.95, 0.975, 0.99])
 
     if args.method == "regional":
         # Apply the regional extremes method
-        # regional_extremes_method(args, (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
-        regional_extremes_minicube(args, (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
+        regional_extremes_method(args, (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
+        # regional_extremes_minicube(args, (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
     elif args.method == "local":
         # Apply the uniform threshold method
         local_extremes_method(args, (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))

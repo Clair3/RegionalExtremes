@@ -4,23 +4,87 @@ from common_imports import *
 from RegionalExtremesPackage.plots.base import Plots
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+import glob
+import rioxarray as rio
+
+plt.rcParams.update({"font.size": 20})
 
 
 class PlotsSentinel2(Plots):
+
     def normalize(self, data):
         # Normalize the explained variance
         def _normalization(index):
             band = data.isel(component=index).values
-            return (band - np.nanmin(band)) / (np.nanmax(band) - np.nanmin(band))
+            band_min = np.quantile(band, 0.02)
+            band_max = np.quantile(band, 0.98)
+            return np.clip((band - band_min) / (band_max - band_min), 0, 1)
+            # return (band - np.nanmin(band)) / (np.nanmax(band) - np.nanmin(band))
 
-        normalized_red = _normalization(0)  # Red is the first component
-        normalized_green = _normalization(1)  # Green is the second component
+        normalized_red = _normalization(1)  # Red is the first component
+        normalized_green = _normalization(0)  # Green is the second component
         normalized_blue = _normalization(2)  # blue is the third component
 
         # Stack the components into a 3D array
         return np.stack((normalized_red, normalized_green, normalized_blue), axis=-1)
 
     def map_component(self, colored_by_eco_cluster=True):
+        if colored_by_eco_cluster:
+            data = self.loader._load_data("eco_clusters")
+            data = data.eco_clusters
+        else:
+            data, explained_variance = self.loader._load_pca_projection(
+                explained_variance=True
+            )
+
+        longitudes, latitudes = zip(*data.location.values)
+        longitudes = np.array(longitudes)
+        latitudes = np.array(latitudes)
+
+        # Normalize the explained variance
+        rgb_colors = self.normalize(data)
+
+        # Compute bounds with a small margin
+        margin = 0.1  # Adjust the margin as needed
+        min_lon, max_lon = longitudes.min() - margin, longitudes.max() + margin
+        min_lat, max_lat = latitudes.min() - margin, latitudes.max() + margin
+
+        # Create the plot
+        fig, ax = plt.subplots(
+            figsize=(10, 8), subplot_kw={"projection": ccrs.PlateCarree()}
+        )
+
+        ax.scatter(
+            longitudes,
+            latitudes,
+            color=rgb_colors,
+            s=1,  # Size of the point
+            transform=ccrs.PlateCarree(),
+        )
+
+        # Set the extent of the map
+        ax.set_extent([min_lon, max_lon, min_lat, max_lat], crs=ccrs.PlateCarree())
+
+        # Add geographical features
+        ax.coastlines()
+        ax.add_feature(cfeature.BORDERS, linestyle=":")
+        ax.add_feature(cfeature.LAND, edgecolor="black")
+        ax.add_feature(cfeature.OCEAN)
+
+        # Adjust the layout
+        plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05)
+        if colored_by_eco_cluster:
+            # Add a title
+            plt.title("Colored by eco-clusters", fontsize=16)
+            map_saving_path = self.saving_path / "map_eco_clusters.png"
+        else:
+            plt.title("Colored by pca component", fontsize=16)
+            map_saving_path = self.saving_path / "map_pca.png"
+        plt.savefig(map_saving_path)
+        # Show the plot
+        plt.show()
+
+    """def map_component(self, colored_by_eco_cluster=True):
         if colored_by_eco_cluster:
             data = self.loader._load_data("eco_clusters")
             data = data.eco_clusters
@@ -45,7 +109,7 @@ class PlotsSentinel2(Plots):
             longitudes,
             latitudes,
             color=rgb_colors,
-            s=0.1,  # Size of the point
+            s=1,  # Size of the point
             transform=ccrs.PlateCarree(),
         )
 
@@ -66,7 +130,7 @@ class PlotsSentinel2(Plots):
             map_saving_path = self.saving_path / "map_pca.png"
         plt.savefig(map_saving_path)
         # Show the plot
-        plt.show()
+        plt.show()"""
 
     def plot_3D_pca_with_lat_lon_gradient(self):
         # Load PCA projection
@@ -181,67 +245,250 @@ class PlotsSentinel2(Plots):
         ax.set_title("3D PCA Projection with Landcover Colors")
 
         # Save and show the plot
-        saving_path = self.saving_path / "landcover.png"
+        saving_path = self.saving_path / "3D_pca_landcover.png"
         plt.savefig(saving_path, bbox_inches="tight")  # Ensures no text is cut off
         plt.show()
         return
 
-    def plot_msc(self):
+    def plot_msc(self, colored_by_eco_cluster=False):
         # Load and preprocess the time series dataset
         data = self.loader._load_data("msc")
+        print(data.msc.values.max())
+        print(data.msc.values.min())
 
         # Randomly select n indices from the location dimension
         print(len(data.location))
-        random_indices = np.random.choice(len(data.location), size=1000, replace=False)
+        random_indices = np.random.choice(
+            len(data.location), size=len(data.location), replace=False
+        )
 
         # Use isel to select the subset of data based on the random indices
         subset = data.isel(location=random_indices)
-
-        data = self.loader._load_pca_projection()
-        data = data.isel(location=random_indices)
+        if colored_by_eco_cluster:
+            cluster = self.loader._load_data("eco_clusters")
+            cluster = cluster.eco_clusters
+        else:
+            cluster = self.loader._load_pca_projection()
+        cluster = cluster.isel(location=random_indices)
 
         # Normalize the explained variance
-        rgb_colors = self.normalize(data)
+        rgb_colors = self.normalize(cluster)
 
         # Plot the time series with corresponding colors
         fig, ax = plt.subplots(figsize=(15, 10))
-        # plt.figure(figsize=(15, 10))
         for i, loc in enumerate(subset.location):
             ax.plot(
                 subset.dayofyear,
                 subset.msc.isel(location=i),
                 color=tuple(rgb_colors[i]),
-                label=f"Loc: {loc}",
+                # label=f"Loc: {loc}",
                 alpha=0.8,
             )
 
+        # Calculate and plot the mean MSC across all locations
+        mean_msc = subset.msc.mean(dim="location")
+        ax.plot(
+            subset.dayofyear,
+            mean_msc,
+            color="black",
+            linestyle="--",
+            linewidth=2,
+            label="Mean MSC",
+        )
+
         # Add labels and optional legend
-        plt.title("MSC Time Series Colored by PCA Components")
+        if colored_by_eco_cluster:
+            plt.title("MSC Time Series Colored by eco-clusters")
+            saving_path = self.saving_path / "msc_eco_cluster_quantile_norm.png"
+        else:
+            plt.title("MSC Time Series Colored by PCA Components")
+            saving_path = self.saving_path / "msc_pca.png"
+
         plt.xlabel("Day of Year")
         plt.ylabel("MSC Value")
-        saving_path = self.saving_path / "msc4.png"
+        plt.legend()
         plt.savefig(saving_path)
         plt.show()
 
-    def plot_minicube_eco_clusters(self, minicube_name):
+    def plot_minicube_eco_clusters(self):
         data = self.loader._load_data("eco_clusters")
-        data = data.eco_clusters
-        data = data.unstack("location")
+        data = data.eco_clusters.transpose("location", "component", ...)
+        bins = data.unstack("location")
 
-        rgb_colors = self.normalize(data)
+        # Normalize the explained variance
+        rgb_normalized = self.normalize(bins)
 
         # Create the figure and axis
         fig, ax = plt.subplots(figsize=(10, 10))
         # adjust the plot
         plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05)
+
         ax.pcolormesh(
-            data.longitude.values,
-            data.latitude.values,
-            rgb_colors.T,
+            bins.longitude.values,
+            bins.latitude.values,
+            rgb_normalized.transpose(1, 0, 2),
+            # transform=projection,
         )
+
         # Add a title
         plt.title("Eco-clusters")
-        saving_path = self.saving_path / "eco_clusters.png"
+        saving_path = self.saving_path / "eco_clusters_2.png"
+        plt.savefig(saving_path)
+        plt.show()
+
+    def plot_rgb(self):
+        path = glob.glob(
+            f"/Net/Groups/BGI/work_2/scratch/DeepExtremes/dx-minicubes/full/*/{self.minicube_name}*"
+        )[0]
+        ds = xr.open_zarr(path)
+
+        # The rgb channel need to be normalise and enlightened.
+        def normalize(band):
+            # band_min, band_max = (band.min(), band.max())
+            band_min = np.quantile(band, 0.02)
+            band_max = np.quantile(band, 0.98)
+            return (band - band_min) / (band_max - band_min)
+
+        def brighten(band):
+            alpha = 1  # .2
+            beta = 0
+            return np.clip(
+                alpha * band + beta, 0, 255
+            )  # np.clip(alpha*band+beta, 0,255)
+
+        # mask = ds.cloudmask_en.where(ds.cloudmask_en == 0, np.nan)
+        mask = ds.SCL.where(ds.SCL.isin([4, 5]), np.nan)
+        mask = mask.where(mask != 0, 1)
+
+        fig, axes = plt.subplots(
+            nrows=2, ncols=5, constrained_layout=True, figsize=(40, 20)
+        )
+        t = 186  # 259 + 1
+        for i in range(2):
+            for j in range(5):
+                axes[i, j].get_xaxis().set_visible(False)
+                axes[i, j].get_yaxis().set_visible(False)
+                current_date = ds.isel(time=t).time.dt.date.values
+                axes[i, j].set_title(str(current_date), fontsize=30)
+                # Remove the cloud masking
+                red = ds.isel(time=t).B04
+                green = ds.isel(time=t).B03
+                blue = ds.isel(time=t).B02
+
+                # red = red * mask.isel(time=t)
+                # green = green * mask.isel(time=t)
+                # blue = blue * mask.isel(time=t)
+
+                red = brighten(normalize(red))
+                green = brighten(normalize(green))
+                blue = brighten(normalize(blue))
+
+                rgb_composite = np.dstack((red, green, blue))
+                axes[i, j].imshow(rgb_composite)
+                t += 5
+        # Add a title
+        plt.title("RBG")
+        saving_path = self.saving_path / "rgb.png"
+        plt.savefig(saving_path)
+
+        minicube_name = os.path.basename(path)
+        worldcover_name = (
+            "/Net/Groups/BGI/work_4/scratch/mzehner/DE_cube_redo/Worldcover/extended_"
+            + minicube_name.rsplit(".", 1)[0]
+            + "_esa_wc_only.tif"
+        )
+
+        # Open the worldcover raster
+        data_wc = rio.open_rasterio(worldcover_name).squeeze()
+
+        # Define land cover values and their corresponding names
+        flag_meanings = [
+            "Tree cover",
+            "Shrubland",
+            "Grassland",
+            "Cropland",
+            "Built-up",
+            "Bare / sparse vegetation",
+            "Snow and ice",
+            "Permanent water bodies",
+            "Herbaceous wetland",
+            "Mangroves",
+            "Moss and lichen",
+        ]
+        flag_values = [10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100]
+
+        # Create a colormap and a normalization for the land cover values
+        cmap = plt.cm.get_cmap(
+            "tab20", len(flag_values) + 1
+        )  # Use 'tab20' to ensure sufficient colors
+        boundaries = flag_values + [110]
+        norm = plt.matplotlib.colors.BoundaryNorm(
+            boundaries=flag_values + [110], ncolors=cmap.N
+        )
+
+        # Calculate the tick positions as the midpoint of each bin
+        tick_positions = [
+            (boundaries[i] + boundaries[i + 1]) / 2 for i in range(len(flag_values))
+        ]
+
+        # Plot the raster with a colorbar
+        fig, ax = plt.subplots(figsize=(10, 6))
+        im = ax.imshow(data_wc, cmap=cmap, norm=norm)
+        cb = plt.colorbar(im, ax=ax, orientation="vertical", pad=0.01)
+
+        # Customize the colorbar with land cover names
+        cb.set_ticks(tick_positions)
+        cb.set_ticklabels(flag_meanings)
+        cb.ax.tick_params(labelsize=10)  # Adjust label size if necessary
+        cb.set_label("Land Cover", fontsize=12)
+
+        # Add titles and labels to the plot
+        ax.set_title("Land Cover", fontsize=14)
+        ax.axis("off")  # Hide axes if the focus is on the raster
+
+        # Show the plot
+        plt.tight_layout()
+        saving_path = self.saving_path / "landcover_wc2.png"
+        plt.savefig(saving_path)
+
+    def plot_location_in_europe(self):
+        # Load data
+        data = self.loader._load_data("msc")
+        longitude = data.longitude.mean().values
+        latitude = data.latitude.mean().values
+
+        # Create the plot
+        fig, ax = plt.subplots(
+            figsize=(10, 8), subplot_kw={"projection": ccrs.PlateCarree()}
+        )
+
+        # Set the extent to Europe (longitude and latitude ranges)
+        ax.set_extent([-25, 45, 35, 75], crs=ccrs.PlateCarree())
+
+        # Scatter plot for the location
+        ax.scatter(
+            longitude,
+            latitude,
+            color="red",  # Point color for better visibility
+            s=20,  # Adjusted size for better visibility
+            transform=ccrs.PlateCarree(),
+        )
+
+        # Add geographical features
+        ax.coastlines(resolution="10m")
+        ax.add_feature(cfeature.BORDERS, linestyle=":")
+        ax.add_feature(cfeature.LAND, edgecolor="black")
+        ax.add_feature(cfeature.OCEAN, facecolor="lightblue")
+        ax.add_feature(cfeature.LAKES, facecolor="lightblue")
+        ax.add_feature(cfeature.RIVERS)
+
+        # Add gridlines for better context
+        ax.gridlines(draw_labels=True, dms=True, x_inline=False, y_inline=False)
+
+        # Set a title
+        ax.set_title("Point Location", fontsize=14)
+
+        saving_path = self.saving_path / "location.png"
         plt.savefig(saving_path)
         plt.show()
 
@@ -249,11 +496,23 @@ class PlotsSentinel2(Plots):
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-16_12:19:12_deep_extreme_global"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/RegionalExtremesPackage/experiments/2024-12-19_13:52:48_deep_extreme_HR"
-    config = InitializationConfig(args)
-    plot = PlotsSentinel2(config=config, minicube_name="mc_25.61_44.32_1.3_20231018_0")
-    # plot.plot_minicube_eco_clusters("mc_25.61_44.32_1.3_20231018_0")
-    # plot.map_component()
-    # plot.map_component(colored_by_eco_cluster=False)
-    plot.plot_msc()
-    # plot.plot_3D_pca_landcover()
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-23_10:01:46_deep_extreme_global"
+
+    parent_folder = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-23_10:01:46_deep_extreme_global/EVI_EN"
+    subfolders = [
+        folder
+        for folder in os.listdir(parent_folder)
+        if os.path.isdir(os.path.join(parent_folder, folder))
+        and folder.startswith("mc_")
+    ]
+    subfolders = ["mc_-6.00_39.59_1.3_20230916_0"]
+    for minicube_name in subfolders:
+        config = InitializationConfig(args)
+        plot = PlotsSentinel2(config=config, minicube_name=minicube_name)
+        plot.plot_minicube_eco_clusters()
+        plot.plot_msc(colored_by_eco_cluster=True)
+        # plot.plot_location_in_europe()
+        # plot.plot_rgb()
+        # plot.map_component()
+        # plot.map_component(colored_by_eco_cluster=False)
+        # plot.plot_3D_pca_landcover()

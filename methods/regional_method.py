@@ -1,6 +1,7 @@
 import xarray as xr
 
 import numpy as np
+import pandas as pd
 from sklearn.decomposition import PCA, KernelPCA
 import sys
 from pathlib import Path
@@ -382,20 +383,35 @@ class RegionalExtremes:
         group_thresholds = results["thresholds"].groupby(eco_cluster_labels).mean()
 
         # Create a DataArray to store thresholds by cluster
+        # thresholds_by_cluster = xr.DataArray(
+        #     data=group_thresholds.values,
+        #     dims=("component_1", "component_2", "component_3", "quantile"),
+        #     coords={
+        #         "component_1": ("cluster", unique_clusters[:, 0]),
+        #         "component_2": ("cluster", unique_clusters[:, 1]),
+        #         "component_3": ("cluster", unique_clusters[:, 2]),
+        #         "quantile_levels": ("quantile", quantile_levels),
+        #     },
+        #     name="threshold_mean",
+        # )
+        multi_index = pd.MultiIndex.from_arrays(
+            unique_clusters.T, names=["component_1", "component_2", "component_3"]
+        )
+
         thresholds_by_cluster = xr.DataArray(
             data=group_thresholds.values,
             dims=("cluster", "quantile"),
             coords={
-                "component_1": ("cluster", unique_clusters[:, 0]),
-                "component_2": ("cluster", unique_clusters[:, 1]),
-                "component_3": ("cluster", unique_clusters[:, 2]),
-                "quantile_levels": ("quantile", quantile_levels),
+                "cluster": multi_index,
+                "quantile": quantile_levels,
             },
-            name="threshold_mean",
+            name="threshold",
         )
 
         # Save thresholds by cluster
-        self.saver._save_data(thresholds_by_cluster, "thresholds", location=False)
+        self.saver._save_data(
+            thresholds_by_cluster, "thresholds", location=False, cluster=True
+        )
 
         # Assign and save location-specific results if thresholds are not computed only
         if not compute_only_thresholds:
@@ -502,13 +518,6 @@ class RegionalExtremes:
             list: List of boolean masks for each quantile level.
         """
         LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL = quantile_levels
-        print(quantile_levels)
-        print(quantiles)
-        print(quantiles["quantile"])
-        print(LOWER_QUANTILES_LEVEL)
-        # Ensure types align
-        print("Quantiles:", quantiles["quantile"].values)
-        print("Expected lower levels:", LOWER_QUANTILES_LEVEL)
 
         # Match the coordinate type if needed
         if quantiles["quantile"].dtype != LOWER_QUANTILES_LEVEL.dtype:
@@ -516,9 +525,8 @@ class RegionalExtremes:
                 quantiles["quantile"].dtype
             )
 
-        lower_quantiles = quantiles.sel(quantile_levels=LOWER_QUANTILES_LEVEL)
-        upper_quantiles = quantiles.sel(quantile_levels=UPPER_QUANTILES_LEVEL)
-        print(lower_quantiles)
+        lower_quantiles = quantiles.sel(quantile=LOWER_QUANTILES_LEVEL)
+        upper_quantiles = quantiles.sel(quantile=UPPER_QUANTILES_LEVEL)
         masks = [
             data < lower_quantiles[0],
             *[

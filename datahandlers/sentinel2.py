@@ -3,6 +3,8 @@ from .base import DatasetHandler
 from dask import delayed, compute
 from dask.diagnostics import ProgressBar
 from pyproj import Transformer
+import csv
+import glob
 
 
 class EarthnetDatasetHandler(DatasetHandler):
@@ -38,14 +40,12 @@ class EarthnetDatasetHandler(DatasetHandler):
             raise ValueError("Dataset is empty")
 
         # Combine the data into an xarray dataset and save it
-        self.data = xr.concat(
-            data, dim="location"
-        )  # .to_dataset(name=self.variable_name)
+        self.data = xr.concat(data, dim="location")
         self.data = self.data.sel(
             location=~self.data.get_index("location").duplicated()
         )
         self.data = self.data.drop("band")
-        self.data = self.data.chunk({"time": -1, "latitude": 10, "longitude": 10})
+        # self.data = self.data.chunk({"time": -1, "latitude": 10, "longitude": 10})
         self.saver._save_data(self.data, "temp_file")
         self.data = self.loader._load_data("temp_file")
         printt("Dataset loaded.")
@@ -59,10 +59,10 @@ class EarthnetDatasetHandler(DatasetHandler):
             i += 1
             samples_indice = self.sample_locations(1)
             data = self.load_minicube(samples_indice[0], process_entire_minicube=True)
-        self.data = data.stack(location=("longitude", "latitude")).to_dataset(
-            name=self.variable_name
-        )
-        self.data = self.data  # .isel(location=slice(0, 100))
+        self.data = data.stack(location=("longitude", "latitude"))  # .to_dataset(
+        #     name=self.variable_name
+        # )
+        # self.data = self.data  # .isel(location=slice(0, 100))
         return self.data
 
     def sample_locations(self, n_samples):
@@ -83,30 +83,33 @@ class EarthnetDatasetHandler(DatasetHandler):
                 DataFrame containing original lat/lon plus random grid coordinates
         """
         metadata_file = (
-            "/Net/Groups/BGI/work_2/scratch/DeepExtremes/mc_earthnet_biome.csv"
+            "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/DeepExtremes_enough_vegetation_europe.csv"
+            # "/Net/Groups/BGI/work_2/scratch/DeepExtremes/mc_earthnet_biome.csv"
         )
-        df = pd.read_csv(metadata_file, delimiter=",", low_memory=False)[
-            [
-                "path",
-                "group",
-                "check",
-                "start_date",
-                "lat",
-                "lon",
-            ]
-        ]
-        df = df.loc[
-            (df["check"] == 0)
-            & df.apply(lambda row: self._is_in_europe(row["lon"], row["lat"]), axis=1)
-        ]
-
+        df = pd.read_csv(metadata_file, delimiter=",", low_memory=False)  # [
+        #    [
+        #        "path",
+        #        "group",
+        #        "check",
+        #        "start_date",
+        #        "lat",
+        #        "lon",
+        #    ]
+        # ]
+        # df = df.loc[
+        #     (df["check"] == 0)
+        #     & df.apply(lambda row: self._is_in_europe(row["lon"], row["lat"]), axis=1)
+        # ]
         # Random sampling with replacement
         sampled_indices = np.random.choice(df.index, size=n_samples, replace=True)
-        return df.loc[sampled_indices, "path"].values
+        return df.loc[sampled_indices].values  # df.loc[sampled_indices, "path"].values
 
     def load_minicube(self, minicube_path, process_entire_minicube=False):
         # minicube_path = "/full/1.3/mc_25.61_44.32_1.3_20231018_0.zarr"
         # Load data
+        # filepath = glob.glob(
+        #     "/Net/Groups/BGI/work_2/scratch/DeepExtremes/dx-minicubes/full/*/mc_25.61_44.32_1.3_20231018_0.zarr"
+        # )[0]
         filepath = EARTHNET_FILEPATH + minicube_path
         with xr.open_zarr(filepath, chunks="auto") as ds:
             # ds = xr.open_zarr(filepath, mask_and_scale=True)
@@ -128,24 +131,32 @@ class EarthnetDatasetHandler(DatasetHandler):
             # Calculate EVI and apply cloud/vegetation mask
             evi = self._calculate_evi(ds)
             masked_evi = self._apply_masks(ds, evi)
-            # data = xr.Dataset(
-            #     data_vars={
-            #         f"{self.variable_name}": masked_evi,  # Adding 'evi' as a variable
-            #         "landcover": ds[
-            #             "landcover"
-            #         ],  # Adding 'landcover' as another variable
-            #     }
-            # )
-
-            # ds.close()
-
+            data = xr.Dataset(
+                data_vars={
+                    f"{self.variable_name}": masked_evi,  # Adding 'evi' as a variable
+                    "landcover": ds[
+                        "landcover"
+                    ],  # Adding 'landcover' as another variable
+                },
+                coords={
+                    "source_path": minicube_path,  # Add the path as a coordinate
+                },
+            )
             # Check for excessive missing data
             if self._has_excessive_nan(masked_evi):
                 return None
             if process_entire_minicube:
                 self.saver.update_saving_path(ds.attrs["data_id"])
 
-            return masked_evi  # data
+            # Write the valid path to the CSV file
+            with open(
+                "DeepExtremes_enough_vegetation_europe.csv", "a", newline=""
+            ) as outfile:
+                csv.writer(outfile).writerow(
+                    [minicube_path]
+                )  # Note: Pass as a list to writerow
+
+            return data
 
     def _transform_utm_to_latlon(self, ds):
         transformer = Transformer.from_crs(
@@ -284,6 +295,9 @@ class EarthnetDatasetHandler(DatasetHandler):
             if not isinstance(data, xr.DataArray):
                 raise TypeError("Input must be an xarray DataArray")
 
+            # Step 1: Remove outliers (values below -1 or values above 1)
+            data = data.where((data >= -1) & (data <= 1), np.nan)
+
             # Step 2: Remove local minima
             clean_data = remove_local_minima(data)
 
@@ -320,7 +334,7 @@ class EarthnetDatasetHandler(DatasetHandler):
                 data=mean_seasonal_cycle_values
             )
             # Ensure all values are non-negative
-            mean_seasonal_cycle = mean_seasonal_cycle.where(mean_seasonal_cycle > 0, 0)
+            # mean_seasonal_cycle = mean_seasonal_cycle.where(mean_seasonal_cycle > 0, 0)
 
             return clean_data, mean_seasonal_cycle
 
@@ -383,7 +397,7 @@ class EarthnetDatasetHandler(DatasetHandler):
             self._dataset_specific_loading()
         self.filter_dataset_specific()  # useless, legacy...
 
-        # self.saver._save_data(self.data["landcover"], "landcover")
+        self.saver._save_data(self.data["landcover"], "landcover")
         self.data = self.data[self.variable_name]
         printt(
             f"Computation on the entire dataset. {self.data.sizes['location']} samples"

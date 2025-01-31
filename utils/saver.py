@@ -99,7 +99,7 @@ class Saver:
         np.savez(limits_eco_clusters_path, *limits_eco_clusters)
         printt(f"Limits eco_clusters saved to {limits_eco_clusters_path}")
 
-    def _save_data(self, data, name, basepath=None, location=True):
+    def _save_data(self, data, name, basepath=None, location=True, cluster=False):
         """Saves the data to a file."""
         if basepath is None:
             basepath = self.config.saving_path
@@ -109,6 +109,8 @@ class Saver:
             data = data.to_dataset()
         if location:
             data = cfxr.encode_multi_index_as_compress(data, "location")
+        if cluster:
+            data = cfxr.encode_multi_index_as_compress(data, "cluster")
         data = data.chunk("auto")
         path = basepath / f"{name}.zarr"  # self._generate_unique_save_path(name)
 
