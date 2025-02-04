@@ -33,4 +33,4 @@ ECOLOGICAL_FILEPATH = (
     lambda index: f"/Net/Groups/BGI/work_1/scratch/fluxcom/upscaling_inputs/MODIS_VI_perRegion061/{index}/Groups_{index}gapfilled_QCdyn.zarr"
 )
 VARIABLE_NAME = lambda index: f"{index}gapfilled_QCdyn"
-EARTHNET_FILEPATH = "/Net/Groups/BGI/work_2/scratch/DeepExtremes/dx-minicubes"  # "/Net/Groups/BGI/tscratch/crobin/dx-minicubes_interpolated"
+EARTHNET_FILEPATH = "/Net/Groups/BGI/work_2/scratch/DeepExtremes/dx-minicubes"

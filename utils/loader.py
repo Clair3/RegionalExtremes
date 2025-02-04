@@ -77,7 +77,7 @@ class Loader:
         printt("Limits eco_clusters loaded.")
         return limits_eco_clusters
 
-    def _load_data(self, name, basepath=None, location=True):
+    def _load_data(self, name, basepath=None, location=True, cluster=False):
         """Save the xarray in a file."""
         # Unstack location for longitude and latitude as dimensions
         if basepath is None:
@@ -89,6 +89,9 @@ class Loader:
         data = xr.open_zarr(path)
         if location:
             data = cfxr.decode_compress_to_multi_index(data, "location")
+        if cluster:
+            data = cfxr.decode_compress_to_multi_index(data, "cluster")
+
         printt(f"{name}.zarr loaded.")
         return data
 
@@ -199,5 +202,5 @@ class Loader:
 
         data_wc = rio.open_rasterio(worldcover_name).squeeze()
         data_wc.attrs = ESA_WC_ATTRS
-        reference_minicube["landcover"] = data_wc
+        reference_minicube["esa_worldcover_2021"] = data_wc
         return reference_minicube

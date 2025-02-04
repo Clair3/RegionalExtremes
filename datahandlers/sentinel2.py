@@ -52,17 +52,17 @@ class EarthnetDatasetHandler(DatasetHandler):
 
         return self.data
 
-    def _minicube_specific_loading(self):
-        data = None
-        i = 0
-        while (i < 5) and (data is None):
-            i += 1
-            samples_indice = self.sample_locations(1)
-            data = self.load_minicube(samples_indice[0], process_entire_minicube=True)
+    def _minicube_specific_loading(self, minicube_path):
+        # data = None
+        # i = 0
+        # while (i < 5) and (data is None):
+        #     i += 1
+        #     samples_indice = self.sample_locations(1)
+        data = self.load_minicube(minicube_path, process_entire_minicube=True)
         self.data = data.stack(location=("longitude", "latitude"))  # .to_dataset(
         #     name=self.variable_name
         # )
-        # self.data = self.data  # .isel(location=slice(0, 100))
+        self.data = self.data.isel(location=slice(0, 100))
         return self.data
 
     def sample_locations(self, n_samples):
@@ -110,11 +110,12 @@ class EarthnetDatasetHandler(DatasetHandler):
         # filepath = glob.glob(
         #     "/Net/Groups/BGI/work_2/scratch/DeepExtremes/dx-minicubes/full/*/mc_25.61_44.32_1.3_20231018_0.zarr"
         # )[0]
-        filepath = EARTHNET_FILEPATH + minicube_path
+        filepath = Path(minicube_path)  # EARTHNET_FILEPATH + minicube_path
         with xr.open_zarr(filepath, chunks="auto") as ds:
             # ds = xr.open_zarr(filepath, mask_and_scale=True)
             # Add landcover
-            ds = self.loader._load_and_add_landcover(filepath, ds)
+            if "esa_worldcover_2021" not in ds.data_vars:
+                ds = self.loader._load_and_add_landcover(filepath, ds)
             # Transform UTM to lat/lon
             ds = self._transform_utm_to_latlon(ds)
 
@@ -124,10 +125,11 @@ class EarthnetDatasetHandler(DatasetHandler):
                 if ds is None:
                     return None
             else:
-                self.variable_name = ds.attrs["data_id"]
-                # Filter based on vegetation occurrence
                 if not self._has_sufficient_vegetation(ds):
                     return None
+            self.variable_name = "evi"  # ds.attrs["data_id"]
+            # Filter based on vegetation occurrence
+
             # Calculate EVI and apply cloud/vegetation mask
             evi = self._calculate_evi(ds)
             masked_evi = self._apply_masks(ds, evi)
@@ -135,7 +137,7 @@ class EarthnetDatasetHandler(DatasetHandler):
                 data_vars={
                     f"{self.variable_name}": masked_evi,  # Adding 'evi' as a variable
                     "landcover": ds[
-                        "landcover"
+                        "esa_worldcover_2021"
                     ],  # Adding 'landcover' as another variable
                 },
                 coords={
@@ -146,7 +148,7 @@ class EarthnetDatasetHandler(DatasetHandler):
             if self._has_excessive_nan(masked_evi):
                 return None
             if process_entire_minicube:
-                self.saver.update_saving_path(ds.attrs["data_id"])
+                self.saver.update_saving_path(filepath.stem)
 
             # Write the valid path to the CSV file
             with open(
@@ -159,13 +161,18 @@ class EarthnetDatasetHandler(DatasetHandler):
             return data
 
     def _transform_utm_to_latlon(self, ds):
-        transformer = Transformer.from_crs(
-            ds.attrs["spatial_ref"], 4326, always_xy=True
-        )
+        """Transforms UTM coordinates to latitude and longitude."""
+        epsg = ds.attrs.get("spatial_ref", ds.attrs.get("EPSG"))
+
+        if epsg is None:
+            raise ValueError("EPSG code not found in dataset attributes.")
+
+        transformer = Transformer.from_crs(epsg, 4326, always_xy=True)
         lon, lat = transformer.transform(ds.x.values, ds.y.values)
-        ds = ds.assign_coords({"x": ("x", lon), "y": ("y", lat)})
-        ds = ds.rename({"x": "longitude", "y": "latitude"})
-        return ds
+
+        return ds.assign_coords({"x": ("x", lon), "y": ("y", lat)}).rename(
+            {"x": "longitude", "y": "latitude"}
+        )
 
     def _get_random_vegetation_pixel_series(self, ds):
         """Selects a random time serie vegetation pixel location in the minicube based on SCL classification."""
@@ -200,9 +207,20 @@ class EarthnetDatasetHandler(DatasetHandler):
 
     def _apply_masks(self, ds, evi):
         """Applies cloud and vegetation masks to the EVI data."""
-        mask = ds.cloudmask_en.where(ds.cloudmask_en == 0, np.nan)
-        mask = mask.where(ds.SCL.isin([4, 5]), np.nan)
-        mask = mask.where(mask != 0, 1)
+        mask = xr.ones_like(evi)  # Default mask (all ones, meaning no masking)
+
+        # Apply cloud mask if available
+        if "cloudmask_en" in ds.data_vars:
+            mask = ds.cloudmask_en.where(ds.cloudmask_en == 0, np.nan)
+
+        # Apply vegetation mask if SCL exists
+        if "SCL" in ds.data_vars:
+            mask = mask.where(ds.SCL.isin([4, 5]), np.nan)
+
+        mask = mask.where(
+            mask != 0, 1
+        )  # Convert to binary mask (1 = valid, NaN = masked)
+
         return evi * mask
 
     def _has_excessive_nan(self, data):
@@ -385,19 +403,17 @@ class EarthnetDatasetHandler(DatasetHandler):
         reduce_temporal_resolution=True,
         return_time_serie=False,
         remove_nan=True,
-        process_entire_minicube=False,
+        minicube_path=None,
     ):
         """
         Preprocess data based on the index.
         """
         printt("start of the preprocess")
-        if process_entire_minicube:
-            self._minicube_specific_loading()
+        if minicube_path:
+            self._minicube_specific_loading(minicube_path=minicube_path)
         else:
             self._dataset_specific_loading()
         self.filter_dataset_specific()  # useless, legacy...
-
-        self.saver._save_data(self.data["landcover"], "landcover")
         self.data = self.data[self.variable_name]
         printt(
             f"Computation on the entire dataset. {self.data.sizes['location']} samples"

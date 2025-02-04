@@ -27,8 +27,6 @@ class RegionalExtremes:
         config: InitializationConfig,
         loader: Loader,
         saver: Saver,
-        n_components: int,
-        n_eco_clusters: int,
     ):
         """
         Compute the regional extremes by defining boxes of similar region using a PCA computed on the mean seasonal cycle of the samples.
@@ -40,8 +38,10 @@ class RegionalExtremes:
             n_eco_clusters (int): Number of eco_clusters per component to define the boxes. Number of boxes = n_eco_clusters**n_components
         """
         self.config = config
-        self.n_components = n_components
-        self.n_eco_clusters = n_eco_clusters
+        self.n_components = self.config.n_components
+        self.n_eco_clusters = self.config.n_eco_clusters
+        self.lower_quantiles = self.config.lower_quantiles
+        self.upper_quantiles = self.config.upper_quantiles
         # Loader class to load intermediate steps.
         self.loader = Loader(config)
         # Saver class to save intermediate steps.
@@ -53,7 +53,9 @@ class RegionalExtremes:
             self.projected_data = self.loader._load_pca_projection()
             self.limits_eco_clusters = self.loader._load_limits_eco_clusters()
             self.eco_clusters = self.loader._load_data("eco_clusters")
-            self.thresholds = self.loader._load_data("thresholds", location=False)
+            self.thresholds = self.loader._load_data(
+                "thresholds", location=False, cluster=True
+            )
 
         else:
             # Initialize a new PCA.
@@ -234,12 +236,11 @@ class RegionalExtremes:
         self.saver._save_data(self.eco_clusters, "eco_clusters")
         return self.eco_clusters
 
-    def apply_regional_threshold(self, deseasonalized, quantile_levels):
+    def apply_regional_threshold(self, deseasonalized):
         # Load thresholds
         """Compute and save a xarray (location, time) indicating the quantiles of extremes using the regional threshold definition."""
         assert self.config.method == "regional"
-        LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL = quantile_levels
-        quantile_levels = np.concatenate((LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL))
+        quantile_levels = np.concatenate((self.lower_quantiles, self.upper_quantiles))
 
         # Create a new DataArrays to store the quantile values (0.025 or 0.975) for extreme values
         extremes_array = xr.full_like(deseasonalized.astype(float), np.nan)
@@ -286,19 +287,26 @@ class RegionalExtremes:
             # Parse the label back into its components
             comp_values = list(map(int, eco_cluster_label.split("_")))
 
-            # Ensure the components are indexed
-            self.thresholds = self.thresholds.set_index(
-                cluster=["component_1", "component_2", "component_3"]
-            )
-
             # Select thresholds corresponding to the parsed eco-cluster components
+            # thresholds_grp = self.thresholds.sel(
+            #     cluster=dict(
+            #         component_1=comp_values[0],
+            #         component_2=comp_values[1],
+            #         component_3=comp_values[2],
+            #     ),
+            #     dropna=False,  # Prevents KeyError, returns NaN for missing entries
+            # )
             thresholds_grp = self.thresholds.sel(
                 cluster=dict(
                     component_1=comp_values[0],
                     component_2=comp_values[1],
                     component_3=comp_values[2],
-                )
+                ),
+                method=None,  # Ensure it only selects exact matches
+                dropna=False,  # Prevents KeyError, returns NaN for missing entries
             )
+
+            print(thresholds_grp)
             return thresholds_grp
 
         # Apply the quantile calculation to each group
@@ -306,7 +314,7 @@ class RegionalExtremes:
             lambda grp: self._apply_thresholds(
                 grp,
                 map_thresholds_to_clusters(grp),
-                (LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL),
+                (self.lower_quantiles, self.upper_quantiles),
                 # return_only_thresholds=compute_only_thresholds,
             )
         )
@@ -542,7 +550,7 @@ class RegionalExtremes:
         return masks
 
 
-def regional_extremes_method(args, quantile_levels):
+def regional_extremes_method(args):
     """Fit the PCA with a subset of the data, then project the full dataset,
     then define the eco_clusters on the full dataset projected."""
     # Initialization of the configs, load and save paths, log.txt.
@@ -558,8 +566,6 @@ def regional_extremes_method(args, quantile_levels):
         config=config,
         loader=loader,
         saver=saver,
-        n_components=config.n_components,
-        n_eco_clusters=config.n_eco_clusters,
     )
 
     # Load a subset of the dataset and fit the PCA
@@ -595,7 +601,7 @@ def regional_extremes_method(args, quantile_levels):
     # Load the data
     dataset_processor = create_handler(
         config=config, loader=loader, saver=saver, n_samples=config.n_samples
-    )  # None)  # None)
+    )
     msc, data = dataset_processor.preprocess_data(
         scale=False,
         return_time_serie=True,
@@ -607,14 +613,12 @@ def regional_extremes_method(args, quantile_levels):
     # Deseasonalize the data
     deseasonalized = dataset_processor._deseasonalize(data, msc)
     # Compute the quantiles per regions/biome (=eco_clusters)
-    extremes_processor.compute_regional_threshold(
-        deseasonalized, quantile_levels=quantile_levels
-    )
+    extremes_processor.compute_regional_threshold(deseasonalized)
 
     return extremes_processor
 
 
-def regional_extremes_minicube(args, quantile_levels):
+def regional_extremes_minicube(args, minicube_path):
     """Fit the PCA with a subset of the data, then project the full dataset,
     then define the eco_clusters on the full dataset projected."""
     # Initialization of the configs, load and save paths, log.txt.
@@ -631,8 +635,6 @@ def regional_extremes_minicube(args, quantile_levels):
         config=config,
         loader=loader,
         saver=saver,
-        n_components=config.n_components,
-        n_eco_clusters=config.n_eco_clusters,
     )
     if extremes_processor.limits_eco_clusters is None:
         raise FileNotFoundError("limits_eco_clusters file unavailable.")
@@ -643,19 +645,17 @@ def regional_extremes_minicube(args, quantile_levels):
     # Load the data
     dataset_processor = create_handler(
         config=config, loader=loader, saver=saver, n_samples=1  # config.n_samples
-    )  # None)  # None)
+    )
     msc, data = dataset_processor.preprocess_data(
         scale=False,
         return_time_serie=True,
         reduce_temporal_resolution=False,
         remove_nan=False,
-        process_entire_minicube=True,
+        minicube_path=minicube_path,
     )
     extremes_processor.apply_pca(scaled_data=msc)
     extremes_processor.find_eco_clusters()
     # Deseasonalize the data
     deseasonalized = dataset_processor._deseasonalize(data, msc)
     # Compute the quantiles per regions/biome (=eco_clusters)
-    extremes_processor.apply_regional_threshold(
-        deseasonalized, quantile_levels=quantile_levels
-    )
+    extremes_processor.apply_regional_threshold(deseasonalized)
