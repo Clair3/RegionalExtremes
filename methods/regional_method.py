@@ -286,29 +286,25 @@ class RegionalExtremes:
 
             # Parse the label back into its components
             comp_values = list(map(int, eco_cluster_label.split("_")))
+            print(comp_values)
+            comp_values = [0, 10, 3]
+            coords = self.thresholds.cluster.to_index()
+            # [(0, 10, 3) (16, 4, 0) (30, 19, 2) (31, 0, 4)]
 
-            # Select thresholds corresponding to the parsed eco-cluster components
-            # thresholds_grp = self.thresholds.sel(
-            #     cluster=dict(
-            #         component_1=comp_values[0],
-            #         component_2=comp_values[1],
-            #         component_3=comp_values[2],
-            #     ),
-            #     dropna=False,  # Prevents KeyError, returns NaN for missing entries
-            # )
-            thresholds_grp = self.thresholds.sel(
-                cluster=dict(
-                    component_1=comp_values[0],
-                    component_2=comp_values[1],
-                    component_3=comp_values[2],
-                ),
-                method=None,  # Ensure it only selects exact matches
-                dropna=False,  # Prevents KeyError, returns NaN for missing entries
-            )
-
-            print(thresholds_grp)
+            # Check if the specific combination exists
+            if (comp_values[0], comp_values[1], comp_values[2]) in coords:
+                thresholds_grp = self.thresholds.sel(
+                    cluster={
+                        "component_1": comp_values[0],
+                        "component_2": comp_values[1],
+                        "component_3": comp_values[2],
+                    }
+                )
+            else:
+                thresholds_grp = np.nan
             return thresholds_grp
 
+        print(self.thresholds.cluster.values)
         # Apply the quantile calculation to each group
         results = grouped.map(
             lambda grp: self._apply_thresholds(
@@ -390,18 +386,6 @@ class RegionalExtremes:
         # Calculate mean thresholds for each cluster
         group_thresholds = results["thresholds"].groupby(eco_cluster_labels).mean()
 
-        # Create a DataArray to store thresholds by cluster
-        # thresholds_by_cluster = xr.DataArray(
-        #     data=group_thresholds.values,
-        #     dims=("component_1", "component_2", "component_3", "quantile"),
-        #     coords={
-        #         "component_1": ("cluster", unique_clusters[:, 0]),
-        #         "component_2": ("cluster", unique_clusters[:, 1]),
-        #         "component_3": ("cluster", unique_clusters[:, 2]),
-        #         "quantile_levels": ("quantile", quantile_levels),
-        #     },
-        #     name="threshold_mean",
-        # )
         multi_index = pd.MultiIndex.from_arrays(
             unique_clusters.T, names=["component_1", "component_2", "component_3"]
         )
@@ -496,19 +480,21 @@ class RegionalExtremes:
     def _apply_thresholds(
         self,
         deseasonalized: xr.DataArray,
-        quantiles_xr,
+        thresholds,
         quantile_levels,
     ):
+        extremes = xr.full_like(deseasonalized.astype(float), np.nan)
+        if thresholds is np.nan:
+            return extremes
         quantile_levels_combined = np.concatenate(
             (quantile_levels[0], quantile_levels[1])
         )
         masks = self._create_quantile_masks(
             deseasonalized,
-            quantiles_xr,
+            thresholds,
             quantile_levels=quantile_levels,
         )
 
-        extremes = xr.full_like(deseasonalized.astype(float), np.nan)
         for i, mask in enumerate(masks):
             extremes = xr.where(mask, quantile_levels_combined[i], extremes)
         return extremes
@@ -526,15 +512,16 @@ class RegionalExtremes:
             list: List of boolean masks for each quantile level.
         """
         LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL = quantile_levels
-
         # Match the coordinate type if needed
-        if quantiles["quantile"].dtype != LOWER_QUANTILES_LEVEL.dtype:
-            LOWER_QUANTILES_LEVEL = LOWER_QUANTILES_LEVEL.astype(
-                quantiles["quantile"].dtype
-            )
-
+        print(quantiles["quantile"])
+        # if quantiles["quantile"].dtype != LOWER_QUANTILES_LEVEL.dtype:
+        #    LOWER_QUANTILES_LEVEL = LOWER_QUANTILES_LEVEL.astype(
+        #        quantiles["quantile"].dtype
+        #    )
+        print(quantiles)
         lower_quantiles = quantiles.sel(quantile=LOWER_QUANTILES_LEVEL)
         upper_quantiles = quantiles.sel(quantile=UPPER_QUANTILES_LEVEL)
+        print(lower_quantiles)
         masks = [
             data < lower_quantiles[0],
             *[
