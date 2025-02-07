@@ -5,6 +5,8 @@ import pandas as pd
 from sklearn.decomposition import PCA, KernelPCA
 import sys
 from pathlib import Path
+from scipy.spatial.distance import pdist, squareform
+
 
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
@@ -396,17 +398,68 @@ class RegionalExtremes:
 
         # Compute thresholds and extremes for each group
         compute_only_thresholds = self.config.is_generic_xarray_dataset
-        results = grouped_data.map(
-            lambda grp: self._compute_thresholds(
-                grp,
-                (self.lower_quantiles, self.upper_quantiles),
-                return_only_thresholds=compute_only_thresholds,
+        from scipy.spatial.distance import pdist, squareform
+
+        def filter_group(grp):
+            # Filter out groups with less than 5 samples.
+            if grp.location.size < 5:
+                mask = xr.full_like(grp, False, dtype=bool)
+                grp.where(mask)
+                return grp
+            #    grp.attrs["too_small"] = True
+            #    return grp
+            # grp.attrs["too_small"] = False
+
+            # Remove locations that are too close to each other
+            min_distance = 0.03
+            locs = np.vstack([grp.longitude.values, grp.latitude.values]).T
+            distances = squareform(pdist(locs))
+
+            # Make a triangle matrix
+            tril_indices = np.tril_indices_from(distances)
+            distances[tril_indices] = np.inf
+
+            # Filter out the distances below the minimum threshold
+            mask = distances < min_distance
+
+            # Get the columns where mask is True
+            too_close_rows, _ = np.where(mask)
+
+            # Get unique rows that are too close
+            too_close_locations = np.unique(too_close_rows)
+
+            # Remove those rows from locs
+            grp_cleaned = grp.isel(
+                location=np.setdiff1d(np.arange(len(grp.location)), too_close_locations)
+            )
+            return grp_cleaned
+
+        # First map to filter groups
+        marked_data = deseasonalized.groupby(eco_cluster_labels).map(filter_group)
+        print("marked", marked_data)
+        # Create a boolean indexer for groups that are large enough
+        filtered_data = filtered_data.dropna("location", how="all")
+        # valid_groups = ~marked_data.attrs.get("too_small", False)
+        # print(valid_groups)
+        # # Filter the data to keep only valid groups
+        # filtered_data = marked_data.where(valid_groups, drop=True)
+
+        print("here", filtered_data)
+        # Then create a new groupby object with the filtered data
+        filtered_grouped_data = filtered_data.groupby(eco_cluster_labels)
+        print(filtered_grouped_data)
+
+        results = filtered_grouped_data.map(
+            lambda grp: (
+                self._compute_thresholds(
+                    grp,
+                    (self.lower_quantiles, self.upper_quantiles),
+                    return_only_thresholds=compute_only_thresholds,
+                )
             )
         )
-
         # Calculate mean thresholds for each cluster
         group_thresholds = results["thresholds"].groupby(eco_cluster_labels).mean()
-        print(group_thresholds)
         multi_index = pd.MultiIndex.from_arrays(
             unique_clusters.T, names=["component_1", "component_2", "component_3"]
         )
@@ -453,6 +506,7 @@ class RegionalExtremes:
             xarray.Dataset: Dataset containing extremes and thresholds.
         """
         assert self.config.method == "regional"
+
         # Unpack quantile levels and prepare data
         lower_quantiles, upper_quantiles = quantile_levels
         quantile_levels_combined = np.concatenate((lower_quantiles, upper_quantiles))

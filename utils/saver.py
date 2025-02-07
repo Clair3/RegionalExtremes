@@ -84,9 +84,12 @@ class Saver:
 
         pca_projection = cfxr.encode_multi_index_as_compress(pca_projection, "location")
 
-        path = self._generate_unique_save_path("pca_projection")
+        # path = self._generate_unique_save_path("pca_projection")
+        path = self.config.saving_path / "pca_projection.zarr"
+        print(path)
+        print(pca_projection)
         # Save the file with the unique path
-        pca_projection.to_zarr(path)
+        pca_projection.to_zarr(path, mode="w")
         printt(f"PCA Projection computed and saved to {path}.")
 
     def _save_limits_eco_clusters(self, limits_eco_clusters: list[np.ndarray]) -> None:
