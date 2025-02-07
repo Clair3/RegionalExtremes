@@ -253,11 +253,8 @@ class PlotsSentinel2(Plots):
     def plot_msc(self, colored_by_eco_cluster=False):
         # Load and preprocess the time series dataset
         data = self.loader._load_data("msc")
-        print(data.msc.values.max())
-        print(data.msc.values.min())
 
         # Randomly select n indices from the location dimension
-        print(len(data.location))
         random_indices = np.random.choice(
             len(data.location), size=len(data.location), replace=False
         )
@@ -338,7 +335,7 @@ class PlotsSentinel2(Plots):
 
     def plot_rgb(self):
         path = glob.glob(
-            f"/Net/Groups/BGI/work_2/scratch/DeepExtremes/dx-minicubes/full/*/{self.minicube_name}*"
+            f"/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/{self.minicube_name}*"
         )[0]
         ds = xr.open_zarr(path)
 
@@ -391,7 +388,8 @@ class PlotsSentinel2(Plots):
         saving_path = self.saving_path / "rgb.png"
         plt.savefig(saving_path)
 
-        minicube_name = os.path.basename(path)
+    def plot_landcover(self):
+        # minicube_name = os.path.basename(path)
         worldcover_name = (
             "/Net/Groups/BGI/work_4/scratch/mzehner/DE_cube_redo/Worldcover/extended_"
             + minicube_name.rsplit(".", 1)[0]
@@ -492,27 +490,61 @@ class PlotsSentinel2(Plots):
         plt.savefig(saving_path)
         plt.show()
 
+    def plot_thresholds(self):
+        data = self.loader._load_data("thresholds").thresholds
+        # bins_path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-23_10:01:46_deep_extreme_global/EVI_EN/DE-RuS_50.87_6.45_v0.zarr/thresholds.zarr"
+        # data = xr.open_zarr(bins_path)
+        # data = self.loader._load_data("thresholds")
+        # data = cfxr.decode_compress_to_multi_index(data, "location").thresholds
+        data = data.unstack("location")
+        # print(data)
+
+        fig, ax = plt.subplots(figsize=(12, 10))
+        # Adjust the plot
+        plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05)
+
+        # Plot the data with a colormap
+        pcm = ax.pcolormesh(
+            data.longitude.values.T,
+            data.latitude.values.T,
+            data.sel(quantile=0.95).values.T,
+            cmap="viridis",  # Choose a colormap, e.g., 'viridis', 'plasma', 'coolwarm'
+        )
+
+        # Add a title
+        plt.title("Quantile 95%")
+
+        # Add a colorbar
+        cbar = plt.colorbar(pcm, ax=ax, orientation="vertical", pad=0.02)
+        cbar.set_label("Value")  # Set the label for the colorbar
+        print(self.saving_path)
+        saving_path = self.saving_path / "thresholds.png"
+        plt.savefig(saving_path)
+        plt.show()
+
 
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
 
     args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-23_10:01:46_deep_extreme_global"
 
-    parent_folder = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-23_10:01:46_deep_extreme_global/EVI_EN"
-    subfolders = [
-        folder
-        for folder in os.listdir(parent_folder)
-        if os.path.isdir(os.path.join(parent_folder, folder))
-        and folder.startswith("mc_")
-    ]
-    subfolders = ["mc_-6.00_39.59_1.3_20230916_0"]
+    parent_folder = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-23_10:01:46_deep_extreme_global/EVI_EN/"
+    # subfolders = [
+    #     folder
+    #     for folder in os.listdir(parent_folder)
+    #     if os.path.isdir(os.path.join(parent_folder, folder))
+    #     and folder.startswith("mc_")
+    # ]
+    subfolders = ["ES-Cnd_37.91_-3.23_v0.zarr"]
     for minicube_name in subfolders:
         config = InitializationConfig(args)
         plot = PlotsSentinel2(config=config, minicube_name=minicube_name)
-        plot.plot_minicube_eco_clusters()
-        plot.plot_msc(colored_by_eco_cluster=True)
+        plot.plot_thresholds()
+        # plot.plot_minicube_eco_clusters()
+        # plot.plot_msc(colored_by_eco_cluster=True)
         # plot.plot_location_in_europe()
         # plot.plot_rgb()
         # plot.map_component()
+
         # plot.map_component(colored_by_eco_cluster=False)
         # plot.plot_3D_pca_landcover()

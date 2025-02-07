@@ -90,7 +90,7 @@ class Loader:
         if location:
             data = cfxr.decode_compress_to_multi_index(data, "location")
         if cluster:
-            data = cfxr.decode_compress_to_multi_index(data, "cluster")
+            data = cfxr.decode_compress_to_multi_index(data, "eco_cluster")
 
         printt(f"{name}.zarr loaded.")
         return data

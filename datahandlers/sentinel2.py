@@ -62,7 +62,7 @@ class EarthnetDatasetHandler(DatasetHandler):
         self.data = data.stack(location=("longitude", "latitude"))  # .to_dataset(
         #     name=self.variable_name
         # )
-        self.data = self.data.isel(location=slice(0, 100))
+        self.data = self.data  # .isel(location=slice(0, 100))
         return self.data
 
     def sample_locations(self, n_samples):

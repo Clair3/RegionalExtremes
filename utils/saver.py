@@ -99,7 +99,7 @@ class Saver:
         np.savez(limits_eco_clusters_path, *limits_eco_clusters)
         printt(f"Limits eco_clusters saved to {limits_eco_clusters_path}")
 
-    def _save_data(self, data, name, basepath=None, location=True, cluster=False):
+    def _save_data(self, data, name, basepath=None, location=True, eco_cluster=False):
         """Saves the data to a file."""
         if basepath is None:
             basepath = self.config.saving_path
@@ -109,13 +109,32 @@ class Saver:
             data = data.to_dataset()
         if location:
             data = cfxr.encode_multi_index_as_compress(data, "location")
-        if cluster:
-            data = cfxr.encode_multi_index_as_compress(data, "cluster")
-        data = data.chunk("auto")
-        path = basepath / f"{name}.zarr"  # self._generate_unique_save_path(name)
 
-        data.to_zarr(path, mode="w")
-        printt(f"{name} computed and saved.")
+        if eco_cluster:
+            data = cfxr.encode_multi_index_as_compress(data, "eco_cluster")
+        if "quantile" in data.dims:
+            # data = data.chunk({"location": 1000, "quantile": -1})
+            chunk_size = 1000
+            encoding = {
+                "thresholds": {"chunks": (chunk_size, -1)},
+                "component_1": {"chunks": (chunk_size,)},
+                "component_2": {"chunks": (chunk_size,)},
+                "component_3": {"chunks": (chunk_size,)},
+            }
+
+            data = data.chunk({"location": chunk_size, "quantile": -1})
+            path = basepath / f"{name}.zarr"  # self._generate_unique_save_path(name)
+
+            data.to_zarr(path, mode="w", encoding=encoding)
+            printt(f"{name} computed and saved.")
+
+        else:
+            data = data.chunk("auto")
+
+            path = basepath / f"{name}.zarr"  # self._generate_unique_save_path(name)
+
+            data.to_zarr(path, mode="w")
+            printt(f"{name} computed and saved.")
 
     def _save_spatial_masking(self, mask):
         mask = mask.astype(np.int32)

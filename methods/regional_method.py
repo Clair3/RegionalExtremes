@@ -255,79 +255,98 @@ class RegionalExtremes:
             raise TypeError("deseasonalized must be an xarray DataArray")
 
         assert self.config.method == "regional", "Method must be regional"
-        # Load thresholds
-        quantile_levels = np.concatenate((self.lower_quantiles, self.upper_quantiles))
 
-        # Create a new DataArrays to store the quantile values (0.025 or 0.975) for extreme values
-        extremes_array = xr.full_like(deseasonalized.astype(float), np.nan)
-
-        eco_cluster_labels = np.array(
-            ["_".join(map(str, cluster)) for cluster in self.eco_clusters.values]
-        )
-
-        # Assign the eco_cluster labels as a coordinate
-        deseasonalized = deseasonalized.assign_coords(
-            eco_cluster=("location", eco_cluster_labels)
-        )
-        # Group data by the combined eco_cluster labels
-        grouped = deseasonalized.groupby("eco_cluster")
-
+        # Initialize parameters
         compute_only_thresholds = self.config.is_generic_xarray_dataset
+
+        def create_eco_cluster_labels():
+            """Create standardized eco-cluster labels."""
+            if not hasattr(self, "eco_clusters"):  # or not self.eco_clusters:
+                raise ValueError("eco_clusters not properly initialized")
+            return np.array(
+                ["_".join(map(str, cluster)) for cluster in self.eco_clusters.values]
+            )
+
+        def prepare_deseasonalized_data(data, labels):
+            """Prepare deseasonalized data with eco_cluster coordinates."""
+            return data.assign_coords(eco_cluster=("location", labels))
 
         # Define the function to map thresholds to clusters
         def map_thresholds_to_clusters(grp):
             """
-            Maps thresholds to clusters based on the string-based eco-cluster label.
+            Maps thresholds to clusters based on the eco-cluster label.
 
-            Parameters:
-                grp: xarray DataArray group for a specific eco-cluster.
-                eco_cluster_labels: Array of eco-cluster labels (string representation).
-                thresholds: xarray DataArray indexed by the components of the eco-cluster.
+            Args:
+                grp: xarray DataArray group for a specific eco-cluster
 
             Returns:
-                Thresholds corresponding to the current eco-cluster group.
+                xarray.DataArray: Thresholds for the current eco-cluster
             """
             # Get the string label for the current group
             eco_cluster_label = grp.eco_cluster.values[0]
 
             # Parse the label back into its components
             comp_values = list(map(int, eco_cluster_label.split("_")))
-            comp_values = [0, 10, 3]
-            coords = self.thresholds.cluster.to_index()
+            # comp_values = [0, 10, 3]
+            coords = self.thresholds.eco_cluster.to_index()
             # [(0, 10, 3) (16, 4, 0) (30, 19, 2) (31, 0, 4)]
 
             # Check if the specific combination exists
-            if (comp_values[0], comp_values[1], comp_values[2]) in coords:
-                thresholds_grp = self.thresholds.sel(
-                    cluster={  # eco_cluster
+            cluster_key = tuple(comp_values)
+            if cluster_key in coords:
+                return self.thresholds.sel(
+                    eco_cluster={
                         "component_1": comp_values[0],
                         "component_2": comp_values[1],
                         "component_3": comp_values[2],
                     }
-                )
-            else:
-                thresholds_grp = np.nan
-            return thresholds_grp
+                ).thresholds
+            # Create a NaN array with the same structure as self.thresholds
+            nan_array = xr.full_like(
+                self.thresholds.isel(eco_cluster=0),  # Use first cluster as template
+                fill_value=np.nan,
+            )
 
-        # Apply the quantile calculation to each group
+            # Ensure the nan_array has the same coordinates as the original selection would have
+            nan_array = nan_array.assign_coords(
+                {
+                    "component_1": comp_values[0],
+                    "component_2": comp_values[1],
+                    "component_3": comp_values[2],
+                }
+            )
+
+            return nan_array.thresholds
+
+        # Initialize output array
+        extremes_array = xr.full_like(deseasonalized.astype(float), np.nan)
+
+        # Process data
+        eco_cluster_labels = create_eco_cluster_labels()
+        deseasonalized = prepare_deseasonalized_data(deseasonalized, eco_cluster_labels)
+        grouped = deseasonalized.groupby("eco_cluster")
+
+        # Calculate thresholds
         thresholds = grouped.map(lambda grp: map_thresholds_to_clusters(grp))
         thresholds = thresholds.sel(eco_cluster=deseasonalized["eco_cluster"])
-        thresholds = thresholds.drop_vars(
-            ["component_1", "component_2", "component_3", "cluster", "eco_cluster"]
-        )
-        extremes = grouped.map(
-            lambda grp: self._apply_thresholds(
-                grp,
-                map_thresholds_to_clusters(grp),
-                (self.lower_quantiles, self.upper_quantiles),
-                # return_only_thresholds=compute_only_thresholds,
-            )
-        )
-        # save the array
+        thresholds = thresholds.drop_vars(["eco_cluster"])
+        # Save thresholds
         self.saver._save_data(thresholds, "thresholds")
+
+        # Calculate and save extremes if needed
         if not compute_only_thresholds:
+            extremes = grouped.map(
+                lambda grp: self._apply_thresholds(
+                    grp,
+                    map_thresholds_to_clusters(grp),
+                    (self.lower_quantiles, self.upper_quantiles),
+                )
+            )
             extremes_array.values = extremes.values
             self.saver._save_data(extremes_array, "extremes")
+            return thresholds, extremes_array
+
+        return thresholds
 
     def compute_regional_threshold(self, deseasonalized):
         """
@@ -404,7 +423,7 @@ class RegionalExtremes:
 
         # Save thresholds by cluster
         self.saver._save_data(
-            thresholds_by_cluster, "thresholds", location=False, cluster=True
+            thresholds_by_cluster, "thresholds", location=False, eco_cluster=True
         )
 
         # Assign and save location-specific results if thresholds are not computed only
@@ -519,12 +538,8 @@ class RegionalExtremes:
         #    LOWER_QUANTILES_LEVEL = LOWER_QUANTILES_LEVEL.astype(
         #        quantiles["quantile"].dtype
         #    )
-        lower_quantiles = quantiles.sel(
-            quantile=LOWER_QUANTILES_LEVEL
-        ).thresholds.values
-        upper_quantiles = quantiles.sel(
-            quantile=UPPER_QUANTILES_LEVEL
-        ).thresholds.values
+        lower_quantiles = quantiles.sel(quantile=LOWER_QUANTILES_LEVEL).values
+        upper_quantiles = quantiles.sel(quantile=UPPER_QUANTILES_LEVEL).values
         masks = [
             data < lower_quantiles[0],
             *[
