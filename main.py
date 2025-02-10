@@ -125,10 +125,10 @@ if __name__ == "__main__":
     args.method = "regional"
     args.start_year = 2000
     args.is_generic_xarray_dataset = False
-    args.lower_quantiles_level = np.array([0.01, 0.025, 0.05])
-    args.upper_quantiles_level = np.array([0.95, 0.975, 0.99])
+    args.lower_quantiles = [0.01, 0.025, 0.05]
+    args.upper_quantiles = [0.95, 0.975, 0.99]
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-23_09:57:37_deep_extreme_global"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-23_10:01:46_deep_extreme_global"
+    # args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-23_10:01:46_deep_extreme_global"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-23_10:01:46_deep_extreme_global"
 
     if args.method == "regional":
         # Train the regional extreme method on a subset of locations
@@ -143,7 +143,7 @@ if __name__ == "__main__":
         # ]
         # regional_extremes_minicube(
         #     args,
-        #     minicube_path="/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/ES-Cnd_37.91_-3.23_v0.zarr.zip",  # "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/CH-Oe1_47.29_7.73_v0.zarr.zip",
+        #     minicube_path="/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/_test/customcube_CO-MEL_1.95_-72.60_S2_v0.zarr.zip",  # "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/CH-Oe1_47.29_7.73_v0.zarr.zip",
         # )
     elif args.method == "local":
         # Apply the uniform threshold method

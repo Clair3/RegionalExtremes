@@ -361,7 +361,7 @@ class RegionalExtremes:
         """
         assert self.config.method == "regional"
 
-        def _filter_close_locations(self, grp, min_distance=0.03):
+        def _filter_close_locations(grp, min_distance=0.03):
             """
             Filter out locations that are too close to each other.
 
@@ -390,7 +390,7 @@ class RegionalExtremes:
                 location=np.setdiff1d(np.arange(len(grp.location)), too_close_locations)
             )
 
-        def _process_group(self, grp):
+        def _process_group(grp):
             """
             Process a single group by filtering close locations and validating size.
 
@@ -476,137 +476,6 @@ class RegionalExtremes:
         )
 
         # Save location-specific results if needed
-        if not compute_only_thresholds:
-            thresholds_array.values = results["thresholds"].values
-            self.saver._save_data(thresholds_array, "thresholds_locations")
-
-            extremes_array.values = results["extremes"].values
-            self.saver._save_data(extremes_array, "extremes")
-
-        def compute_regional_threshold(self, deseasonalized):
-            """
-            Compute and save an xarray indicating the quantiles of extremes using the regional threshold definition.
-
-            Parameters:
-            - deseasonalized: xarray.DataArray
-                The deseasonalized dataset.
-            - quantile_levels: tuple
-                A tuple containing lower and upper quantile levels (e.g., (0.025, 0.975)).
-            """
-            assert self.config.method == "regional"
-
-            # Unpack and concatenate quantile levels
-            quantile_levels = np.concatenate(
-                (self.lower_quantiles, self.upper_quantiles)
-            )
-
-            # Initialize data arrays for results
-            extremes_array = xr.full_like(deseasonalized, np.nan, dtype=float)
-            thresholds_array = xr.DataArray(
-                np.full((len(deseasonalized.location), len(quantile_levels)), np.nan),
-                dims=["location", "quantile"],
-                coords={
-                    "location": deseasonalized.location,
-                    "quantile": quantile_levels,
-                },
-            )
-
-            # Generate unique regional cluster IDs
-            unique_clusters, _ = np.unique(
-                self.eco_clusters.values, axis=0, return_counts=True
-            )
-            eco_cluster_labels = xr.DataArray(
-                data=np.argmax(
-                    np.all(
-                        self.eco_clusters.values[:, :, None]
-                        == unique_clusters.T[None, :, :],
-                        axis=1,
-                    ),
-                    axis=1,
-                ),
-                dims=("location",),
-                coords={"location": self.eco_clusters.location},
-            )
-
-            # Group deseasonalized data by cluster labels
-            grouped_data = deseasonalized.groupby(eco_cluster_labels)
-
-            # Compute thresholds and extremes for each group
-            compute_only_thresholds = self.config.is_generic_xarray_dataset
-            from scipy.spatial.distance import pdist, squareform
-
-        def filter_group(grp):
-            # Remove locations that are too close to each other
-            min_distance = 0.03
-            locs = np.vstack([grp.longitude.values, grp.latitude.values]).T
-            distances = squareform(pdist(locs))
-            # Make a triangle matrix
-            tril_indices = np.tril_indices_from(distances)
-            distances[tril_indices] = np.inf
-            # Filter out the distances below the minimum threshold
-            mask = distances < min_distance
-            # Get the columns where mask is True
-            too_close_rows, _ = np.where(mask)
-            # Get unique rows that are too close
-            too_close_locations = np.unique(too_close_rows)
-            # Remove those rows from locs
-            grp = grp.isel(
-                location=np.setdiff1d(np.arange(len(grp.location)), too_close_locations)
-            )
-
-            # Filter out groups with less than 5 samples.
-            # Create a boolean coordinate for the entire group
-            is_valid = grp.location.size >= 5
-
-            # Broadcast the boolean to match the group's shape
-            valid_coord = xr.full_like(grp.location, is_valid, dtype=bool)
-            # Add as a coordinate
-            grp = grp.assign_coords(valid_group=valid_coord)
-
-            return grp  # grp_cleaned
-
-        # First map to filter groups
-        data = deseasonalized.groupby(eco_cluster_labels).map(filter_group)
-        # Filter the data to keep only valid groups
-        filtered_data = data.where(data.valid_group, drop=True)
-
-        if filtered_data.size == 0:
-            raise ValueError("No valid groups found.")
-
-        # Then create a new groupby object with the filtered data
-        filtered_grouped_data = filtered_data.groupby(eco_cluster_labels)
-
-        results = filtered_grouped_data.map(
-            lambda grp: (
-                self._compute_thresholds(
-                    grp,
-                    (self.lower_quantiles, self.upper_quantiles),
-                    return_only_thresholds=compute_only_thresholds,
-                )
-            )
-        )
-        # Calculate mean thresholds for each cluster
-        group_thresholds = results["thresholds"].groupby(eco_cluster_labels).mean()
-        multi_index = pd.MultiIndex.from_arrays(
-            unique_clusters.T, names=["component_1", "component_2", "component_3"]
-        )
-
-        thresholds_by_cluster = xr.DataArray(
-            data=group_thresholds.values,
-            dims=("eco_cluster", "quantile"),
-            coords={
-                "eco_cluster": multi_index,
-                "quantile": quantile_levels,
-            },
-            name="thresholds",
-        )
-
-        # Save thresholds by cluster
-        self.saver._save_data(
-            thresholds_by_cluster, "thresholds", location=False, eco_cluster=True
-        )
-
-        # Assign and save location-specific results if thresholds are not computed only
         if not compute_only_thresholds:
             thresholds_array.values = results["thresholds"].values
             self.saver._save_data(thresholds_array, "thresholds_locations")
@@ -757,29 +626,29 @@ def regional_extremes_method(args):
     # Load a subset of the dataset and fit the PCA
     if not hasattr(extremes_processor.pca, "explained_variance_"):
         # Initialization of the climatic or ecological DatasetHandler
-        dataset = create_handler(
+        dataset_processor = create_handler(
             config=config,
             loader=loader,
             saver=saver,
             n_samples=config.n_samples,  # args.n_samples,  # all the dataset
         )
         # Load and preprocess the dataset
-        data_subset = dataset.preprocess_data()
+        data = dataset_processor.preprocess_data()
         # Fit the PCA on the data
-        extremes_processor.compute_pca_and_transform(scaled_data=data_subset)
+        extremes_processor.compute_pca_and_transform(scaled_data=data)
 
     # Apply the PCA to the entire dataset
     # if extremes_processor.projected_data is None:
 
     # Define the boundaries of the eco_clusters
     if extremes_processor.limits_eco_clusters is None:
-        dataset_processor = create_handler(
-            config=config,
-            loader=loader,
-            saver=saver,
-            n_samples=1000,  # config.n_samples  # None
-        )  # all the dataset
-        data = dataset_processor.preprocess_data(remove_nan=True)
+        # dataset_processor = create_handler(
+        #     config=config,
+        #     loader=loader,
+        #     saver=saver,
+        #     n_samples=config.n_samples,  # None
+        # )  # all the dataset
+        # data = dataset_processor.preprocess_data()
         extremes_processor.apply_pca(scaled_data=data)
         extremes_processor.define_limits_eco_clusters()
 

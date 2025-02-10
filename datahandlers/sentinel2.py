@@ -5,6 +5,7 @@ from dask.diagnostics import ProgressBar
 from pyproj import Transformer
 import csv
 import glob
+import cf_xarray as cfxr
 
 
 class EarthnetDatasetHandler(DatasetHandler):
@@ -17,7 +18,11 @@ class EarthnetDatasetHandler(DatasetHandler):
         self.variable_name = "evi_earthnet"
 
         # Attempt to load preprocessed training data
-        training_data = self.loader._load_data("temp_file")
+        # training_data = self.loader._load_data("temp_file")
+        path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-23_10:01:46_deep_extreme_global/EVI_EN/temp_file.zarr"
+        # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-23_10:01:46_deep_extreme_global/EVI_EN/temp_file.zarr"
+        training_data = xr.open_zarr(path)
+        training_data = cfxr.decode_compress_to_multi_index(training_data, "location")
         if training_data is not None:
             self.data = training_data
             return self.data
@@ -114,8 +119,8 @@ class EarthnetDatasetHandler(DatasetHandler):
         with xr.open_zarr(filepath, chunks="auto") as ds:
             # ds = xr.open_zarr(filepath, mask_and_scale=True)
             # Add landcover
-            if "esa_worldcover_2021" not in ds.data_vars:
-                ds = self.loader._load_and_add_landcover(filepath, ds)
+            # if "esa_worldcover_2021" not in ds.data_vars:
+            #    ds = self.loader._load_and_add_landcover(filepath, ds)
             # Transform UTM to lat/lon
             ds = self._transform_utm_to_latlon(ds)
 
@@ -136,9 +141,9 @@ class EarthnetDatasetHandler(DatasetHandler):
             data = xr.Dataset(
                 data_vars={
                     f"{self.variable_name}": masked_evi,  # Adding 'evi' as a variable
-                    "landcover": ds[
-                        "esa_worldcover_2021"
-                    ],  # Adding 'landcover' as another variable
+                    # "landcover": ds[
+                    #    "esa_worldcover_2021"
+                    # ],  # Adding 'landcover' as another variable
                 },
                 coords={
                     "source_path": minicube_path,  # Add the path as a coordinate
