@@ -86,8 +86,6 @@ class Saver:
 
         # path = self._generate_unique_save_path("pca_projection")
         path = self.config.saving_path / "pca_projection.zarr"
-        print(path)
-        print(pca_projection)
         # Save the file with the unique path
         pca_projection.to_zarr(path, mode="w")
         printt(f"PCA Projection computed and saved to {path}.")
