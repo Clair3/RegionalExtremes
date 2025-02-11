@@ -361,6 +361,28 @@ class RegionalExtremes:
         """
         assert self.config.method == "regional"
 
+        def _process_group(grp):
+            """
+            Process a single group by filtering close locations and validating size.
+
+            Parameters:
+            -----------
+            grp : xarray.DataArray
+                Group to process
+
+            Returns:
+            --------
+            xarray.DataArray
+                Processed group with validation flag
+            """
+            # Filter close locations
+            filtered_grp = _filter_close_locations(grp)
+
+            # Add validation flag for minimum group size
+            is_valid = filtered_grp.location.size >= 5
+            valid_coord = xr.full_like(filtered_grp.location, is_valid, dtype=bool)
+            return filtered_grp.assign_coords(valid_group=valid_coord)
+
         def _filter_close_locations(grp, min_distance=0.03):
             """
             Filter out locations that are too close to each other.
@@ -390,60 +412,38 @@ class RegionalExtremes:
                 location=np.setdiff1d(np.arange(len(grp.location)), too_close_locations)
             )
 
-        def _process_group(grp):
-            """
-            Process a single group by filtering close locations and validating size.
+        def _create_cluster_labels(eco_clusters):
+            """Create cluster labels for grouping."""
+            unique_clusters, _ = np.unique(
+                eco_clusters.values, axis=0, return_counts=True
+            )
 
-            Parameters:
-            -----------
-            grp : xarray.DataArray
-                Group to process
-
-            Returns:
-            --------
-            xarray.DataArray
-                Processed group with validation flag
-            """
-            # Filter close locations
-            filtered_grp = _filter_close_locations(grp)
-
-            # Add validation flag for minimum group size
-            is_valid = filtered_grp.location.size >= 5
-            valid_coord = xr.full_like(filtered_grp.location, is_valid, dtype=bool)
-            return filtered_grp.assign_coords(valid_group=valid_coord)
-
-        # Initialize arrays
-        quantile_levels = np.concatenate((self.lower_quantiles, self.upper_quantiles))
-
-        # Create cluster labels
-        unique_clusters, _ = np.unique(
-            self.eco_clusters.values, axis=0, return_counts=True
-        )
-        eco_cluster_labels = xr.DataArray(
-            data=np.argmax(
-                np.all(
-                    self.eco_clusters.values[:, :, None]
-                    == unique_clusters.T[None, :, :],
+            labels = xr.DataArray(
+                data=np.argmax(
+                    np.all(
+                        eco_clusters[:, :, None] == unique_clusters.T[None, :, :],
+                        axis=1,
+                    ),
                     axis=1,
                 ),
-                axis=1,
-            ),
-            dims=("location",),
-            coords={"location": self.eco_clusters.location},
+                dims=("location",),
+                coords={"location": eco_clusters.location},
+            )
+            return unique_clusters, labels
+
+        compute_only_thresholds = self.config.is_generic_xarray_dataset
+        quantile_levels = np.concatenate((self.lower_quantiles, self.upper_quantiles))
+        unique_clusters, eco_cluster_labels = _create_cluster_labels(
+            self.eco_clusters.values
         )
 
         # Process and filter groups
         data = deseasonalized.groupby(eco_cluster_labels).map(_process_group)
         filtered_data = data.where(data.valid_group, drop=True)
-
         if filtered_data.size == 0:
             raise ValueError("No valid groups found.")
 
-        # Realign eco_cluster_labels with filtered data
         aligned_labels = eco_cluster_labels.sel(location=filtered_data.location)
-
-        # Compute thresholds
-        compute_only_thresholds = self.config.is_generic_xarray_dataset
         results = filtered_data.groupby(aligned_labels).map(
             lambda grp: self._compute_thresholds(
                 grp,
@@ -452,14 +452,12 @@ class RegionalExtremes:
             )
         )
 
-        # Save cluster-level thresholds
+        # Compute cluster-level thresholds
         group_thresholds = results["thresholds"].groupby(aligned_labels).mean()
-
-        unique_clusters, _ = np.unique(
-            self.eco_clusters.sel(location=filtered_data.location).values,
-            axis=0,
-            return_counts=True,
+        unique_clusters, _ = _create_cluster_labels(
+            self.eco_clusters.sel(location=filtered_data.location).values
         )
+
         multi_index = pd.MultiIndex.from_arrays(
             unique_clusters.T, names=["component_1", "component_2", "component_3"]
         )
@@ -478,7 +476,6 @@ class RegionalExtremes:
             thresholds_by_cluster, "thresholds", location=False, eco_cluster=True
         )
 
-        # Save location-specific results if needed
         if not compute_only_thresholds:
             thresholds_array = xr.DataArray(
                 np.full((len(deseasonalized.location), len(quantile_levels)), np.nan),
@@ -488,13 +485,11 @@ class RegionalExtremes:
                     "quantile": quantile_levels,
                 },
             )
-
-            # Fill only the valid locations with their computed thresholds
             thresholds_array.loc[dict(location=results["thresholds"].location)] = (
                 results["thresholds"].values
             )
-            # thresholds_array.values = results["thresholds"].values
             self.saver._save_data(thresholds_array, "thresholds_locations")
+
             extremes_array = xr.full_like(deseasonalized, np.nan, dtype=float)
             extremes_array.loc[dict(location=results["extremes"].location)] = results[
                 "extremes"
