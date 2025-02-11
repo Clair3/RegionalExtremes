@@ -255,9 +255,7 @@ class PlotsSentinel2(Plots):
         data = self.loader._load_data("msc")
 
         # Randomly select n indices from the location dimension
-        random_indices = np.random.choice(
-            len(data.location), size=len(data.location), replace=False
-        )
+        random_indices = np.random.choice(len(data.location), size=1000, replace=False)
 
         # Use isel to select the subset of data based on the random indices
         subset = data.isel(location=random_indices)
@@ -526,22 +524,25 @@ class PlotsSentinel2(Plots):
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-23_10:01:46_deep_extreme_global"
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-02-11_10:24:09_deep_extreme_HR/"
 
-    parent_folder = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-23_10:01:46_deep_extreme_global/EVI_EN/"
+    parent_folder = "//Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-02-11_10:24:09_deep_extreme_HR/EVI_EN/"
     # subfolders = [
     #     folder
     #     for folder in os.listdir(parent_folder)
     #     if os.path.isdir(os.path.join(parent_folder, folder))
     #     and folder.startswith("mc_")
     # ]
-    subfolders = ["ES-Cnd_37.91_-3.23_v0.zarr"]
+    subfolders = [
+        "customcube_CO-MEL_1.95_-72.60_S2_v0.zarr/customcube_CO-MEL_1.95_-72.60_S2_v0.zarr/customcube_CO-MEL_1.95_-72.60_S2_v0.zarr"
+    ]
+
     for minicube_name in subfolders:
         config = InitializationConfig(args)
         plot = PlotsSentinel2(config=config, minicube_name=minicube_name)
-        plot.plot_thresholds()
-        # plot.plot_minicube_eco_clusters()
-        # plot.plot_msc(colored_by_eco_cluster=True)
+        # plot.plot_thresholds()
+        plot.plot_minicube_eco_clusters()
+        plot.plot_msc(colored_by_eco_cluster=True)
         # plot.plot_location_in_europe()
         # plot.plot_rgb()
         # plot.map_component()

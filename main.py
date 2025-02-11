@@ -118,9 +118,9 @@ if __name__ == "__main__":
     args.name = "deep_extreme_HR"
     args.index = "EVI_EN"
     args.k_pca = False
-    args.n_samples = 10
+    args.n_samples = 10000
     args.n_components = 3
-    args.n_eco_clusters = 50
+    args.n_eco_clusters = 10
     args.compute_variance = False
     args.method = "regional"
     args.start_year = 2000
@@ -128,7 +128,7 @@ if __name__ == "__main__":
     args.lower_quantiles = [0.01, 0.025, 0.05]
     args.upper_quantiles = [0.95, 0.975, 0.99]
 
-    # args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-23_10:01:46_deep_extreme_global"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-23_10:01:46_deep_extreme_global"
+    # args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-02-10_13:10:34_deep_extreme_HR"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-23_10:01:46_deep_extreme_global"
 
     if args.method == "regional":
         # Train the regional extreme method on a subset of locations

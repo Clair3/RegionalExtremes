@@ -25,6 +25,11 @@ class EarthnetDatasetHandler(DatasetHandler):
         training_data = cfxr.decode_compress_to_multi_index(training_data, "location")
         if training_data is not None:
             self.data = training_data
+            if self.n_samples:
+                random_indices = np.random.choice(
+                    len(self.data.location), size=self.n_samples, replace=False
+                )
+                self.data = self.data.isel(location=random_indices)
             return self.data
 
         # Determine the number of samples to process (default: 10,000)
@@ -58,16 +63,14 @@ class EarthnetDatasetHandler(DatasetHandler):
         return self.data
 
     def _minicube_specific_loading(self, minicube_path):
-        # data = None
-        # i = 0
-        # while (i < 5) and (data is None):
-        #     i += 1
-        #     samples_indice = self.sample_locations(1)
         data = self.load_minicube(minicube_path, process_entire_minicube=True)
-        self.data = data.stack(location=("longitude", "latitude"))  # .to_dataset(
-        #     name=self.variable_name
-        # )
-        self.data = self.data  # .isel(location=slice(0, 100))
+        self.data = data.stack(location=("longitude", "latitude"))
+        if self.n_samples:
+            random_indices = np.random.choice(
+                len(self.data.location), size=self.n_samples, replace=False
+            )
+            self.data = self.data.isel(location=random_indices)
+        # self.data = self.data  # .isel(location=slice(0, 100))
         return self.data
 
     def sample_locations(self, n_samples):
@@ -420,6 +423,8 @@ class EarthnetDatasetHandler(DatasetHandler):
             self._dataset_specific_loading()
         self.filter_dataset_specific()  # useless, legacy...
         self.data = self.data[self.variable_name]
+        # Randomly select n indices from the location dimension
+
         printt(
             f"Computation on the entire dataset. {self.data.sizes['location']} samples"
         )
@@ -428,16 +433,10 @@ class EarthnetDatasetHandler(DatasetHandler):
         self.msc = self.msc.transpose("location", "dayofyear", ...)
         self.saver._save_data(self.msc, "msc")
 
-        # with ProgressBar():
-        #     # Compute the tasks in parallel (this will trigger Dask's parallel computation)
-        #     data = compute(*data, scheduler="processes")  # , scheduler="processes"
-
         self.msc = self.msc.persist()
         if return_time_serie:
             self.data = self.data.persist()
             self.data = self.data.transpose("location", "time", ...)
-            printt("returning time serie")
             return self.msc, self.data
         else:
-            printt("returning msc")
             return self.msc

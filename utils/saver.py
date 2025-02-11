@@ -113,7 +113,7 @@ class Saver:
 
         if eco_cluster:
             data = cfxr.encode_multi_index_as_compress(data, "eco_cluster")
-        if "quantile" in data.dims:
+        if "thresholds" in data.dims:
             # data = data.chunk({"location": 1000, "quantile": -1})
             chunk_size = 1000
             encoding = {
@@ -122,8 +122,8 @@ class Saver:
                 "component_2": {"chunks": (chunk_size,)},
                 "component_3": {"chunks": (chunk_size,)},
             }
-
-            data = data.chunk({"location": chunk_size, "quantile": -1})
+            if "location" in data.dims:
+                data = data.chunk({"location": chunk_size, "quantile": -1})
             path = basepath / f"{name}.zarr"  # self._generate_unique_save_path(name)
 
             data.to_zarr(path, mode="w", encoding=encoding)

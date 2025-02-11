@@ -414,12 +414,6 @@ class RegionalExtremes:
 
         # Initialize arrays
         quantile_levels = np.concatenate((self.lower_quantiles, self.upper_quantiles))
-        extremes_array = xr.full_like(deseasonalized, np.nan, dtype=float)
-        thresholds_array = xr.DataArray(
-            np.full((len(deseasonalized.location), len(quantile_levels)), np.nan),
-            dims=["location", "quantile"],
-            coords={"location": deseasonalized.location, "quantile": quantile_levels},
-        )
 
         # Create cluster labels
         unique_clusters, _ = np.unique(
@@ -445,9 +439,12 @@ class RegionalExtremes:
         if filtered_data.size == 0:
             raise ValueError("No valid groups found.")
 
+        # Realign eco_cluster_labels with filtered data
+        aligned_labels = eco_cluster_labels.sel(location=filtered_data.location)
+
         # Compute thresholds
         compute_only_thresholds = self.config.is_generic_xarray_dataset
-        results = filtered_data.groupby(eco_cluster_labels).map(
+        results = filtered_data.groupby(aligned_labels).map(
             lambda grp: self._compute_thresholds(
                 grp,
                 (self.lower_quantiles, self.upper_quantiles),
@@ -456,7 +453,13 @@ class RegionalExtremes:
         )
 
         # Save cluster-level thresholds
-        group_thresholds = results["thresholds"].groupby(eco_cluster_labels).mean()
+        group_thresholds = results["thresholds"].groupby(aligned_labels).mean()
+
+        unique_clusters, _ = np.unique(
+            self.eco_clusters.sel(location=filtered_data.location).values,
+            axis=0,
+            return_counts=True,
+        )
         multi_index = pd.MultiIndex.from_arrays(
             unique_clusters.T, names=["component_1", "component_2", "component_3"]
         )
@@ -477,10 +480,25 @@ class RegionalExtremes:
 
         # Save location-specific results if needed
         if not compute_only_thresholds:
-            thresholds_array.values = results["thresholds"].values
-            self.saver._save_data(thresholds_array, "thresholds_locations")
+            thresholds_array = xr.DataArray(
+                np.full((len(deseasonalized.location), len(quantile_levels)), np.nan),
+                dims=["location", "quantile"],
+                coords={
+                    "location": deseasonalized.location,
+                    "quantile": quantile_levels,
+                },
+            )
 
-            extremes_array.values = results["extremes"].values
+            # Fill only the valid locations with their computed thresholds
+            thresholds_array.loc[dict(location=results["thresholds"].location)] = (
+                results["thresholds"].values
+            )
+            # thresholds_array.values = results["thresholds"].values
+            self.saver._save_data(thresholds_array, "thresholds_locations")
+            extremes_array = xr.full_like(deseasonalized, np.nan, dtype=float)
+            extremes_array.loc[dict(location=results["extremes"].location)] = results[
+                "extremes"
+            ].values
             self.saver._save_data(extremes_array, "extremes")
 
     def _compute_thresholds(
@@ -609,6 +627,7 @@ def regional_extremes_method(args):
     """Fit the PCA with a subset of the data, then project the full dataset,
     then define the eco_clusters on the full dataset projected."""
     # Initialization of the configs, load and save paths, log.txt.
+    minicube_path = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/_test/customcube_CO-MEL_1.95_-72.60_S2_v0.zarr.zip"
     config = InitializationConfig(args)
     # Loader class to load intermediate steps.
     loader = Loader(config)
@@ -630,7 +649,7 @@ def regional_extremes_method(args):
             config=config,
             loader=loader,
             saver=saver,
-            n_samples=config.n_samples,  # args.n_samples,  # all the dataset
+            n_samples=100,  # config.n_samples,  # all the dataset
         )
         # Load and preprocess the dataset
         data = dataset_processor.preprocess_data()
@@ -642,20 +661,20 @@ def regional_extremes_method(args):
 
     # Define the boundaries of the eco_clusters
     if extremes_processor.limits_eco_clusters is None:
-        # dataset_processor = create_handler(
-        #     config=config,
-        #     loader=loader,
-        #     saver=saver,
-        #     n_samples=config.n_samples,  # None
-        # )  # all the dataset
-        # data = dataset_processor.preprocess_data()
+        dataset_processor = create_handler(
+            config=config, loader=loader, saver=saver, n_samples=100
+        )  # all the dataset
+        data = dataset_processor.preprocess_data()
         extremes_processor.apply_pca(scaled_data=data)
         extremes_processor.define_limits_eco_clusters()
 
     # Apply the regional threshold and compute the extremes
     # Load the data
     dataset_processor = create_handler(
-        config=config, loader=loader, saver=saver, n_samples=config.n_samples
+        config=config,
+        loader=loader,
+        saver=saver,
+        n_samples=100,
     )
     msc, data = dataset_processor.preprocess_data(
         scale=False,
