@@ -118,6 +118,7 @@ class EarthnetDatasetHandler(DatasetHandler):
         # filepath = glob.glob(
         #     "/Net/Groups/BGI/work_2/scratch/DeepExtremes/dx-minicubes/full/*/mc_25.61_44.32_1.3_20231018_0.zarr"
         # )[0]
+        print("minicube_path", minicube_path)
         filepath = Path(minicube_path)  # EARTHNET_FILEPATH + minicube_path
         with xr.open_zarr(filepath, chunks="auto") as ds:
             # ds = xr.open_zarr(filepath, mask_and_scale=True)
@@ -134,6 +135,7 @@ class EarthnetDatasetHandler(DatasetHandler):
                     return None
             else:
                 if not self._has_sufficient_vegetation(ds):
+                    print("Not enough vegetation")
                     return None
             self.variable_name = "evi"  # ds.attrs["data_id"]
             # Filter based on vegetation occurrence
@@ -154,17 +156,18 @@ class EarthnetDatasetHandler(DatasetHandler):
             )
             # Check for excessive missing data
             if self._has_excessive_nan(masked_evi):
+                print("Excessive NaN values")
                 return None
             if process_entire_minicube:
                 self.saver.update_saving_path(filepath.stem)
 
             # Write the valid path to the CSV file
-            with open(
-                "DeepExtremes_enough_vegetation_europe.csv", "a", newline=""
-            ) as outfile:
-                csv.writer(outfile).writerow(
-                    [minicube_path]
-                )  # Note: Pass as a list to writerow
+            # with open(
+            #     "DeepExtremes_enough_vegetation_europe.csv", "a", newline=""
+            # ) as outfile:
+            #     csv.writer(outfile).writerow(
+            #         [minicube_path]
+            #     )  # Note: Pass as a list to writerow
 
             return data
 

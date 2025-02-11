@@ -644,7 +644,7 @@ def regional_extremes_method(args):
             config=config,
             loader=loader,
             saver=saver,
-            n_samples=100,  # config.n_samples,  # all the dataset
+            n_samples=None,  # config.n_samples,  # all the dataset
         )
         # Load and preprocess the dataset
         data = dataset_processor.preprocess_data()
@@ -657,7 +657,7 @@ def regional_extremes_method(args):
     # Define the boundaries of the eco_clusters
     if extremes_processor.limits_eco_clusters is None:
         dataset_processor = create_handler(
-            config=config, loader=loader, saver=saver, n_samples=100
+            config=config, loader=loader, saver=saver, n_samples=None
         )  # all the dataset
         data = dataset_processor.preprocess_data()
         extremes_processor.apply_pca(scaled_data=data)
@@ -669,7 +669,7 @@ def regional_extremes_method(args):
         config=config,
         loader=loader,
         saver=saver,
-        n_samples=100,
+        n_samples=None,
     )
     msc, data = dataset_processor.preprocess_data(
         scale=False,
@@ -713,7 +713,7 @@ def regional_extremes_minicube(args, minicube_path):
     # Apply the regional threshold and compute the extremes
     # Load the data
     dataset_processor = create_handler(
-        config=config, loader=loader, saver=saver, n_samples=1  # config.n_samples
+        config=config, loader=loader, saver=saver, n_samples=None  # config.n_samples
     )
     msc, data = dataset_processor.preprocess_data(
         scale=False,

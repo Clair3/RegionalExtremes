@@ -524,28 +524,26 @@ class PlotsSentinel2(Plots):
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-02-11_10:24:09_deep_extreme_HR/"
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-02-11_18:16:40_deep_extreme_HR"
 
-    parent_folder = "//Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-02-11_10:24:09_deep_extreme_HR/EVI_EN/"
+    parent_folder = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-02-11_18:16:40_deep_extreme_HR/EVI_EN/"
     # subfolders = [
     #     folder
     #     for folder in os.listdir(parent_folder)
     #     if os.path.isdir(os.path.join(parent_folder, folder))
     #     and folder.startswith("mc_")
     # ]
-    subfolders = [
-        "customcube_CO-MEL_1.95_-72.60_S2_v0.zarr/customcube_CO-MEL_1.95_-72.60_S2_v0.zarr/customcube_CO-MEL_1.95_-72.60_S2_v0.zarr"
-    ]
+    subfolders = ["ES-Cnd_37.91_-3.23_v0.zarr"]  # "DE-RuS_50.87_6.45_v0.zarr",
 
     for minicube_name in subfolders:
         config = InitializationConfig(args)
         plot = PlotsSentinel2(config=config, minicube_name=minicube_name)
         # plot.plot_thresholds()
-        plot.plot_minicube_eco_clusters()
-        plot.plot_msc(colored_by_eco_cluster=True)
+        # plot.plot_minicube_eco_clusters()
+        # plot.plot_msc(colored_by_eco_cluster=True)
         # plot.plot_location_in_europe()
         # plot.plot_rgb()
         # plot.map_component()
 
-        # plot.map_component(colored_by_eco_cluster=False)
-        # plot.plot_3D_pca_landcover()
+        plot.map_component(colored_by_eco_cluster=False)
+        plot.plot_3D_pca_landcover()
