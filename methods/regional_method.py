@@ -417,11 +417,11 @@ class RegionalExtremes:
             unique_clusters, _ = np.unique(
                 eco_clusters.values, axis=0, return_counts=True
             )
-
             labels = xr.DataArray(
                 data=np.argmax(
                     np.all(
-                        eco_clusters[:, :, None] == unique_clusters.T[None, :, :],
+                        eco_clusters.values[:, :, None]
+                        == unique_clusters.T[None, :, :],
                         axis=1,
                     ),
                     axis=1,
@@ -433,9 +433,8 @@ class RegionalExtremes:
 
         compute_only_thresholds = self.config.is_generic_xarray_dataset
         quantile_levels = np.concatenate((self.lower_quantiles, self.upper_quantiles))
-        unique_clusters, eco_cluster_labels = _create_cluster_labels(
-            self.eco_clusters.values
-        )
+
+        unique_clusters, eco_cluster_labels = _create_cluster_labels(self.eco_clusters)
 
         # Process and filter groups
         data = deseasonalized.groupby(eco_cluster_labels).map(_process_group)
@@ -455,7 +454,7 @@ class RegionalExtremes:
         # Compute cluster-level thresholds
         group_thresholds = results["thresholds"].groupby(aligned_labels).mean()
         unique_clusters, _ = _create_cluster_labels(
-            self.eco_clusters.sel(location=filtered_data.location).values
+            self.eco_clusters.sel(location=filtered_data.location)
         )
 
         multi_index = pd.MultiIndex.from_arrays(

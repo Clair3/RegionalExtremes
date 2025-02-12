@@ -119,7 +119,6 @@ class InitializationConfig:
                 json.dump(args_dict, f, indent=4)
         else:
             raise f"{args_path} already exist."
-        printt(f"args saved, path: {args_path}")
 
     def _load_existing_experiment(self):
         """

@@ -420,6 +420,11 @@ class EarthnetDatasetHandler(DatasetHandler):
         Preprocess data based on the index.
         """
         printt("start of the preprocess")
+        if not return_time_serie:
+            self.msc = self.loader._load_data("msc").msc
+            if self.msc is not None:
+                return self.msc
+
         if minicube_path:
             self._minicube_specific_loading(minicube_path=minicube_path)
         else:
