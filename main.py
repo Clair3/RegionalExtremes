@@ -128,7 +128,7 @@ if __name__ == "__main__":
     args.lower_quantiles = [0.01, 0.025, 0.05]
     args.upper_quantiles = [0.95, 0.975, 0.99]
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-02-12_10:43:00_Final_50eco_cluster"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-23_10:01:46_deep_extreme_global"
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-02-12_10:42:47_Final_10eco_cluster"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-23_10:01:46_deep_extreme_global"
 
     if args.method == "regional":
         # Train the regional extreme method on a subset of locations
@@ -141,7 +141,7 @@ if __name__ == "__main__":
         #     if os.path.isdir(os.path.join(parent_folder, folder))
         #     and folder.startswith("mc_")
         # ]
-        subfolders = ["ES-Cnd_37.91_-3.23_v0.zarr", "DE-RuS_50.87_6.45_v0.zarr"]
+        subfolders = ["ES-Cnd_37.91_-3.23_v0.zarr"]
         for folders in subfolders:
             regional_extremes_minicube(
                 args,

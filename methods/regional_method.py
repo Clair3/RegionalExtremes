@@ -331,6 +331,19 @@ class RegionalExtremes:
         # Calculate thresholds
         thresholds = grouped.map(lambda grp: map_thresholds_to_clusters(grp))
         thresholds = thresholds.sel(eco_cluster=deseasonalized["eco_cluster"])
+
+        thresholds_array = xr.DataArray(
+            np.full((len(deseasonalized.location), len(quantile_levels)), np.nan),
+            dims=["location", "quantile"],
+            coords={
+                "location": deseasonalized.location,
+                "quantile": quantile_levels,
+            },
+        )
+        thresholds_array.loc[dict(location=results["thresholds"].location)] = results[
+            "thresholds"
+        ].values
+        self.saver._save_data(thresholds_array, "thresholds_locations")
         thresholds = thresholds.drop_vars(["eco_cluster"])
         # Save thresholds
         self.saver._save_data(thresholds, "thresholds")

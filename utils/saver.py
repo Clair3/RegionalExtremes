@@ -114,7 +114,7 @@ class Saver:
 
         if eco_cluster:
             data = cfxr.encode_multi_index_as_compress(data, "eco_cluster")
-        if "thresholds" in data.dims:
+        if name is "thresholds":  # in data.dims:
             # data = data.chunk({"location": 1000, "quantile": -1})
             chunk_size = 1000
             encoding = {

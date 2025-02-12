@@ -84,54 +84,6 @@ class PlotsSentinel2(Plots):
         # Show the plot
         plt.show()
 
-    """def map_component(self, colored_by_eco_cluster=True):
-        if colored_by_eco_cluster:
-            data = self.loader._load_data("eco_clusters")
-            data = data.eco_clusters
-        else:
-            data, explained_variance = self.loader._load_pca_projection(
-                explained_variance=True
-            )
-
-        longitudes, latitudes = zip(*data.location.values)
-        longitudes = np.array(longitudes)
-        latitudes = np.array(latitudes)
-
-        # Normalize the explained variance
-        rgb_colors = self.normalize(data)
-
-        # Create the plot
-        fig, ax = plt.subplots(
-            figsize=(10, 8), subplot_kw={"projection": ccrs.PlateCarree()}
-        )
-
-        ax.scatter(
-            longitudes,
-            latitudes,
-            color=rgb_colors,
-            s=1,  # Size of the point
-            transform=ccrs.PlateCarree(),
-        )
-
-        # Add geographical features
-        ax.coastlines()
-        ax.add_feature(cfeature.BORDERS, linestyle=":")
-        ax.add_feature(cfeature.LAND, edgecolor="black")
-        ax.add_feature(cfeature.OCEAN)
-
-        # Adjust the layout
-        plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05)
-        if colored_by_eco_cluster:
-            # Add a title
-            plt.title("Colored by eco-clusters", fontsize=16)
-            map_saving_path = self.saving_path / "map_eco_clusters.png"
-        else:
-            plt.title("Colored by pca component", fontsize=16)
-            map_saving_path = self.saving_path / "map_pca.png"
-        plt.savefig(map_saving_path)
-        # Show the plot
-        plt.show()"""
-
     def plot_3D_pca_with_lat_lon_gradient(self):
         # Load PCA projection
         pca_projection, explained_variance = self.loader._load_pca_projection(
@@ -255,16 +207,15 @@ class PlotsSentinel2(Plots):
         data = self.loader._load_data("msc")
 
         # Randomly select n indices from the location dimension
-        random_indices = np.random.choice(len(data.location), size=1000, replace=False)
+        # random_indices = np.random.choice(len(data.location), size=1000, replace=False)
 
         # Use isel to select the subset of data based on the random indices
-        subset = data.isel(location=random_indices)
+        subset = data  # .isel(location=random_indices)
         if colored_by_eco_cluster:
             cluster = self.loader._load_data("eco_clusters")
             cluster = cluster.eco_clusters
         else:
             cluster = self.loader._load_pca_projection()
-        cluster = cluster.isel(location=random_indices)
 
         # Normalize the explained variance
         rgb_colors = self.normalize(cluster)
@@ -490,11 +441,14 @@ class PlotsSentinel2(Plots):
 
     def plot_thresholds(self):
         data = self.loader._load_data("thresholds").thresholds
+        print(data)
         # bins_path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-23_10:01:46_deep_extreme_global/EVI_EN/DE-RuS_50.87_6.45_v0.zarr/thresholds.zarr"
         # data = xr.open_zarr(bins_path)
         # data = self.loader._load_data("thresholds")
         # data = cfxr.decode_compress_to_multi_index(data, "location").thresholds
         data = data.unstack("location")
+        print(data)
+        print(data.latitude.values)
         # print(data)
 
         fig, ax = plt.subplots(figsize=(12, 10))
@@ -524,26 +478,23 @@ class PlotsSentinel2(Plots):
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-02-10_13:10:34_deep_extreme_HR"
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-02-12_10:42:47_Final_10eco_cluster"
 
-    parent_folder = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-02-10_13:10:34_deep_extreme_HR/EVI_EN/"
-    # subfolders = [
-    #     folder
-    #     for folder in os.listdir(parent_folder)
-    #     if os.path.isdir(os.path.join(parent_folder, folder))
-    #     and folder.startswith("mc_")
-    # ]
-    subfolders = ["ES-Cnd_37.91_-3.23_v0.zarr", "DE-RuS_50.87_6.45_v0.zarr"]
+    subfolders = [
+        "ES-Cnd_37.91_-3.23_v0.zarr",
+        "DE-RuS_50.87_6.45_v0.zarr",
+    ]
 
     for minicube_name in subfolders:
         config = InitializationConfig(args)
         plot = PlotsSentinel2(config=config, minicube_name=minicube_name)
-        # plot.plot_thresholds()
+        plot.plot_thresholds()
         plot.plot_minicube_eco_clusters()
         plot.plot_msc(colored_by_eco_cluster=True)
         # plot.plot_location_in_europe()
-        # plot.plot_rgb()
+        plot.plot_rgb()
+        # plot.plot_3D_pca()
         # plot.map_component()
-
-        # plot.map_component(colored_by_eco_cluster=False)
-        # plot.plot_3D_pca_landcover()
+#
+# plot.map_component(colored_by_eco_cluster=False)
+# plot.plot_3D_pca_landcover()
