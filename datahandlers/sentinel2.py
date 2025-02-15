@@ -421,9 +421,9 @@ class EarthnetDatasetHandler(DatasetHandler):
         """
         printt("start of the preprocess")
         if not return_time_serie:
-            self.msc = self.loader._load_data("msc").msc
+            self.msc = self.loader._load_data("msc")
             if self.msc is not None:
-                return self.msc
+                return self.msc.msc
 
         if minicube_path:
             self._minicube_specific_loading(minicube_path=minicube_path)

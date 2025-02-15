@@ -634,7 +634,7 @@ def regional_extremes_method(args):
     """Fit the PCA with a subset of the data, then project the full dataset,
     then define the eco_clusters on the full dataset projected."""
     # Initialization of the configs, load and save paths, log.txt.
-    minicube_path = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/_test/customcube_CO-MEL_1.95_-72.60_S2_v0.zarr.zip"
+    # minicube_path = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/_test/customcube_CO-MEL_1.95_-72.60_S2_v0.zarr.zip"
     config = InitializationConfig(args)
     # Loader class to load intermediate steps.
     loader = Loader(config)
@@ -656,10 +656,10 @@ def regional_extremes_method(args):
             config=config,
             loader=loader,
             saver=saver,
-            n_samples=None,  # config.n_samples,  # all the dataset
+            n_samples=None,  # 10000,  # config.n_samples,  # all the dataset
         )
         # Load and preprocess the dataset
-        data = dataset_processor.preprocess_data()
+        data = dataset_processor.preprocess_data()  # minicube_path=minicube_path)
         # Fit the PCA on the data
         extremes_processor.compute_pca_and_transform(scaled_data=data)
 
@@ -669,9 +669,9 @@ def regional_extremes_method(args):
     # Define the boundaries of the eco_clusters
     if extremes_processor.limits_eco_clusters is None:
         dataset_processor = create_handler(
-            config=config, loader=loader, saver=saver, n_samples=None
+            config=config, loader=loader, saver=saver, n_samples=10000
         )  # all the dataset
-        data = dataset_processor.preprocess_data()
+        data = dataset_processor.preprocess_data()  # minicube_path=minicube_path)
         extremes_processor.apply_pca(scaled_data=data)
         extremes_processor.define_limits_eco_clusters()
 
@@ -688,12 +688,13 @@ def regional_extremes_method(args):
         return_time_serie=True,
         reduce_temporal_resolution=False,
         remove_nan=False,
+        # minicube_path=minicube_path,
     )
     extremes_processor.apply_pca(scaled_data=msc)
     extremes_processor.find_eco_clusters()
     # Deseasonalize the data
     deseasonalized = dataset_processor._deseasonalize(data, msc)
-    # Compute the quantiles per regions/biome (=eco_clusters)
+    # Compute the quantiles per eco_clusters
     extremes_processor.compute_regional_threshold(deseasonalized)
 
     return extremes_processor

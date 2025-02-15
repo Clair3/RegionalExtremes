@@ -98,12 +98,12 @@ class Loader:
     def _load_eco_clusters(self):
         eco_clusters_path = self.config.saving_path / "eco_clusters.zarr"
         if not os.path.exists(eco_clusters_path):
-            eco_clusters_path = self.config.saving_path / "bins_0.zarr"
-            if not os.path.exists(eco_clusters_path):
-                eco_clusters_path = self.config.saving_path / "bins.zarr"
-                if not os.path.exists(eco_clusters_path):
-                    printt(f"The file {eco_clusters_path} not found.")
-                    return None
+            #     eco_clusters_path = self.config.saving_path / "bins_0.zarr"
+            #     if not os.path.exists(eco_clusters_path):
+            #         eco_clusters_path = self.config.saving_path / "bins.zarr"
+            #         if not os.path.exists(eco_clusters_path):
+            #             printt(f"The file {eco_clusters_path} not found.")
+            return None
 
         data = xr.open_zarr(eco_clusters_path)
         # data = data.stack(location=["longitude", "latitude"])
@@ -119,29 +119,6 @@ class Loader:
         data = data.where(condition, drop=True)
         printt("eco_clusters loaded.")
         return data
-
-    def _load_thresholds(self):
-        """Saves the threshold quantiles to a file."""
-        thresholds_path = self.config.saving_path / "thresholds_0.zarr"
-        if not os.path.exists(thresholds_path):
-            printt(f"The file {thresholds_path} not found.")
-            return None
-        thresholds = xr.open_zarr(thresholds_path)
-        printt("Thresholds loaded.")
-        return thresholds
-
-    def _load_extremes(self):
-        """Saves the extremes quantile to a file."""
-        extremes_path = self.config.saving_path / "extremes.zarr"
-        if not os.path.exists(extremes_path):
-            printt(f"The file {extremes_path} not found.")
-            return None
-        extremes = xr.open_zarr(extremes_path)
-        extremes = cfxr.decode_compress_to_multi_index(extremes, "location")
-        # Unstack location for longitude and latitude as dimensions
-        # extremes = extremes.stack(location=["longitude", "latitude"])
-        printt("Extremes loaded.")
-        return extremes
 
     def _load_minmax_data(self):
         """
