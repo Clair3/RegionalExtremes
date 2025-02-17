@@ -17,6 +17,7 @@ from RegionalExtremesPackage.utils.config import (
     CLIMATIC_INDICES,
     ECOLOGICAL_INDICES,
     EARTHNET_INDICES,
+    MODIS_INDICES,
 )
 from RegionalExtremesPackage.utils import Loader, Saver
 from RegionalExtremesPackage.utils.logger import printt

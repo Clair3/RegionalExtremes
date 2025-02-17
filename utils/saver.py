@@ -114,22 +114,22 @@ class Saver:
 
         if eco_cluster:
             data = cfxr.encode_multi_index_as_compress(data, "eco_cluster")
-        if name is "thresholds":  # in data.dims:
-            # data = data.chunk({"location": 1000, "quantile": -1})
-            chunk_size = 1000
-            encoding = {
-                "thresholds": {"chunks": (chunk_size, -1)},
-                "component_1": {"chunks": (chunk_size,)},
-                "component_2": {"chunks": (chunk_size,)},
-                "component_3": {"chunks": (chunk_size,)},
-            }
-            if "location" in data.dims:
-                data = data.chunk({"location": chunk_size, "quantile": -1})
-            data.to_zarr(path, mode="w", encoding=encoding)
+        # if name is "thresholds":  # in data.dims:
+        #    # data = data.chunk({"location": 1000, "quantile": -1})
+        #    chunk_size = 1000
+        #    encoding = {
+        #        "thresholds": {"chunks": (chunk_size, -1)},
+        #        "component_1": {"chunks": (chunk_size,)},
+        #        "component_2": {"chunks": (chunk_size,)},
+        #        "component_3": {"chunks": (chunk_size,)},
+        #    }
+        #    if "location" in data.dims:
+        #        data = data.chunk({"location": chunk_size, "quantile": -1})
+        #    data.to_zarr(path, mode="w", encoding=encoding)
 
-        else:
-            data = data.chunk("auto")
-            data.to_zarr(path, mode="w")
+        # else:
+        data = data.chunk("auto")
+        data.to_zarr(path, mode="w")
         printt(f"{name} computed and saved.")
 
     def _save_spatial_masking(self, mask):

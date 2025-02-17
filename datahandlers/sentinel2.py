@@ -3,12 +3,10 @@ from .base import DatasetHandler
 from dask import delayed, compute
 from dask.diagnostics import ProgressBar
 from pyproj import Transformer
-import csv
-import glob
 import cf_xarray as cfxr
 
 
-class EarthnetDatasetHandler(DatasetHandler):
+class Sentinel2DatasetHandler(DatasetHandler):
 
     def _dataset_specific_loading(self):
         """
@@ -19,7 +17,7 @@ class EarthnetDatasetHandler(DatasetHandler):
 
         # Attempt to load preprocessed training data
         # training_data = self.loader._load_data("temp_file")
-        path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-23_10:01:46_deep_extreme_global/EVI_EN/temp_file.zarr"
+        path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-12-21_13:11:46_30000_locations/EVI_EN/temp_file.zarr"
         # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-23_10:01:46_deep_extreme_global/EVI_EN/temp_file.zarr"
         training_data = xr.open_zarr(path)
         training_data = cfxr.decode_compress_to_multi_index(training_data, "location")
@@ -113,18 +111,11 @@ class EarthnetDatasetHandler(DatasetHandler):
         return df.loc[sampled_indices].values  # df.loc[sampled_indices, "path"].values
 
     def load_minicube(self, minicube_path, process_entire_minicube=False):
-        # minicube_path = "/full/1.3/mc_25.61_44.32_1.3_20231018_0.zarr"
-        # Load data
-        # filepath = glob.glob(
-        #     "/Net/Groups/BGI/work_2/scratch/DeepExtremes/dx-minicubes/full/*/mc_25.61_44.32_1.3_20231018_0.zarr"
-        # )[0]
-        print("minicube_path", minicube_path)
         filepath = Path(minicube_path)  # EARTHNET_FILEPATH + minicube_path
         with xr.open_zarr(filepath, chunks="auto") as ds:
-            # ds = xr.open_zarr(filepath, mask_and_scale=True)
             # Add landcover
-            # if "esa_worldcover_2021" not in ds.data_vars:
-            #    ds = self.loader._load_and_add_landcover(filepath, ds)
+            if "esa_worldcover_2021" not in ds.data_vars:
+                ds = self.loader._load_and_add_landcover(filepath, ds)
             # Transform UTM to lat/lon
             ds = self._transform_utm_to_latlon(ds)
 
@@ -160,14 +151,6 @@ class EarthnetDatasetHandler(DatasetHandler):
                 return None
             if process_entire_minicube:
                 self.saver.update_saving_path(filepath.stem)
-
-            # Write the valid path to the CSV file
-            # with open(
-            #     "DeepExtremes_enough_vegetation_europe.csv", "a", newline=""
-            # ) as outfile:
-            #     csv.writer(outfile).writerow(
-            #         [minicube_path]
-            #     )  # Note: Pass as a list to writerow
 
             return data
 
@@ -260,24 +243,20 @@ class EarthnetDatasetHandler(DatasetHandler):
         return mask
 
     def _deseasonalize(self, data, msc):
-        daily_msc = msc.interp(dayofyear=np.arange(1, 366, 1))
+        daily_msc = msc.interp(dayofyear=np.arange(1, 367, 1))
         # Align subset_msc with subset_data
         aligned_msc = daily_msc.sel(dayofyear=data["time.dayofyear"])
         # Subtract the seasonal cycle
         deseasonalized = data - aligned_msc
         return deseasonalized
 
-    def clean_and_smooth_timeseries(
+    def clean_timeseries(
         self,
         data: xr.DataArray,
         rolling_window: int = 3,
-        bin_size: int = 5,
-        smoothing_window: int = 12,
-        poly_order: int = 2,
     ) -> xr.DataArray:
         """
-        Clean and smooth a time series using rolling windows, neighbor comparison,
-        and Savitzky-Golay filtering.
+        Clean and smooth a time series using rolling windows, neighbor comparison.
 
         Parameters
         ----------
@@ -285,12 +264,6 @@ class EarthnetDatasetHandler(DatasetHandler):
             Input time series data
         rolling_window : int, optional
             Size of rolling window for initial smoothing, default 3
-        bin_size : int, optional
-            Size of bins for grouping days, default 16
-        smoothing_window : int, optional
-            Window size for Savitzky-Golay filter, default 10
-        poly_order : int, optional
-            Polynomial order for Savitzky-Golay filter, default 2
 
         Returns
         -------
@@ -338,37 +311,40 @@ class EarthnetDatasetHandler(DatasetHandler):
 
             # Step 4: Remove local minima again after NaN filling
             clean_data = remove_local_minima(clean_data)
-            # Step 5: Compute mean seasonal cycle
-            bins = np.arange(1, 367, bin_size)
-            clean_data = clean_data.assign_coords(
-                dayofyear=clean_data["time"].dt.dayofyear
-            )
-            mean_seasonal_cycle = (
-                clean_data.groupby_bins("time.dayofyear", bins=bins, right=False)
-                .mean("time", skipna=True)
-                .rename({"dayofyear_bins": "dayofyear"})
-            )
-
-            # Set dayofyear to bin midpoints
-            mean_seasonal_cycle["dayofyear"] = [
-                interval.mid for interval in mean_seasonal_cycle.dayofyear.values
-            ]
-            # Fill any remaining NaNs with 0
-            mean_seasonal_cycle = mean_seasonal_cycle.fillna(0)
-            # Step 6: Apply Savitzky-Golay smoothing
-            mean_seasonal_cycle_values = savgol_filter(
-                mean_seasonal_cycle.values, smoothing_window, poly_order, axis=0
-            )
-            mean_seasonal_cycle = mean_seasonal_cycle.copy(
-                data=mean_seasonal_cycle_values
-            )
-            # Ensure all values are non-negative
-            # mean_seasonal_cycle = mean_seasonal_cycle.where(mean_seasonal_cycle > 0, 0)
-
-            return clean_data, mean_seasonal_cycle
-
+            return clean_data
         except Exception as e:
             raise RuntimeError(f"Error processing time series: {str(e)}") from e
+
+    def compute_msc(
+        self,
+        clean_data: xr.DataArray,
+        bin_size: int = 5,
+        smoothing_window: int = 12,
+        poly_order: int = 2,
+    ):
+        # Step 5: Add day of year for deseasonalizing data
+        clean_data = clean_data.assign_coords(dayofyear=clean_data["time"].dt.dayofyear)
+        bins = np.arange(1, 367, bin_size)
+        mean_seasonal_cycle = (
+            clean_data.groupby_bins("time.dayofyear", bins=bins, right=False)
+            .mean("time", skipna=True)
+            .rename({"dayofyear_bins": "dayofyear"})
+        )
+
+        # Set dayofyear to bin midpoints
+        mean_seasonal_cycle["dayofyear"] = [
+            interval.mid for interval in mean_seasonal_cycle.dayofyear.values
+        ]
+        # Fill any remaining NaNs with 0
+        mean_seasonal_cycle = mean_seasonal_cycle.fillna(0)
+        # Step 6: Apply Savitzky-Golay smoothing
+        mean_seasonal_cycle_values = savgol_filter(
+            mean_seasonal_cycle.values, smoothing_window, poly_order, axis=0
+        )
+        mean_seasonal_cycle = mean_seasonal_cycle.copy(data=mean_seasonal_cycle_values)
+        # Ensure all values are non-negative
+        mean_seasonal_cycle = mean_seasonal_cycle.where(mean_seasonal_cycle > 0, 0)
+        return mean_seasonal_cycle
 
     def apply_cleaning_pipeline(
         self, data: xr.DataArray, config: Optional[dict] = None
@@ -400,12 +376,9 @@ class EarthnetDatasetHandler(DatasetHandler):
         else:
             config = {**default_config, **config}  # Merge with defaults
 
-        return self.clean_and_smooth_timeseries(
+        return self.clean_timeseries(
             data,
             rolling_window=config["rolling_window"],
-            bin_size=config["bin_size"],
-            smoothing_window=config["smoothing_window"],
-            poly_order=config["poly_order"],
         )
 
     def preprocess_data(
@@ -429,7 +402,7 @@ class EarthnetDatasetHandler(DatasetHandler):
             self._minicube_specific_loading(minicube_path=minicube_path)
         else:
             self._dataset_specific_loading()
-        self.filter_dataset_specific()  # useless, legacy...
+        # self.filter_dataset_specific()  # useless, legacy...
         self.data = self.data[self.variable_name]
         # Randomly select n indices from the location dimension
 
@@ -437,7 +410,8 @@ class EarthnetDatasetHandler(DatasetHandler):
             f"Computation on the entire dataset. {self.data.sizes['location']} samples"
         )
 
-        self.data, self.msc = self.apply_cleaning_pipeline(self.data)
+        self.data = self.apply_cleaning_pipeline(self.data)
+        self.msc = self.compute_msc(self.data)
         self.msc = self.msc.transpose("location", "dayofyear", ...)
         self.saver._save_data(self.msc, "msc")
 

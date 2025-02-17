@@ -24,6 +24,7 @@ GRANDPARENT_DIRECTORY_PATH = os.path.abspath(
 CLIMATIC_INDICES = ["pei_30", "pei_90", "pei_180"]
 ECOLOGICAL_INDICES = ["EVI", "NDVI", "kNDVI"]
 EARTHNET_INDICES = ["EVI_EN"]
+MODIS_INDICES = ["EVI_MODIS"]
 
 
 class InitializationConfig:

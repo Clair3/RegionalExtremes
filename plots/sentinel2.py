@@ -207,10 +207,10 @@ class PlotsSentinel2(Plots):
         data = self.loader._load_data("msc")
 
         # Randomly select n indices from the location dimension
-        # random_indices = np.random.choice(len(data.location), size=1000, replace=False)
+        random_indices = np.random.choice(len(data.location), size=10000, replace=False)
 
         # Use isel to select the subset of data based on the random indices
-        subset = data  # .isel(location=random_indices)
+        subset = data.isel(location=random_indices)
         if colored_by_eco_cluster:
             cluster = self.loader._load_data("eco_clusters")
             cluster = cluster.eco_clusters
@@ -441,15 +441,7 @@ class PlotsSentinel2(Plots):
 
     def plot_thresholds(self):
         data = self.loader._load_data("thresholds").thresholds
-        print(data)
-        # bins_path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-23_10:01:46_deep_extreme_global/EVI_EN/DE-RuS_50.87_6.45_v0.zarr/thresholds.zarr"
-        # data = xr.open_zarr(bins_path)
-        # data = self.loader._load_data("thresholds")
-        # data = cfxr.decode_compress_to_multi_index(data, "location").thresholds
         data = data.unstack("location")
-        print(data)
-        print(data.latitude.values)
-        # print(data)
 
         fig, ax = plt.subplots(figsize=(12, 10))
         # Adjust the plot
@@ -459,12 +451,12 @@ class PlotsSentinel2(Plots):
         pcm = ax.pcolormesh(
             data.longitude.values.T,
             data.latitude.values.T,
-            data.sel(quantile=0.95).values.T,
-            cmap="viridis",  # Choose a colormap, e.g., 'viridis', 'plasma', 'coolwarm'
+            data.sel(quantile=0.05).values.T,
+            cmap="inferno",  # viridis",  # Choose a colormap, e.g., 'viridis', 'plasma', 'coolwarm'
         )
 
         # Add a title
-        plt.title("Quantile 95%")
+        plt.title("Quantile 5%")
 
         # Add a colorbar
         cbar = plt.colorbar(pcm, ax=ax, orientation="vertical", pad=0.02)
@@ -478,9 +470,11 @@ class PlotsSentinel2(Plots):
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-02-12_10:42:47_Final_10eco_cluster"
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-02-17_11:58:16_Final_20"
 
     subfolders = [
+        # "IT-Tor_45.84_7.58_v0.zarr"
+        # "customcube_CO-MEL_1.95_-72.60_S2_v0.zarr/customcube_CO-MEL_1.95_-72.60_S2_v0.zarr"
         "ES-Cnd_37.91_-3.23_v0.zarr",
         "DE-RuS_50.87_6.45_v0.zarr",
     ]
@@ -489,10 +483,10 @@ if __name__ == "__main__":
         config = InitializationConfig(args)
         plot = PlotsSentinel2(config=config, minicube_name=minicube_name)
         plot.plot_thresholds()
-        plot.plot_minicube_eco_clusters()
-        plot.plot_msc(colored_by_eco_cluster=True)
+        # plot.plot_minicube_eco_clusters()
+        # plot.plot_msc(colored_by_eco_cluster=True)
         # plot.plot_location_in_europe()
-        plot.plot_rgb()
+        # plot.plot_rgb()
         # plot.plot_3D_pca()
         # plot.map_component()
 #

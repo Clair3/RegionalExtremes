@@ -8,8 +8,8 @@ class DatasetHandler(ABC):
     def __init__(
         self,
         config: InitializationConfig,
-        loader: Loader,
-        saver: Saver,
+        # loader: Loader,
+        # saver: Saver,
         n_samples: Union[int, None],
     ):
         """
@@ -24,9 +24,9 @@ class DatasetHandler(ABC):
         # Number of samples to load. If None, the full dataset is loaded.
         self.n_samples = n_samples
         # Loader class to load intermediate steps.
-        self.loader = loader
+        self.loader = Loader(config)
         # Saver class to save intermediate steps.
-        self.saver = saver
+        self.saver = Saver(config)
 
         self.start_year = self.config.start_year
 

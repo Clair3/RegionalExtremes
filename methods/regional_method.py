@@ -27,8 +27,6 @@ class RegionalExtremes:
     def __init__(
         self,
         config: InitializationConfig,
-        loader: Loader,
-        saver: Saver,
     ):
         """
         Compute the regional extremes by defining boxes of similar region using a PCA computed on the mean seasonal cycle of the samples.
@@ -331,19 +329,6 @@ class RegionalExtremes:
         # Calculate thresholds
         thresholds = grouped.map(lambda grp: map_thresholds_to_clusters(grp))
         thresholds = thresholds.sel(eco_cluster=deseasonalized["eco_cluster"])
-
-        thresholds_array = xr.DataArray(
-            np.full((len(deseasonalized.location), len(quantile_levels)), np.nan),
-            dims=["location", "quantile"],
-            coords={
-                "location": deseasonalized.location,
-                "quantile": quantile_levels,
-            },
-        )
-        thresholds_array.loc[dict(location=results["thresholds"].location)] = results[
-            "thresholds"
-        ].values
-        self.saver._save_data(thresholds_array, "thresholds_locations")
         thresholds = thresholds.drop_vars(["eco_cluster"])
         # Save thresholds
         self.saver._save_data(thresholds, "thresholds")
@@ -608,13 +593,10 @@ class RegionalExtremes:
             list: List of boolean masks for each quantile level.
         """
         LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL = quantile_levels
-        # Match the coordinate type if needed
-        # if quantiles["quantile"].dtype != LOWER_QUANTILES_LEVEL.dtype:
-        #    LOWER_QUANTILES_LEVEL = LOWER_QUANTILES_LEVEL.astype(
-        #        quantiles["quantile"].dtype
-        #    )
         lower_quantiles = quantiles.sel(quantile=LOWER_QUANTILES_LEVEL).values
         upper_quantiles = quantiles.sel(quantile=UPPER_QUANTILES_LEVEL).values
+        print(data.values.shape)
+        print(lower_quantiles[0].shape)
         masks = [
             data < lower_quantiles[0],
             *[
@@ -636,17 +618,11 @@ def regional_extremes_method(args):
     # Initialization of the configs, load and save paths, log.txt.
     # minicube_path = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/_test/customcube_CO-MEL_1.95_-72.60_S2_v0.zarr.zip"
     config = InitializationConfig(args)
-    # Loader class to load intermediate steps.
-    loader = Loader(config)
-    # Saver class to save intermediate steps.
-    saver = Saver(config)
 
     assert config.method == "regional"
     # Initialization of RegionalExtremes, load data if already computed.
     extremes_processor = RegionalExtremes(
         config=config,
-        loader=loader,
-        saver=saver,
     )
 
     # Load a subset of the dataset and fit the PCA
@@ -654,8 +630,6 @@ def regional_extremes_method(args):
         # Initialization of the climatic or ecological DatasetHandler
         dataset_processor = create_handler(
             config=config,
-            loader=loader,
-            saver=saver,
             n_samples=None,  # 10000,  # config.n_samples,  # all the dataset
         )
         # Load and preprocess the dataset
@@ -669,7 +643,7 @@ def regional_extremes_method(args):
     # Define the boundaries of the eco_clusters
     if extremes_processor.limits_eco_clusters is None:
         dataset_processor = create_handler(
-            config=config, loader=loader, saver=saver, n_samples=10000
+            config=config, n_samples=10000
         )  # all the dataset
         data = dataset_processor.preprocess_data()  # minicube_path=minicube_path)
         extremes_processor.apply_pca(scaled_data=data)
@@ -679,8 +653,6 @@ def regional_extremes_method(args):
     # Load the data
     dataset_processor = create_handler(
         config=config,
-        loader=loader,
-        saver=saver,
         n_samples=None,
     )
     msc, data = dataset_processor.preprocess_data(
@@ -707,16 +679,9 @@ def regional_extremes_minicube(args, minicube_path):
     config = InitializationConfig(args)
     assert config.method == "regional"
 
-    # Loader class to load intermediate steps.
-    loader = Loader(config)
-    # Saver class to save intermediate steps.
-    saver = Saver(config)
-
     # Initialization of RegionalExtremes, load data if already computed.
     extremes_processor = RegionalExtremes(
         config=config,
-        loader=loader,
-        saver=saver,
     )
     if extremes_processor.limits_eco_clusters is None:
         raise FileNotFoundError("limits_eco_clusters file unavailable.")
@@ -726,7 +691,7 @@ def regional_extremes_minicube(args, minicube_path):
     # Apply the regional threshold and compute the extremes
     # Load the data
     dataset_processor = create_handler(
-        config=config, loader=loader, saver=saver, n_samples=None  # config.n_samples
+        config=config, n_samples=None  # config.n_samples
     )
     msc, data = dataset_processor.preprocess_data(
         scale=False,
