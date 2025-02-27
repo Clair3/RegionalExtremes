@@ -142,11 +142,28 @@ if __name__ == "__main__":
         #     if os.path.isdir(os.path.join(parent_folder, folder))
         #     and folder.startswith("mc_")
         # ]
-        subfolders = ["ES-Cnd_37.91_-3.23_v0.zarr", "DE-RuS_50.87_6.45_v0.zarr"]
-        for folders in subfolders:
+        parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/_test/"
+        subfolders = [
+            "ES-Cnd_37.91_-3.23_v0.zarr.zip",
+            "DE-Hai_51.08_10.45_v0.zarr.zip",
+            "DE-Geb_51.10_10.91_v0.zarr.zip",
+            "DE-Wet_50.45_11.46_v0.zarr.zip",
+            "DE-Bay_50.14_11.87_v0.zarr.zip",
+            "DE-Meh_51.28_10.66_v0.zarr.zip",
+            "DE-Lnf_51.33_10.37_v0.zarr.zip",
+        ]
+
+        subfolders = [
+            "custom_cube_44.17_5.24.zarr.zip",
+            "custom_cube_44.24_5.14.zarr.zip",
+            "custom_cube_47.31_0.18.zarr.zip",
+            "custom_cube_50.90_11.56.zarr.zip",
+        ]
+
+        for folder in subfolders:
             regional_extremes_minicube(
                 args,
-                minicube_path=parent_folder + folders + ".zip",
+                minicube_path=parent_folder + folder,
             )
         # regional_extremes_minicube(
         #     args,
@@ -162,8 +179,27 @@ if __name__ == "__main__":
         #     if os.path.isdir(os.path.join(parent_folder, folder))
         #     and folder.startswith("mc_")
         # ]
-        subfolders = ["ES-Cnd_37.91_-3.23_v0.zarr", "DE-RuS_50.87_6.45_v0.zarr"]
+        # subfolders = ["ES-Cnd_37.91_-3.23_v0.zarr", "DE-RuS_50.87_6.45_v0.zarr"]
+        subfolders = [
+            "DE-Hai_51.08_10.45_v0.zarr.zip",
+            # "ES-Cnd_37.91_-3.23_v0.zarr.zip",
+            # "DE-Geb_51.10_10.91_v0.zarr.zip",
+            # "DE-Wet_50.45_11.46_v0.zarr.zip",
+            # "DE-Bay_50.14_11.87_v0.zarr.zip",
+            # "DE-Meh_51.28_10.66_v0.zarr.zip",
+            # "DE-Lnf_51.33_10.37_v0.zarr.zip",
+        ]
+        # parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/_test/"
+        # subfolders = [
+        #     "custom_cube_50.90_11.56.zarr.zip",
+        #     "custom_cube_44.17_5.24.zarr.zip",
+        #     "custom_cube_44.24_5.14.zarr.zip",
+        #     "custom_cube_47.31_0.18.zarr.zip",
+        #     "custom_cube_50.90_11.56.zarr.zip",
+        # ]
         for folders in subfolders:
-            local_extremes_method(args, minicube_path=parent_folder + folders + ".zip")
+            local_extremes_method(
+                args, minicube_path=parent_folder + folders
+            )  # + ".zip")
     elif args.method == "global":
         raise NotImplementedError("the global method is not yet implemented.")

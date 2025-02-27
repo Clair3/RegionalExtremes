@@ -16,10 +16,10 @@ class PlotsSentinel2(Plots):
         # Normalize the explained variance
         def _normalization(index):
             band = data.isel(component=index).values
-            band_min = np.quantile(band, 0.02)
-            band_max = np.quantile(band, 0.98)
-            return np.clip((band - band_min) / (band_max - band_min), 0, 1)
-            # return (band - np.nanmin(band)) / (np.nanmax(band) - np.nanmin(band))
+            band_min = np.quantile(band, 0.1)
+            band_max = np.quantile(band, 0.90)
+            # return np.clip((band - band_min) / (band_max - band_min), 0, 1)
+            return (band - np.nanmin(band)) / (np.nanmax(band) - np.nanmin(band))
 
         normalized_red = _normalization(1)  # Red is the first component
         normalized_green = _normalization(0)  # Green is the second component
@@ -207,10 +207,10 @@ class PlotsSentinel2(Plots):
         data = self.loader._load_data("msc")
 
         # Randomly select n indices from the location dimension
-        random_indices = np.random.choice(len(data.location), size=10000, replace=False)
+        # random_indices = np.random.choice(len(data.location), size=10000, replace=False)
 
         # Use isel to select the subset of data based on the random indices
-        subset = data.isel(location=random_indices)
+        subset = data  # .isel(location=random_indices)
         if colored_by_eco_cluster:
             cluster = self.loader._load_data("eco_clusters")
             cluster = cluster.eco_clusters
@@ -284,9 +284,11 @@ class PlotsSentinel2(Plots):
 
     def plot_rgb(self):
         path = glob.glob(
-            f"/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/{self.minicube_name}*"
+            f"/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/_test/{self.minicube_name}*"
         )[0]
         ds = xr.open_zarr(path)
+        if "time" not in ds.dims:
+            ds = ds.rename({"time_sentinel-2-l2a": "time"})
 
         # The rgb channel need to be normalise and enlightened.
         def normalize(band):
@@ -307,10 +309,10 @@ class PlotsSentinel2(Plots):
         mask = mask.where(mask != 0, 1)
 
         fig, axes = plt.subplots(
-            nrows=2, ncols=5, constrained_layout=True, figsize=(40, 20)
+            nrows=5, ncols=5, constrained_layout=True, figsize=(20, 20)
         )
-        t = 186  # 259 + 1
-        for i in range(2):
+        t = 270  # 259 + 1
+        for i in range(5):
             for j in range(5):
                 axes[i, j].get_xaxis().set_visible(False)
                 axes[i, j].get_yaxis().set_visible(False)
@@ -318,7 +320,7 @@ class PlotsSentinel2(Plots):
                 axes[i, j].set_title(str(current_date), fontsize=30)
                 # Remove the cloud masking
                 red = ds.isel(time=t).B04
-                green = ds.isel(time=t).B03
+                green = ds.isel(time=t).B8A
                 blue = ds.isel(time=t).B02
 
                 # red = red * mask.isel(time=t)
@@ -331,9 +333,9 @@ class PlotsSentinel2(Plots):
 
                 rgb_composite = np.dstack((red, green, blue))
                 axes[i, j].imshow(rgb_composite)
-                t += 5
+                t += 1
         # Add a title
-        plt.title("RBG")
+        # plt.title("RBG")
         saving_path = self.saving_path / "rgb.png"
         plt.savefig(saving_path)
 
@@ -459,6 +461,8 @@ class PlotsSentinel2(Plots):
         plt.title("Quantile 5%")
 
         # Add a colorbar
+        pcm.set_clim(-0.15, -0.05)
+
         cbar = plt.colorbar(pcm, ax=ax, orientation="vertical", pad=0.02)
         cbar.set_label("Value")  # Set the label for the colorbar
         print(self.saving_path)
@@ -470,25 +474,46 @@ class PlotsSentinel2(Plots):
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-02-17_11:58:16_Final_20"
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-02-25_00:52:19_Final_20"
 
     subfolders = [
-        # "IT-Tor_45.84_7.58_v0.zarr"
-        # "customcube_CO-MEL_1.95_-72.60_S2_v0.zarr/customcube_CO-MEL_1.95_-72.60_S2_v0.zarr"
+        "custom_cube_50.90_11.56.zarr",
+        "custom_cube_44.17_5.24.zarr",
+        "custom_cube_44.24_5.14.zarr",
+        "custom_cube_47.31_0.18.zarr",
+        "DE-Hai_51.08_10.45_v0.zarr",
         "ES-Cnd_37.91_-3.23_v0.zarr",
-        "DE-RuS_50.87_6.45_v0.zarr",
+        "DE-Geb_51.10_10.91_v0.zarr",
+        "DE-Wet_50.45_11.46_v0.zarr",
+        "DE-Bay_50.14_11.87_v0.zarr",
+        "DE-Meh_51.28_10.66_v0.zarr",
+        "DE-Lnf_51.33_10.37_v0.zarr",
+        # ]
+        # subfolders = [
     ]
-
+    # #  subfolders = [
+    #      ""
+    #      # "IT-Tor_45.84_7.58_v0.zarr"
+    #      # "customcube_CO-MEL_1.95_-72.60_S2_v0.zarr/customcube_CO-MEL_1.95_-72.60_S2_v0.zarr"
+    #      "ES-Cnd_37.91_-3.23_v0.zarr",
+    #      "DE-RuS_50.87_6.45_v0.zarr",
+    #  ]
     for minicube_name in subfolders:
         config = InitializationConfig(args)
         plot = PlotsSentinel2(config=config, minicube_name=minicube_name)
+        # plot.plot_msc(colored_by_eco_cluster=True)
         plot.plot_thresholds()
         # plot.plot_minicube_eco_clusters()
-        # plot.plot_msc(colored_by_eco_cluster=True)
+
         # plot.plot_location_in_europe()
-        # plot.plot_rgb()
-        # plot.plot_3D_pca()
-        # plot.map_component()
+
+    # for minicube_name in subfolders:
+    #     config = InitializationConfig(args)
+    #     plot = PlotsSentinel2(config=config, minicube_name=minicube_name)
+    #     # plot.plot_msc(colored_by_eco_cluster=True)
+    #     plot.plot_rgb()
+    #     # plot.plot_3D_pca()
+    # plot.map_component()
 #
 # plot.map_component(colored_by_eco_cluster=False)
 # plot.plot_3D_pca_landcover()

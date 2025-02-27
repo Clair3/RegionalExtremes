@@ -5,6 +5,8 @@ from dask.diagnostics import ProgressBar
 from pyproj import Transformer
 import cf_xarray as cfxr
 
+violent = False
+
 
 class Sentinel2DatasetHandler(DatasetHandler):
 
@@ -146,9 +148,9 @@ class Sentinel2DatasetHandler(DatasetHandler):
                 },
             )
             # Check for excessive missing data
-            if self._has_excessive_nan(masked_evi):
-                print("Excessive NaN values")
-                return None
+            # if self._has_excessive_nan(masked_evi):
+            #     print("Excessive NaN values")
+            #     return None
             if process_entire_minicube:
                 self.saver.update_saving_path(filepath.stem)
 
@@ -156,14 +158,17 @@ class Sentinel2DatasetHandler(DatasetHandler):
 
     def _transform_utm_to_latlon(self, ds):
         """Transforms UTM coordinates to latitude and longitude."""
-        epsg = ds.attrs.get("spatial_ref", ds.attrs.get("EPSG"))
-
+        epsg = (
+            ds.attrs.get("spatial_ref") or ds.attrs.get("EPSG") or ds.attrs.get("CRS")
+        )
         if epsg is None:
             raise ValueError("EPSG code not found in dataset attributes.")
 
         transformer = Transformer.from_crs(epsg, 4326, always_xy=True)
         lon, lat = transformer.transform(ds.x.values, ds.y.values)
 
+        if "time" not in ds.dims:
+            ds = ds.rename({"time_sentinel-2-l2a": "time"})
         return ds.assign_coords({"x": ("x", lon), "y": ("y", lat)}).rename(
             {"x": "longitude", "y": "latitude"}
         )
@@ -209,18 +214,25 @@ class Sentinel2DatasetHandler(DatasetHandler):
 
         # Apply vegetation mask if SCL exists
         if "SCL" in ds.data_vars:
-            mask = mask.where(ds.SCL.isin([4, 5]), np.nan)
-
-        mask = mask.where(
-            mask != 0, 1
-        )  # Convert to binary mask (1 = valid, NaN = masked)
+            valid_mask = ds.SCL.isin([4, 5, 6, 7])
+            valid_ratio = valid_mask.sum(
+                dim=["latitude", "longitude"]
+            ) / valid_mask.count(dim=["latitude", "longitude"])
+            invalid_time_steps = valid_ratio < 0.90
+            mask = mask.where(~invalid_time_steps, np.nan)
+            # else:
+            #     mask = mask.where(ds.SCL.isin([4, 5]), np.nan)
+        # mask = mask.where(
+        #     mask != 0, 1
+        # )  # Convert to binary mask (1 = valid, NaN = masked)
 
         return evi * mask
 
     def _has_excessive_nan(self, data):
         """Checks if the masked data contains excessive NaN values."""
         nan_percentage = data.isnull().mean().values * 100
-        return nan_percentage > 80
+        print(nan_percentage)
+        return nan_percentage > 99
 
     def filter_dataset_specific(self):
         """
@@ -233,15 +245,6 @@ class Sentinel2DatasetHandler(DatasetHandler):
             dim in self.data.sizes for dim in ("time", "location")
         ), f"Dimension missing. dimension are: {self.data.size}"
 
-    def _remove_low_vegetation_location(self, threshold, msc):
-        # Calculate mean data across the dayofyear dimension
-        mean_msc = msc.mean("dayofyear", skipna=True)
-
-        # Create a boolean mask for locations where mean is greater than or equal to the threshold
-        mask = mean_msc >= threshold
-
-        return mask
-
     def _deseasonalize(self, data, msc):
         daily_msc = msc.interp(dayofyear=np.arange(1, 367, 1))
         # Align subset_msc with subset_data
@@ -251,9 +254,7 @@ class Sentinel2DatasetHandler(DatasetHandler):
         return deseasonalized
 
     def clean_timeseries(
-        self,
-        data: xr.DataArray,
-        rolling_window: int = 3,
+        self, data: xr.DataArray, window_size: list = [10, 3], gapfill: bool = True
     ) -> xr.DataArray:
         """
         Clean and smooth a time series using rolling windows, neighbor comparison.
@@ -271,47 +272,77 @@ class Sentinel2DatasetHandler(DatasetHandler):
             Cleaned and smoothed time series
         """
 
-        def remove_local_minima(series: xr.DataArray) -> xr.DataArray:
-            """Replace values that are smaller than both neighbors with neighbor mean."""
-            # Shift the data to get neighbors
-            left_neighbor = series.shift(time=1, fill_value=float("inf"))
-            right_neighbor = series.shift(time=-1, fill_value=float("inf"))
+        def remove_cloud_noise(data, window_size=5, gapfill=True):
 
-            # Find where the value is smaller than both neighbors
-            is_smaller = (series < left_neighbor) & (series < right_neighbor)
-            masked_series = xr.where(is_smaller, float("nan"), series)
-            mean_neighbors = masked_series.rolling(
-                time=5, center=True, min_periods=1
-            ).mean()
-            return xr.where(is_smaller, mean_neighbors, series)
+            # Ensure input is xarray DataArray
+            if not isinstance(data, xr.DataArray):
+                data = xr.DataArray(data, dims=["time"])
 
-        def fill_nans(series: xr.DataArray, window: int) -> xr.DataArray:
-            """Fill NaN values using rolling mean."""
-            rolling_mean = series.rolling(
-                time=window, center=True, min_periods=1
-            ).mean()
-            return series.where(~np.isnan(series), other=rolling_mean)
+            # Create arrays to store sum and count for before/after
+            before_sum = 0
+            before_count = 0
+            after_sum = 0
+            after_count = 0
+
+            # Calculate sums using shifts instead of rolling
+            for i in range(1, window_size + 1):
+                # Before window
+                shifted_before = data.shift(time=i)
+                mask_before = ~np.isnan(shifted_before)
+                before_sum += xr.where(mask_before, shifted_before, 0)
+                before_count += mask_before.astype(int)
+
+                # After window
+                shifted_after = data.shift(time=-i)
+                mask_after = ~np.isnan(shifted_after)
+                after_sum += xr.where(mask_after, shifted_after, 0)
+                after_count += mask_after.astype(int)
+
+            # Calculate means, avoiding division by zero
+            mean_before = xr.where(before_count > 0, before_sum / before_count, data)
+            mean_after = xr.where(after_count > 0, after_sum / after_count, data)
+
+            # Detect cloud points: current value is LOWER than both mean before and after
+            is_cloud = (data < mean_before) & (data < mean_after)
+
+            # For cleaning, use the mean of before and after values
+            replacement_values = (mean_before + mean_after) / 2
+
+            # Replace detected cloud points
+            gapfilled_data = xr.where(is_cloud, replacement_values, data)
+            clean_data = xr.where(is_cloud, np.nan, data)
+            if gapfill:
+                return gapfilled_data
+            else:
+                return clean_data
 
         try:
             # Input validation
             if not isinstance(data, xr.DataArray):
                 raise TypeError("Input must be an xarray DataArray")
 
-            # Step 1: Remove outliers (values below -1 or values above 1)
-            data = data.where((data >= -1) & (data <= 1), np.nan)
+            # Apply initial mask once, as a separate step
+            data_masked = data.where((data >= 0) & (data <= 1), np.nan)
 
-            # Step 2: Remove local minima
-            clean_data = remove_local_minima(data)
+            cleaned_data = remove_cloud_noise(
+                data_masked, window_size=10, gapfill=gapfill
+            )
 
-            # Step 3: Handle NaN values
-            clean_data = fill_nans(clean_data, rolling_window)
-            clean_data = fill_nans(
-                clean_data, rolling_window
-            )  # Second pass for remaining NaNs
+            # Fill NaNs with rolling mean (this is still needed)
+            rolling_mean = cleaned_data.rolling(
+                time=3, center=True, min_periods=1
+            ).mean()
+            cleaned_data = cleaned_data.fillna(rolling_mean)
+            rolling_mean = cleaned_data.rolling(
+                time=5, center=True, min_periods=1
+            ).mean()
+            cleaned_data = cleaned_data.fillna(rolling_mean)
 
-            # Step 4: Remove local minima again after NaN filling
-            clean_data = remove_local_minima(clean_data)
-            return clean_data
+            cleaned_data = remove_cloud_noise(
+                cleaned_data, window_size=3, gapfill=gapfill
+            )
+            return cleaned_data
+
         except Exception as e:
             raise RuntimeError(f"Error processing time series: {str(e)}") from e
 
@@ -346,40 +377,14 @@ class Sentinel2DatasetHandler(DatasetHandler):
         mean_seasonal_cycle = mean_seasonal_cycle.where(mean_seasonal_cycle > 0, 0)
         return mean_seasonal_cycle
 
-    def apply_cleaning_pipeline(
-        self, data: xr.DataArray, config: Optional[dict] = None
-    ) -> xr.DataArray:
-        """
-        Apply the complete cleaning pipeline with optional configuration.
+    def _remove_low_vegetation_location(self, threshold, msc):
+        # Calculate mean data across the dayofyear dimension
+        mean_msc = msc.mean("dayofyear", skipna=True)
 
-        Parameters
-        ----------
-        data : xr.DataArray
-            Input time series data
-        config : dict, optional
-            Configuration parameters for the cleaning process
+        # Create a boolean mask for locations where mean is greater than or equal to the threshold
+        mask = mean_msc >= threshold
 
-        Returns
-        -------
-        xr.DataArray
-            Cleaned and smoothed time series
-        """
-        default_config = {
-            "rolling_window": 3,
-            "bin_size": 5,
-            "smoothing_window": 12,
-            "poly_order": 2,
-        }
-
-        if config is None:
-            config = default_config
-        else:
-            config = {**default_config, **config}  # Merge with defaults
-
-        return self.clean_timeseries(
-            data,
-            rolling_window=config["rolling_window"],
-        )
+        return mask
 
     def preprocess_data(
         self,
@@ -393,6 +398,7 @@ class Sentinel2DatasetHandler(DatasetHandler):
         Preprocess data based on the index.
         """
         printt("start of the preprocess")
+
         if not return_time_serie:
             self.msc = self.loader._load_data("msc")
             if self.msc is not None:
@@ -404,21 +410,19 @@ class Sentinel2DatasetHandler(DatasetHandler):
             self._dataset_specific_loading()
         # self.filter_dataset_specific()  # useless, legacy...
         self.data = self.data[self.variable_name]
+        self.saver._save_data(self.data, "evi")
         # Randomly select n indices from the location dimension
 
         printt(
             f"Computation on the entire dataset. {self.data.sizes['location']} samples"
         )
-
-        self.data = self.apply_cleaning_pipeline(self.data)
-        self.msc = self.compute_msc(self.data)
-        self.msc = self.msc.transpose("location", "dayofyear", ...)
+        gapfilled_data = self.clean_timeseries(self.data, window_size=[10, 3])
+        self.msc = self.compute_msc(gapfilled_data)
         self.saver._save_data(self.msc, "msc")
 
-        self.msc = self.msc.persist()
-        if return_time_serie:
-            self.data = self.data.persist()
+        self.msc = self.msc.transpose("location", "dayofyear", ...)
+        if not return_time_serie:
+            return self.msc
+        else:
             self.data = self.data.transpose("location", "time", ...)
             return self.msc, self.data
-        else:
-            return self.msc

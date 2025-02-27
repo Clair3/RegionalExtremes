@@ -595,8 +595,7 @@ class RegionalExtremes:
         LOWER_QUANTILES_LEVEL, UPPER_QUANTILES_LEVEL = quantile_levels
         lower_quantiles = quantiles.sel(quantile=LOWER_QUANTILES_LEVEL).values
         upper_quantiles = quantiles.sel(quantile=UPPER_QUANTILES_LEVEL).values
-        print(data.values.shape)
-        print(lower_quantiles[0].shape)
+
         masks = [
             data < lower_quantiles[0],
             *[

@@ -86,7 +86,8 @@ class LocalExtremes:
         quantile_levels_combined = np.concatenate(
             (self.lower_quantiles, self.upper_quantiles)
         )
-        deseasonalized = deseasonalized.chunk("auto")
+        print(deseasonalized.chunk)
+        deseasonalized = deseasonalized  # .chunk("auto").chunk(dict(time=-1))
 
         quantiles_xr = deseasonalized.quantile(
             quantile_levels_combined, dim="time"
