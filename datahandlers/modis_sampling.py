@@ -50,6 +50,50 @@ class ModisSamplingDatasetHandler(Sentinel2DatasetHandler):
                 self.saver.update_saving_path(filepath.stem)
             return data
 
+    def remove_cloud_noise(self, data, window_size=2, gapfill=True):
+
+        # Ensure input is xarray DataArray
+        if not isinstance(data, xr.DataArray):
+            data = xr.DataArray(data, dims=["time"])
+
+        # Create arrays to store sum and count for before/after
+        before_sum = 0
+        before_count = 0
+        after_sum = 0
+        after_count = 0
+
+        # Calculate sums using shifts instead of rolling
+        for i in range(1, window_size + 1):
+            # Before window
+            shifted_before = data.shift(time=i)
+            mask_before = ~np.isnan(shifted_before)
+            before_sum += xr.where(mask_before, shifted_before, 0)
+            before_count += mask_before.astype(int)
+
+            # After window
+            shifted_after = data.shift(time=-i)
+            mask_after = ~np.isnan(shifted_after)
+            after_sum += xr.where(mask_after, shifted_after, 0)
+            after_count += mask_after.astype(int)
+
+        # Calculate means, avoiding division by zero
+        mean_before = xr.where(before_count > 0, before_sum / before_count, data)
+        mean_after = xr.where(after_count > 0, after_sum / after_count, data)
+
+        # Detect cloud points: current value is LOWER than both mean before and after
+        is_cloud = (data < mean_before) & (data < mean_after)
+
+        # For cleaning, use the mean of before and after values
+        replacement_values = (mean_before + mean_after) / 2
+
+        # Replace detected cloud points
+        gapfilled_data = xr.where(is_cloud, replacement_values, data)
+        clean_data = xr.where(is_cloud, np.nan, data)
+        if gapfill:
+            return gapfilled_data
+        else:
+            return clean_data
+
     def clean_timeseries(
         self,
         data: xr.DataArray,
@@ -71,50 +115,6 @@ class ModisSamplingDatasetHandler(Sentinel2DatasetHandler):
             Cleaned and smoothed time series
         """
 
-        def remove_cloud_noise(data, window_size=2, gapfill=True):
-
-            # Ensure input is xarray DataArray
-            if not isinstance(data, xr.DataArray):
-                data = xr.DataArray(data, dims=["time"])
-
-            # Create arrays to store sum and count for before/after
-            before_sum = 0
-            before_count = 0
-            after_sum = 0
-            after_count = 0
-
-            # Calculate sums using shifts instead of rolling
-            for i in range(1, window_size + 1):
-                # Before window
-                shifted_before = data.shift(time=i)
-                mask_before = ~np.isnan(shifted_before)
-                before_sum += xr.where(mask_before, shifted_before, 0)
-                before_count += mask_before.astype(int)
-
-                # After window
-                shifted_after = data.shift(time=-i)
-                mask_after = ~np.isnan(shifted_after)
-                after_sum += xr.where(mask_after, shifted_after, 0)
-                after_count += mask_after.astype(int)
-
-            # Calculate means, avoiding division by zero
-            mean_before = xr.where(before_count > 0, before_sum / before_count, data)
-            mean_after = xr.where(after_count > 0, after_sum / after_count, data)
-
-            # Detect cloud points: current value is LOWER than both mean before and after
-            is_cloud = (data < mean_before) & (data < mean_after)
-
-            # For cleaning, use the mean of before and after values
-            replacement_values = (mean_before + mean_after) / 2
-
-            # Replace detected cloud points
-            gapfilled_data = xr.where(is_cloud, replacement_values, data)
-            clean_data = xr.where(is_cloud, np.nan, data)
-            if gapfill:
-                return gapfilled_data
-            else:
-                return clean_data
-
         try:
             # Input validation
             if not isinstance(data, xr.DataArray):
@@ -124,8 +124,8 @@ class ModisSamplingDatasetHandler(Sentinel2DatasetHandler):
             data = data.where((data >= 0) & (data <= 1), np.nan)
 
             # Step 2: Remove local minima
-            clean_data = remove_cloud_noise(data, window_size=3)
-            clean_data = remove_cloud_noise(clean_data, window_size=6)
+            clean_data = self.remove_cloud_noise(data, window_size=3)
+            clean_data = self.remove_cloud_noise(clean_data, window_size=7)
 
             # Step 3: Handle NaN values
             clean_data = self.fill_nans(data, rolling_window)
@@ -134,7 +134,7 @@ class ModisSamplingDatasetHandler(Sentinel2DatasetHandler):
             )  # Second pass for remaining NaNs
 
             # Step 4: Remove local minima again after NaN filling
-            clean_data = remove_cloud_noise(clean_data, window_size=2)
+            clean_data = self.remove_cloud_noise(clean_data, window_size=2)
             return clean_data
         except Exception as e:
             raise RuntimeError(f"Error processing time series: {str(e)}") from e
@@ -157,7 +157,7 @@ class ModisSamplingDatasetHandler(Sentinel2DatasetHandler):
 
         # Identify and replace outliers using global statistics
         deviation = abs(deseasonalized - mean_broadcast)
-        is_outlier = deviation > (1 * std_broadcast)
+        is_outlier = deviation > (2 * std_broadcast)
         cleaned_data = xr.where(is_outlier, np.nan, deseasonalized)
         return cleaned_data
 
@@ -234,12 +234,15 @@ class ModisSamplingDatasetHandler(Sentinel2DatasetHandler):
             f"Computation on the entire dataset. {self.data.sizes['location']} samples"
         )
         self.data = self.data.chunk({"time": 50, "location": -1})
-        # self.saver._save_data(self.data, "evi")
+        self.saver._save_data(self.data, "evi")
         self.data = self.clean_timeseries(self.data)
         # self.data = self.data.compute()
         self.msc = self.compute_msc(self.data)
         deseasonalized = self._deseasonalize(self.data, self.msc)
         deseasonalized = self.clean_timeseries_fixed_stats(deseasonalized)
+        deseasonalized = self.remove_cloud_noise(
+            deseasonalized, window_size=2, gapfill=False
+        )
         # Align the seasonal cycle with the deseasonalized data
         aligned_msc = self.msc.sel(dayofyear=deseasonalized.time.dt.dayofyear)
         self.saver._save_data(deseasonalized, "deseasonalized")
