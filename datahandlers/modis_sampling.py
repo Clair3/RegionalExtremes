@@ -181,39 +181,74 @@ class ModisSamplingDatasetHandler(Sentinel2DatasetHandler):
         cleaned_data = xr.where(is_negative_outlier, np.nan, deseasonalized)
         return cleaned_data
 
+    def rolling_window_mean(self, arr, window_size=4, min_periods=1):
+        """Apply a rolling window mean to a numpy array along the first axis"""
+        n = arr.shape[0]
+        result = np.zeros_like(arr)
+
+        # Rolling window calculation
+        for i in range(n):
+            # Calculate window boundaries with centering
+            half_window = window_size // 2
+            window_start = i - half_window
+            window_end = i + half_window + window_size % 2  # +1 if odd window
+
+            # Handle wrap-around for cyclic data (dayofyear)
+            indices = [j % n for j in range(window_start, window_end)]
+            window_values = arr[indices]
+
+            # Apply min_periods
+            valid_values = window_values[~np.isnan(window_values)]
+            if len(valid_values) >= min_periods:
+                result[i] = np.mean(valid_values)
+            else:
+                result[i] = np.nan
+
+        # Replace NaN values in original with rolling mean
+        mask = np.isnan(arr)
+        arr = np.where(mask, result, arr)
+
+        # Fill any remaining NaNs with zeros
+        arr = np.nan_to_num(arr, nan=0.0)
+
+        return arr
+
     def compute_msc(
         self,
         clean_data: xr.DataArray,
         smoothing_window: int = 5,
         poly_order: int = 2,
     ):
+        # Step 1: Compute mean seasonal cycle
         mean_seasonal_cycle = clean_data.groupby("time.dayofyear").mean(
             "time", skipna=True
         )
-        rolling_mean = mean_seasonal_cycle.rolling(
-            dayofyear=4, center=True, min_periods=1
-        ).mean()
-        mean_seasonal_cycle = mean_seasonal_cycle.where(
-            ~np.isnan(mean_seasonal_cycle), other=rolling_mean
-        )
-        mean_seasonal_cycle = mean_seasonal_cycle.fillna(0)
 
-        # Circular padding to avoid edge effects
-        pad_size = smoothing_window // 2  # Half-window padding
+        # Step 2: Apply circular padding along the dayofyear axis before rolling
+        pad_size = smoothing_window  # Half-window padding
         padded_values = np.pad(
             mean_seasonal_cycle.values,
-            ((pad_size, pad_size), (0, 0)),  # Pad along dayofyear axis
+            ((pad_size, pad_size), (0, 0)),  # Pad along the dayofyear axis
             mode="wrap",  # Wrap-around to maintain continuity
         )
-        # Step 6: Apply Savitzky-Golay smoothing
-        smoothed_values = savgol_filter(
-            padded_values, smoothing_window, poly_order, axis=0
+
+        rolled_values = self.rolling_window_mean(
+            padded_values, window_size=4, min_periods=1
         )
+
+        rolled_values = np.nan_to_num(rolled_values, nan=0)
+
+        # Step 5: Apply Savitzky-Golay smoothing
+        smoothed_values = savgol_filter(
+            rolled_values, smoothing_window, poly_order, axis=0
+        )
+
+        # Step 6: Ensure all values are non-negative
         mean_seasonal_cycle = mean_seasonal_cycle.copy(
             data=smoothed_values[pad_size:-pad_size]
         )
-        # Ensure all values are non-negative
         mean_seasonal_cycle = mean_seasonal_cycle.where(mean_seasonal_cycle > 0, 0)
+
         return mean_seasonal_cycle
 
     def _apply_masks(self, ds, evi):
