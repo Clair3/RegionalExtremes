@@ -94,6 +94,28 @@ class ModisSamplingDatasetHandler(Sentinel2DatasetHandler):
         else:
             return clean_data
 
+    def cumulative_evi(self, deseaonalized, window_size=2):
+
+        # Ensure input is xarray DataArray
+        if not isinstance(deseaonalized, xr.DataArray):
+            deseaonalized = xr.DataArray(deseaonalized, dims=["time"])
+
+        # Create arrays to store sum and count for before/after
+        sum = 0
+        count = 0
+
+        # Calculate sums using shifts instead of rolling
+        for i in range(1, window_size + 1):
+            # Before window
+            shifted_before = deseaonalized.shift(time=i)
+            mask_before = ~np.isnan(shifted_before)
+            sum += xr.where(mask_before, shifted_before, 0)
+            count += mask_before.astype(int)
+
+        # Calculate means, avoiding division by zero
+        mean = xr.where(count > 1, sum / count, np.nan)
+        return mean
+
     def clean_timeseries(
         self,
         data: xr.DataArray,
@@ -124,8 +146,8 @@ class ModisSamplingDatasetHandler(Sentinel2DatasetHandler):
             data = data.where((data >= 0) & (data <= 1), np.nan)
 
             # Step 2: Remove local minima
-            clean_data = self.remove_cloud_noise(data, window_size=3)
-            clean_data = self.remove_cloud_noise(clean_data, window_size=7)
+            clean_data = self.remove_cloud_noise(data, window_size=2)
+            clean_data = self.remove_cloud_noise(clean_data, window_size=3)
 
             # Step 3: Handle NaN values
             clean_data = self.fill_nans(data, rolling_window)
@@ -134,7 +156,7 @@ class ModisSamplingDatasetHandler(Sentinel2DatasetHandler):
             )  # Second pass for remaining NaNs
 
             # Step 4: Remove local minima again after NaN filling
-            clean_data = self.remove_cloud_noise(clean_data, window_size=2)
+            clean_data = self.remove_cloud_noise(clean_data, window_size=1)
             return clean_data
         except Exception as e:
             raise RuntimeError(f"Error processing time series: {str(e)}") from e
@@ -149,22 +171,19 @@ class ModisSamplingDatasetHandler(Sentinel2DatasetHandler):
         # Calculate GLOBAL median and std for each location (not rolling)
         global_mean = deseasonalized.mean(dim="time", skipna=True)
         global_std = deseasonalized.std(dim="time", skipna=True).clip(min=0.01)
-        # print(global_std.values)
-        #
         # # Broadcast to match dimensions for computation
         mean_broadcast = global_mean.broadcast_like(deseasonalized)
         std_broadcast = global_std.broadcast_like(deseasonalized)
 
         # Identify and replace outliers using global statistics
-        deviation = abs(deseasonalized - mean_broadcast)
-        is_outlier = deviation > (2 * std_broadcast)
-        cleaned_data = xr.where(is_outlier, np.nan, deseasonalized)
+        is_negative_outlier = deseasonalized < (mean_broadcast - 2 * std_broadcast)
+        cleaned_data = xr.where(is_negative_outlier, np.nan, deseasonalized)
         return cleaned_data
 
     def compute_msc(
         self,
         clean_data: xr.DataArray,
-        smoothing_window: int = 6,
+        smoothing_window: int = 5,
         poly_order: int = 2,
     ):
         mean_seasonal_cycle = clean_data.groupby("time.dayofyear").mean(
@@ -176,14 +195,16 @@ class ModisSamplingDatasetHandler(Sentinel2DatasetHandler):
         mean_seasonal_cycle = mean_seasonal_cycle.where(
             ~np.isnan(mean_seasonal_cycle), other=rolling_mean
         )
+        mean_seasonal_cycle = mean_seasonal_cycle.fillna(0)
+
         # Step 6: Apply Savitzky-Golay smoothing
         mean_seasonal_cycle_values = savgol_filter(
             mean_seasonal_cycle.values, smoothing_window, poly_order, axis=0
         )
+        print("here23")
         mean_seasonal_cycle = mean_seasonal_cycle.copy(data=mean_seasonal_cycle_values)
         # Ensure all values are non-negative
         mean_seasonal_cycle = mean_seasonal_cycle.where(mean_seasonal_cycle > 0, 0)
-
         return mean_seasonal_cycle
 
     def _apply_masks(self, ds, evi):
@@ -210,6 +231,40 @@ class ModisSamplingDatasetHandler(Sentinel2DatasetHandler):
         deseasonalized = deseasonalized.reset_coords("dayofyear", drop=True)
         return deseasonalized
 
+    def growing_season(self, msc, evi):
+        """Removes winter periods (outside EOS-SOS) from an EVI time series.
+
+        Parameters:
+        msc (xarray.DataArray): Mean Seasonal Cycle of EVI (1D or 3D: time, lat, lon)
+        evi (xarray.DataArray): Multi-year EVI time series (time, lat, lon)
+
+        Returns:
+        xarray.DataArray: EVI with winter periods masked (NaN)
+        """
+        if "dayofyear" not in msc.dims:
+            raise ValueError(
+                "Mean Seasonal Cycle (msc) must have a 'dayofyear' dimension."
+            )
+        # Compute the first derivative (rate of change)
+        first_derivative = np.gradient(
+            msc.values, axis=msc.dims.index("dayofyear")
+        )  # Ensure time axis is last (-1)
+
+        # Determine SOS (max increase) and EOS (max decrease)
+        sos_doy = np.argmax(
+            first_derivative, axis=msc.dims.index("dayofyear")
+        )  # SOS for each pixel
+        eos_doy = np.argmin(
+            first_derivative, axis=msc.dims.index("dayofyear")
+        )  # EOS for each pixel
+
+        # Get Day of Year (DOY) for each time step in the EVI dataset
+        doy = evi["time"].dt.dayofyear  # Shape: (time,)
+        doy_expanded = doy.values[:, np.newaxis]  # Shape: (time, 1, 1)
+        growing_season_mask = (doy_expanded >= sos_doy) & (doy_expanded <= eos_doy)
+        evi_growing_season = evi.where(growing_season_mask)
+        return evi_growing_season
+
     def preprocess_data(
         self,
         scale=True,
@@ -235,23 +290,26 @@ class ModisSamplingDatasetHandler(Sentinel2DatasetHandler):
         )
         self.data = self.data.chunk({"time": 50, "location": -1})
         self.saver._save_data(self.data, "evi")
-        self.data = self.clean_timeseries(self.data)
-        # self.data = self.data.compute()
-        self.msc = self.compute_msc(self.data)
-        deseasonalized = self._deseasonalize(self.data, self.msc)
-        deseasonalized = self.clean_timeseries_fixed_stats(deseasonalized)
-        deseasonalized = self.remove_cloud_noise(
-            deseasonalized, window_size=2, gapfill=False
-        )
+        gapfilled_data = self.clean_timeseries(self.data)
+
+        self.msc = self.compute_msc(gapfilled_data)
+        self.msc = self.msc.transpose("location", "dayofyear", ...)
+        self.saver._save_data(self.msc, "msc")
+
+        clean_data = self.remove_cloud_noise(self.data, window_size=2, gapfill=False)
+        clean_data = self.remove_cloud_noise(clean_data, window_size=3, gapfill=False)
+        deseasonalized = self._deseasonalize(clean_data, self.msc)
+        self.saver._save_data(deseasonalized, "deseasonalized")
         # Align the seasonal cycle with the deseasonalized data
         aligned_msc = self.msc.sel(dayofyear=deseasonalized.time.dt.dayofyear)
-        self.saver._save_data(deseasonalized, "deseasonalized")
-        # Add the seasonal cycle back to reconstruct the original data
+
+        deseasonalized = self.cumulative_evi(deseasonalized, window_size=4)
+        self.saver._save_data(deseasonalized, "cumulative_evi")
         self.data = deseasonalized + aligned_msc
         self.data = self.data.reset_coords("dayofyear", drop=True)
         self.saver._save_data(self.data, "clean_data")
-        self.msc = self.msc.transpose("location", "dayofyear", ...)
-        self.saver._save_data(self.msc, "msc")
+
+        # Add the seasonal cycle back to reconstruct the original data
 
         if return_time_serie:
             self.data = self.data.transpose("location", "time", ...).compute()

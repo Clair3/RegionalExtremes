@@ -134,7 +134,7 @@ if __name__ == "__main__":
         # Train the regional extreme method on a subset of locations
         # regional_extremes_method(args)
         # Apply the regional extremes method on a single minicube
-        parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/"
+        # parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/"
 
         # subfolders = [
         #     folder
@@ -144,21 +144,21 @@ if __name__ == "__main__":
         # ]
         parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/_test/"
         subfolders = [
-            "ES-Cnd_37.91_-3.23_v0.zarr.zip",
+            # "ES-Cnd_37.91_-3.23_v0.zarr.zip",
             "DE-Hai_51.08_10.45_v0.zarr.zip",
-            "DE-Geb_51.10_10.91_v0.zarr.zip",
-            "DE-Wet_50.45_11.46_v0.zarr.zip",
-            "DE-Bay_50.14_11.87_v0.zarr.zip",
-            "DE-Meh_51.28_10.66_v0.zarr.zip",
-            "DE-Lnf_51.33_10.37_v0.zarr.zip",
+            # "DE-Geb_51.10_10.91_v0.zarr.zip",
+            # "DE-Wet_50.45_11.46_v0.zarr.zip",
+            # "DE-Bay_50.14_11.87_v0.zarr.zip",
+            # "DE-Meh_51.28_10.66_v0.zarr.zip",
+            # "DE-Lnf_51.33_10.37_v0.zarr.zip",
         ]
 
-        subfolders = [
-            "custom_cube_44.17_5.24.zarr.zip",
-            "custom_cube_44.24_5.14.zarr.zip",
-            "custom_cube_47.31_0.18.zarr.zip",
-            "custom_cube_50.90_11.56.zarr.zip",
-        ]
+        # subfolders = [
+        #     "custom_cube_44.17_5.24.zarr.zip",
+        #     "custom_cube_44.24_5.14.zarr.zip",
+        #     "custom_cube_47.31_0.18.zarr.zip",
+        #     "custom_cube_50.90_11.56.zarr.zip",
+        # ]
 
         for folder in subfolders:
             regional_extremes_minicube(
@@ -183,6 +183,9 @@ if __name__ == "__main__":
         subfolders = [
             "DE-Hai_51.08_10.45_v0.zarr.zip",
             # "ES-Cnd_37.91_-3.23_v0.zarr.zip",
+            # "ES-LM1_39.94_-5.78_v0.zarr.zip",
+            # "ES-LM2_39.93_-5.78_v0.zarr.zip",
+            # "ES-LMa_39.94_-5.77_v0.zarr.zip",
             # "DE-Geb_51.10_10.91_v0.zarr.zip",
             # "DE-Wet_50.45_11.46_v0.zarr.zip",
             # "DE-Bay_50.14_11.87_v0.zarr.zip",

@@ -4,6 +4,7 @@ from dask import delayed, compute
 from dask.diagnostics import ProgressBar
 from pyproj import Transformer
 import cf_xarray as cfxr
+from s2cloudless import S2PixelCloudDetector
 
 violent = False
 
@@ -118,8 +119,6 @@ class Sentinel2DatasetHandler(DatasetHandler):
             # Add landcover
             if "esa_worldcover_2021" not in ds.data_vars:
                 ds = self.loader._load_and_add_landcover(filepath, ds)
-            # Transform UTM to lat/lon
-            ds = self._transform_utm_to_latlon(ds)
 
             if not process_entire_minicube:
                 # Select a random vegetation location
@@ -136,6 +135,9 @@ class Sentinel2DatasetHandler(DatasetHandler):
             # Calculate EVI and apply cloud/vegetation mask
             evi = self._calculate_evi(ds)
             masked_evi = self._apply_masks(ds, evi)
+
+            # Transform UTM to lat/lon
+            masked_evi = self._transform_utm_to_latlon(masked_evi)
             data = xr.Dataset(
                 data_vars={
                     f"{self.variable_name}": masked_evi,  # Adding 'evi' as a variable
@@ -208,30 +210,27 @@ class Sentinel2DatasetHandler(DatasetHandler):
         """Applies cloud and vegetation masks to the EVI data."""
         mask = xr.ones_like(evi)  # Default mask (all ones, meaning no masking)
 
-        # Apply cloud mask if available
-        if "cloudmask_en" in ds.data_vars:
-            mask = ds.cloudmask_en.where(ds.cloudmask_en == 0, np.nan)
-
         # Apply vegetation mask if SCL exists
         if "SCL" in ds.data_vars:
-            valid_mask = ds.SCL.isin([4, 5, 6, 7])
-            valid_ratio = valid_mask.sum(
+            # keep only pixel valid accordingly to the SCL
+            valid_scl = ds.SCL.isin([4, 5, 6])
+            mask = mask.where(valid_scl, np.nan)
+
+            # keep only time steps with more than 50% of valid pixels
+            valid_ratio = valid_scl.sum(
                 dim=["latitude", "longitude"]
-            ) / valid_mask.count(dim=["latitude", "longitude"])
-            invalid_time_steps = valid_ratio < 0.90
+            ) / valid_scl.count(dim=["latitude", "longitude"])
+            invalid_time_steps = valid_ratio < 0.50
             mask = mask.where(~invalid_time_steps, np.nan)
-            # else:
-            #     mask = mask.where(ds.SCL.isin([4, 5]), np.nan)
-        # mask = mask.where(
-        #     mask != 0, 1
-        # )  # Convert to binary mask (1 = valid, NaN = masked)
+
+        if "cloudmask_en" in ds.data_vars:
+            mask = mask.where(ds.cloudmask_en == 0, np.nan)
 
         return evi * mask
 
     def _has_excessive_nan(self, data):
         """Checks if the masked data contains excessive NaN values."""
         nan_percentage = data.isnull().mean().values * 100
-        print(nan_percentage)
         return nan_percentage > 99
 
     def filter_dataset_specific(self):
@@ -253,8 +252,45 @@ class Sentinel2DatasetHandler(DatasetHandler):
         deseasonalized = data - aligned_msc
         return deseasonalized
 
+    def remove_cloud_noise(data, window_size=5, gapfill=True):
+
+        # Ensure input is xarray DataArray
+        if not isinstance(data, xr.DataArray):
+            data = xr.DataArray(data, dims=["time"])
+        # Create arrays to store sum and count for before/after
+        before_sum = 0
+        before_count = 0
+        after_sum = 0
+        after_count = 0
+        # Calculate sums using shifts instead of rolling
+        for i in range(1, window_size + 1):
+            # Before window
+            shifted_before = data.shift(time=i)
+            mask_before = ~np.isnan(shifted_before)
+            before_sum += xr.where(mask_before, shifted_before, 0)
+            before_count += mask_before.astype(int)
+            # After window
+            shifted_after = data.shift(time=-i)
+            mask_after = ~np.isnan(shifted_after)
+            after_sum += xr.where(mask_after, shifted_after, 0)
+            after_count += mask_after.astype(int)
+        # Calculate means, avoiding division by zero
+        mean_before = xr.where(before_count > 0, before_sum / before_count, data)
+        mean_after = xr.where(after_count > 0, after_sum / after_count, data)
+        # Detect cloud points: current value is LOWER than both mean before and after
+        is_cloud = (data < mean_before) & (data < mean_after)
+        # For cleaning, use the mean of before and after values
+        replacement_values = (mean_before + mean_after) / 2
+        # Replace detected cloud points
+        gapfilled_data = xr.where(is_cloud, replacement_values, data)
+        clean_data = xr.where(is_cloud, np.nan, data)
+        if gapfill:
+            return gapfilled_data
+        else:
+            return clean_data
+
     def clean_timeseries(
-        self, data: xr.DataArray, window_size: list = [10, 3], gapfill: bool = True
+        self, data: xr.DataArray, window_sizes: list = [10, 3], gapfill: bool = True
     ) -> xr.DataArray:
         """
         Clean and smooth a time series using rolling windows, neighbor comparison.
@@ -272,50 +308,6 @@ class Sentinel2DatasetHandler(DatasetHandler):
             Cleaned and smoothed time series
         """
 
-        def remove_cloud_noise(data, window_size=5, gapfill=True):
-
-            # Ensure input is xarray DataArray
-            if not isinstance(data, xr.DataArray):
-                data = xr.DataArray(data, dims=["time"])
-
-            # Create arrays to store sum and count for before/after
-            before_sum = 0
-            before_count = 0
-            after_sum = 0
-            after_count = 0
-
-            # Calculate sums using shifts instead of rolling
-            for i in range(1, window_size + 1):
-                # Before window
-                shifted_before = data.shift(time=i)
-                mask_before = ~np.isnan(shifted_before)
-                before_sum += xr.where(mask_before, shifted_before, 0)
-                before_count += mask_before.astype(int)
-
-                # After window
-                shifted_after = data.shift(time=-i)
-                mask_after = ~np.isnan(shifted_after)
-                after_sum += xr.where(mask_after, shifted_after, 0)
-                after_count += mask_after.astype(int)
-
-            # Calculate means, avoiding division by zero
-            mean_before = xr.where(before_count > 0, before_sum / before_count, data)
-            mean_after = xr.where(after_count > 0, after_sum / after_count, data)
-
-            # Detect cloud points: current value is LOWER than both mean before and after
-            is_cloud = (data < mean_before) & (data < mean_after)
-
-            # For cleaning, use the mean of before and after values
-            replacement_values = (mean_before + mean_after) / 2
-
-            # Replace detected cloud points
-            gapfilled_data = xr.where(is_cloud, replacement_values, data)
-            clean_data = xr.where(is_cloud, np.nan, data)
-            if gapfill:
-                return gapfilled_data
-            else:
-                return clean_data
-
         try:
             # Input validation
             if not isinstance(data, xr.DataArray):
@@ -324,8 +316,8 @@ class Sentinel2DatasetHandler(DatasetHandler):
             # Apply initial mask once, as a separate step
             data_masked = data.where((data >= 0) & (data <= 1), np.nan)
 
-            cleaned_data = remove_cloud_noise(
-                data_masked, window_size=10, gapfill=gapfill
+            cleaned_data = self.remove_cloud_noise(
+                data_masked, window_size=window_sizes[0], gapfill=gapfill
             )
 
             # Fill NaNs with rolling mean (this is still needed)
@@ -338,8 +330,8 @@ class Sentinel2DatasetHandler(DatasetHandler):
             ).mean()
             cleaned_data = cleaned_data.fillna(rolling_mean)
 
-            cleaned_data = remove_cloud_noise(
-                cleaned_data, window_size=3, gapfill=gapfill
+            cleaned_data = self.remove_cloud_noise(
+                cleaned_data, window_size=window_sizes[1], gapfill=gapfill
             )
             return cleaned_data
 
@@ -416,7 +408,10 @@ class Sentinel2DatasetHandler(DatasetHandler):
         printt(
             f"Computation on the entire dataset. {self.data.sizes['location']} samples"
         )
-        gapfilled_data = self.clean_timeseries(self.data, window_size=[10, 3])
+        gapfilled_data, clean_data = self.clean_timeseries(
+            self.data, window_sizes=[10, 3]
+        )
+        self.saver._save_data(clean_data, "evi2")
         self.msc = self.compute_msc(gapfilled_data)
         self.saver._save_data(self.msc, "msc")
 
