@@ -146,6 +146,7 @@ class ModisSamplingDatasetHandler(Sentinel2DatasetHandler):
             data = data.where((data >= 0) & (data <= 1), np.nan)
 
             # Step 2: Remove local minima
+            clean_data = self.remove_cloud_noise(data, window_size=1)
             clean_data = self.remove_cloud_noise(data, window_size=2)
             clean_data = self.remove_cloud_noise(clean_data, window_size=3)
 
@@ -197,12 +198,20 @@ class ModisSamplingDatasetHandler(Sentinel2DatasetHandler):
         )
         mean_seasonal_cycle = mean_seasonal_cycle.fillna(0)
 
-        # Step 6: Apply Savitzky-Golay smoothing
-        mean_seasonal_cycle_values = savgol_filter(
-            mean_seasonal_cycle.values, smoothing_window, poly_order, axis=0
+        # Circular padding to avoid edge effects
+        pad_size = smoothing_window // 2  # Half-window padding
+        padded_values = np.pad(
+            mean_seasonal_cycle.values,
+            ((pad_size, pad_size), (0, 0)),  # Pad along dayofyear axis
+            mode="wrap",  # Wrap-around to maintain continuity
         )
-        print("here23")
-        mean_seasonal_cycle = mean_seasonal_cycle.copy(data=mean_seasonal_cycle_values)
+        # Step 6: Apply Savitzky-Golay smoothing
+        smoothed_values = savgol_filter(
+            padded_values, smoothing_window, poly_order, axis=0
+        )
+        mean_seasonal_cycle = mean_seasonal_cycle.copy(
+            data=smoothed_values[pad_size:-pad_size]
+        )
         # Ensure all values are non-negative
         mean_seasonal_cycle = mean_seasonal_cycle.where(mean_seasonal_cycle > 0, 0)
         return mean_seasonal_cycle
@@ -298,6 +307,7 @@ class ModisSamplingDatasetHandler(Sentinel2DatasetHandler):
 
         clean_data = self.remove_cloud_noise(self.data, window_size=2, gapfill=False)
         clean_data = self.remove_cloud_noise(clean_data, window_size=3, gapfill=False)
+        self.saver._save_data(self.data, "clean_data")
         deseasonalized = self._deseasonalize(clean_data, self.msc)
         self.saver._save_data(deseasonalized, "deseasonalized")
         # Align the seasonal cycle with the deseasonalized data
@@ -307,7 +317,6 @@ class ModisSamplingDatasetHandler(Sentinel2DatasetHandler):
         self.saver._save_data(deseasonalized, "cumulative_evi")
         self.data = deseasonalized + aligned_msc
         self.data = self.data.reset_coords("dayofyear", drop=True)
-        self.saver._save_data(self.data, "clean_data")
 
         # Add the seasonal cycle back to reconstruct the original data
 
