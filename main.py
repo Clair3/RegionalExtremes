@@ -181,7 +181,8 @@ if __name__ == "__main__":
         # ]
         # subfolders = ["ES-Cnd_37.91_-3.23_v0.zarr", "DE-RuS_50.87_6.45_v0.zarr"]
         subfolders = [
-            "DE-Hai_51.08_10.45_v0.zarr.zip",
+            # "DE-Hai_51.08_10.45_v0.zarr.zip",
+            "FR-LGt_47.32_2.28_v0.zarr.zip",
             # "ES-Cnd_37.91_-3.23_v0.zarr.zip",
             # "ES-LM1_39.94_-5.78_v0.zarr.zip",
             # "ES-LM2_39.93_-5.78_v0.zarr.zip",
@@ -201,8 +202,6 @@ if __name__ == "__main__":
         #     "custom_cube_50.90_11.56.zarr.zip",
         # ]
         for folders in subfolders:
-            local_extremes_method(
-                args, minicube_path=parent_folder + folders
-            )  # + ".zip")
+            local_extremes_method(args, minicube_path=parent_folder + folders)
     elif args.method == "global":
         raise NotImplementedError("the global method is not yet implemented.")

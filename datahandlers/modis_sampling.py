@@ -56,13 +56,11 @@ class ModisSamplingDatasetHandler(Sentinel2DatasetHandler):
         if not isinstance(data, xr.DataArray):
             data = xr.DataArray(data, dims=["time"])
 
-        # Create arrays to store sum and count for before/after
-        before_sum = 0
-        before_count = 0
-        after_sum = 0
-        after_count = 0
+        before_sum = xr.zeros_like(data)
+        before_count = xr.zeros_like(data, dtype=int)
+        after_sum = xr.zeros_like(data)
+        after_count = xr.zeros_like(data, dtype=int)
 
-        # Calculate sums using shifts instead of rolling
         for i in range(1, window_size + 1):
             # Before window
             shifted_before = data.shift(time=i)
@@ -77,8 +75,12 @@ class ModisSamplingDatasetHandler(Sentinel2DatasetHandler):
             after_count += mask_after.astype(int)
 
         # Calculate means, avoiding division by zero
-        mean_before = xr.where(before_count > 0, before_sum / before_count, data)
-        mean_after = xr.where(after_count > 0, after_sum / after_count, data)
+        mean_before = xr.where(
+            before_count > 0, before_sum / (before_count + 1e-10), np.nan
+        )
+        mean_after = xr.where(
+            after_count > 0, after_sum / (after_count + 1e-10), np.nan
+        )
 
         # Detect cloud points: current value is LOWER than both mean before and after
         is_cloud = (data < mean_before) & (data < mean_after)
@@ -113,13 +115,11 @@ class ModisSamplingDatasetHandler(Sentinel2DatasetHandler):
             count += mask_before.astype(int)
 
         # Calculate means, avoiding division by zero
-        mean = xr.where(count > 1, sum / count, np.nan)
+        mean = xr.where(count > 1, sum / (count + 1e-10), np.nan)
         return mean
 
     def clean_timeseries(
-        self,
-        data: xr.DataArray,
-        rolling_window: int = 1,
+        self, data: xr.DataArray, window_sizes: list = [5, 7]
     ) -> xr.DataArray:
         """
         Clean and smooth a time series using rolling windows, neighbor comparison.
@@ -146,14 +146,18 @@ class ModisSamplingDatasetHandler(Sentinel2DatasetHandler):
             data = data.where((data >= 0) & (data <= 1), np.nan)
 
             # Step 2: Remove local minima
-            clean_data = self.remove_cloud_noise(data, window_size=1)
-            clean_data = self.remove_cloud_noise(data, window_size=2)
-            clean_data = self.remove_cloud_noise(clean_data, window_size=3)
+            clean_data = self.remove_cloud_noise(data, window_size=1, gapfill=False)
+            clean_data = self.remove_cloud_noise(
+                clean_data, window_size=3, gapfill=False
+            )
+            clean_data = self.remove_cloud_noise(
+                clean_data, window_size=5, gapfill=False
+            )
 
             # Step 3: Handle NaN values
-            clean_data = self.fill_nans(data, rolling_window)
+            clean_data = self.fill_nans(clean_data, window_sizes[0])
             clean_data = self.fill_nans(
-                clean_data, rolling_window
+                clean_data, window_sizes[1]
             )  # Second pass for remaining NaNs
 
             # Step 4: Remove local minima again after NaN filling
@@ -167,19 +171,19 @@ class ModisSamplingDatasetHandler(Sentinel2DatasetHandler):
         rolling_mean = series.rolling(time=window, center=True, min_periods=1).mean()
         return series.where(~np.isnan(series), other=rolling_mean)
 
-    def clean_timeseries_fixed_stats(self, deseasonalized):
-
-        # Calculate GLOBAL median and std for each location (not rolling)
-        global_mean = deseasonalized.mean(dim="time", skipna=True)
-        global_std = deseasonalized.std(dim="time", skipna=True).clip(min=0.01)
-        # # Broadcast to match dimensions for computation
-        mean_broadcast = global_mean.broadcast_like(deseasonalized)
-        std_broadcast = global_std.broadcast_like(deseasonalized)
-
-        # Identify and replace outliers using global statistics
-        is_negative_outlier = deseasonalized < (mean_broadcast - 2 * std_broadcast)
-        cleaned_data = xr.where(is_negative_outlier, np.nan, deseasonalized)
-        return cleaned_data
+    # def clean_timeseries_fixed_stats(self, deseasonalized):
+    #
+    #     # Calculate GLOBAL median and std for each location (not rolling)
+    #     global_mean = deseasonalized.mean(dim="time", skipna=True)
+    #     global_std = deseasonalized.std(dim="time", skipna=True).clip(min=0.01)
+    #     # # Broadcast to match dimensions for computation
+    #     mean_broadcast = global_mean.broadcast_like(deseasonalized)
+    #     std_broadcast = global_std.broadcast_like(deseasonalized)
+    #
+    #     # Identify and replace outliers using global statistics
+    #     is_negative_outlier = deseasonalized < (mean_broadcast - 2 * std_broadcast)
+    #     cleaned_data = xr.where(is_negative_outlier, np.nan, deseasonalized)
+    #     return cleaned_data
 
     def rolling_window_mean(self, arr, window_size=4, min_periods=1):
         """Apply a rolling window mean to a numpy array along the first axis"""
@@ -223,12 +227,15 @@ class ModisSamplingDatasetHandler(Sentinel2DatasetHandler):
         mean_seasonal_cycle = clean_data.groupby("time.dayofyear").mean(
             "time", skipna=True
         )
+        mean_seasonal_cycle = mean_seasonal_cycle.fillna(0)
 
-        # Step 2: Apply circular padding along the dayofyear axis before rolling
-        pad_size = smoothing_window  # Half-window padding
+        # Step 2: Apply circular padding along the dayofyear axis before rolling # edge case growing season during the change of year
         padded_values = np.pad(
             mean_seasonal_cycle.values,
-            ((pad_size, pad_size), (0, 0)),  # Pad along the dayofyear axis
+            (
+                (smoothing_window, smoothing_window),
+                (0, 0),
+            ),  # Pad along the dayofyear axis
             mode="wrap",  # Wrap-around to maintain continuity
         )
 
@@ -242,13 +249,11 @@ class ModisSamplingDatasetHandler(Sentinel2DatasetHandler):
         smoothed_values = savgol_filter(
             rolled_values, smoothing_window, poly_order, axis=0
         )
-
         # Step 6: Ensure all values are non-negative
         mean_seasonal_cycle = mean_seasonal_cycle.copy(
-            data=smoothed_values[pad_size:-pad_size]
+            data=smoothed_values[smoothing_window:-smoothing_window]
         )
         mean_seasonal_cycle = mean_seasonal_cycle.where(mean_seasonal_cycle > 0, 0)
-
         return mean_seasonal_cycle
 
     def _apply_masks(self, ds, evi):
@@ -337,12 +342,14 @@ class ModisSamplingDatasetHandler(Sentinel2DatasetHandler):
         gapfilled_data = self.clean_timeseries(self.data)
 
         self.msc = self.compute_msc(gapfilled_data)
+
         self.msc = self.msc.transpose("location", "dayofyear", ...)
         self.saver._save_data(self.msc, "msc")
 
-        clean_data = self.remove_cloud_noise(self.data, window_size=2, gapfill=False)
+        clean_data = self.remove_cloud_noise(self.data, window_size=1, gapfill=False)
         clean_data = self.remove_cloud_noise(clean_data, window_size=3, gapfill=False)
-        self.saver._save_data(self.data, "clean_data")
+        clean_data = self.remove_cloud_noise(clean_data, window_size=5, gapfill=False)
+        self.saver._save_data(clean_data, "clean_data")
         deseasonalized = self._deseasonalize(clean_data, self.msc)
         self.saver._save_data(deseasonalized, "deseasonalized")
         # Align the seasonal cycle with the deseasonalized data
