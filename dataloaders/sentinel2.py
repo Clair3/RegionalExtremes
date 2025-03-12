@@ -4,7 +4,7 @@ from dask import delayed, compute
 from dask.diagnostics import ProgressBar
 from pyproj import Transformer
 import cf_xarray as cfxr
-from .data_processing.helpers import _ensure_time_chunks
+from .data_processing.helpers import _ensure_time_chunks, circular_rolling_mean
 
 
 class Sentinel2Dataloader(Dataloader):
@@ -117,13 +117,16 @@ class Sentinel2Dataloader(Dataloader):
 
     def load_file(self, minicube_path, process_entire_minicube=False):
         filepath = Path(minicube_path)  # EARTHNET_FILEPATH + minicube_path
-        with xr.open_zarr(filepath, chunks="auto") as ds:
+        with xr.open_zarr(filepath) as ds:
+            # Transform UTM to lat/lon
+            ds = self._transform_utm_to_latlon(ds)
             # Add landcover
             if "esa_worldcover_2021" not in ds.data_vars:
                 ds = self.loader._load_and_add_landcover(filepath, ds)
 
             if not process_entire_minicube:
                 # Select a random vegetation location
+                print("single pixel")
                 ds = self._get_random_vegetation_pixel_series(ds)
                 if ds is None:
                     return None
@@ -137,9 +140,6 @@ class Sentinel2Dataloader(Dataloader):
             # Calculate EVI and apply cloud/vegetation mask
             evi = self._calculate_evi(ds)
             masked_evi = self._apply_masks(ds, evi)
-
-            # Transform UTM to lat/lon
-            masked_evi = self._transform_utm_to_latlon(masked_evi)
             data = xr.Dataset(
                 data_vars={
                     f"{self.variable_name}": masked_evi,  # Adding 'evi' as a variable
@@ -152,9 +152,9 @@ class Sentinel2Dataloader(Dataloader):
                 },
             )
             # Check for excessive missing data
-            # if self._has_excessive_nan(masked_evi):
-            #     print("Excessive NaN values")
-            #     return None
+            if self._has_excessive_nan(masked_evi):
+                print("Excessive NaN values")
+                return None
             if process_entire_minicube:
                 self.saver.update_saving_path(filepath.stem)
 
@@ -252,93 +252,8 @@ class Sentinel2Dataloader(Dataloader):
         aligned_msc = daily_msc.sel(dayofyear=data["time.dayofyear"])
         # Subtract the seasonal cycle
         deseasonalized = data - aligned_msc
+        deseasonalized = deseasonalized.reset_coords("dayofyear", drop=True)
         return deseasonalized
-
-    def remove_cloud_noise(data, window_size=5, gapfill=True):
-
-        # Ensure input is xarray DataArray
-        if not isinstance(data, xr.DataArray):
-            data = xr.DataArray(data, dims=["time"])
-        # Create arrays to store sum and count for before/after
-        before_sum = 0
-        before_count = 0
-        after_sum = 0
-        after_count = 0
-        # Calculate sums using shifts instead of rolling
-        for i in range(1, window_size + 1):
-            # Before window
-            shifted_before = data.shift(time=i)
-            mask_before = ~np.isnan(shifted_before)
-            before_sum += xr.where(mask_before, shifted_before, 0)
-            before_count += mask_before.astype(int)
-            # After window
-            shifted_after = data.shift(time=-i)
-            mask_after = ~np.isnan(shifted_after)
-            after_sum += xr.where(mask_after, shifted_after, 0)
-            after_count += mask_after.astype(int)
-        # Calculate means, avoiding division by zero
-        mean_before = xr.where(before_count > 0, before_sum / before_count, data)
-        mean_after = xr.where(after_count > 0, after_sum / after_count, data)
-        # Detect cloud points: current value is LOWER than both mean before and after
-        is_cloud = (data < mean_before) & (data < mean_after)
-        # For cleaning, use the mean of before and after values
-        replacement_values = (mean_before + mean_after) / 2
-        # Replace detected cloud points
-        gapfilled_data = xr.where(is_cloud, replacement_values, data)
-        clean_data = xr.where(is_cloud, np.nan, data)
-        if gapfill:
-            return gapfilled_data
-        else:
-            return clean_data
-
-    def clean_timeseries(
-        self, data: xr.DataArray, window_sizes: list = [10, 3], gapfill: bool = True
-    ) -> xr.DataArray:
-        """
-        Clean and smooth a time series using rolling windows, neighbor comparison.
-
-        Parameters
-        ----------
-        data : xr.DataArray
-            Input time series data
-        rolling_window : int, optional
-            Size of rolling window for initial smoothing, default 3
-
-        Returns
-        -------
-        xr.DataArray
-            Cleaned and smoothed time series
-        """
-
-        try:
-            # Input validation
-            if not isinstance(data, xr.DataArray):
-                raise TypeError("Input must be an xarray DataArray")
-
-            # Apply initial mask once, as a separate step
-            data_masked = data.where((data >= 0) & (data <= 1), np.nan)
-
-            cleaned_data = self.remove_cloud_noise(
-                data_masked, window_size=window_sizes[0], gapfill=gapfill
-            )
-
-            # Fill NaNs with rolling mean (this is still needed)
-            rolling_mean = cleaned_data.rolling(
-                time=3, center=True, min_periods=1
-            ).mean()
-            cleaned_data = cleaned_data.fillna(rolling_mean)
-            rolling_mean = cleaned_data.rolling(
-                time=5, center=True, min_periods=1
-            ).mean()
-            cleaned_data = cleaned_data.fillna(rolling_mean)
-
-            cleaned_data = self.remove_cloud_noise(
-                cleaned_data, window_size=window_sizes[1], gapfill=gapfill
-            )
-            return cleaned_data
-
-        except Exception as e:
-            raise RuntimeError(f"Error processing time series: {str(e)}") from e
 
     def compute_msc(
         self,
@@ -360,16 +275,55 @@ class Sentinel2Dataloader(Dataloader):
         mean_seasonal_cycle["dayofyear"] = [
             interval.mid for interval in mean_seasonal_cycle.dayofyear.values
         ]
-        # Fill any remaining NaNs with 0
-        mean_seasonal_cycle = mean_seasonal_cycle.fillna(0)
-        # Step 6: Apply Savitzky-Golay smoothing
-        mean_seasonal_cycle_values = savgol_filter(
-            mean_seasonal_cycle.values, smoothing_window, poly_order, axis=0
+
+        padded_values = np.pad(
+            mean_seasonal_cycle.values,
+            (
+                (smoothing_window, smoothing_window),
+                (0, 0),
+            ),  # Pad along the dayofyear axis
+            mode="wrap",  # Wrap-around to maintain continuity
         )
-        mean_seasonal_cycle = mean_seasonal_cycle.copy(data=mean_seasonal_cycle_values)
+        padded_values = np.nan_to_num(padded_values, nan=0)
+        #
+        # rolled_values = circular_rolling_mean(
+        #     padded_values, window_size=4, min_periods=1
+        # )
+
+        # Fill any remaining NaNs with 0
+        # mean_seasonal_cycle = mean_seasonal_cycle.fillna(0)
+        # Step 6: Apply Savitzky-Golay smoothing
+        smoothed_values = savgol_filter(
+            padded_values, smoothing_window, poly_order, axis=0
+        )
+        mean_seasonal_cycle = mean_seasonal_cycle.copy(
+            data=smoothed_values[smoothing_window:-smoothing_window]
+        )
         # Ensure all values are non-negative
         mean_seasonal_cycle = mean_seasonal_cycle.where(mean_seasonal_cycle > 0, 0)
         return mean_seasonal_cycle
+
+    def cumulative_evi(self, deseaonalized, window_size=2):
+
+        # Ensure input is xarray DataArray
+        if not isinstance(deseaonalized, xr.DataArray):
+            deseaonalized = xr.DataArray(deseaonalized, dims=["time"])
+
+        # Create arrays to store sum and count for before/after
+        sum = 0
+        count = 0
+
+        # Calculate sums using shifts instead of rolling
+        for i in range(1, window_size + 1):
+            # Before window
+            shifted_before = deseaonalized.shift(time=i)
+            mask_before = ~np.isnan(shifted_before)
+            sum += xr.where(mask_before, shifted_before, 0)
+            count += mask_before.astype(int)
+
+        # Calculate means, avoiding division by zero
+        mean = xr.where(count > 1, sum / (count + 1e-10), np.nan)
+        return mean
 
     # def clean_timeseries_fixed_stats(self, deseasonalized):
     #     # Calculate GLOBAL median and std for each location (not rolling)
@@ -383,55 +337,72 @@ class Sentinel2Dataloader(Dataloader):
     #     cleaned_data = xr.where(is_negative_outlier, np.nan, deseasonalized)
     #     return cleaned_data
 
-    def _remove_low_vegetation_location(self, threshold, msc):
-        # Calculate mean data across the dayofyear dimension
-        mean_msc = msc.mean("dayofyear", skipna=True)
-
-        # Create a boolean mask for locations where mean is greater than or equal to the threshold
-        mask = mean_msc >= threshold
-
-        return mask
-
     def preprocess_data(
         self,
-        scale=True,
-        reduce_temporal_resolution=True,
         return_time_series=False,
-        remove_nan=True,
         minicube_path=None,
     ):
         """
-        Preprocess data based on the index.
+        Preprocess dataset by applying noise removal, gap-filling, cloud removal,
+        deseasonalization, and cumulative EVI computation.
+
+        Parameters
+        ----------
+        return_time_series : bool, optional
+            If True, return both the mean seasonal cycle (MSC) and processed time series.
+        minicube_path : str, optional
+            Path to a precomputed minicube dataset for loading.
+
+        Returns
+        -------
+        xr.DataArray
+            Mean seasonal cycle (MSC), and optionally, the processed time series.
         """
-        printt("start of the preprocess")
 
-        if not return_time_series:
-            self.msc = self.loader._load_data("msc")
-            if self.msc is not None:
-                return self.msc.msc
+        printt("Starting preprocessing...")
 
+        # Define window sizes for gap-filling and cloud noise removal
+        nan_fill_windows = [5, 7]
+        noise_half_windows = [10, 3]
+
+        # Load data either from a minicube or from the default dataset
         if minicube_path:
             data = self.load_minicube(minicube_path=minicube_path)
         else:
             data = self.load_dataset()
-        # self.filter_dataset_specific()  # useless, legacy...
 
-        self.saver._save_data(self.data, "evi")
-        # Randomly select n indices from the location dimension
+        printt(f"Processing entire dataset: {data.sizes['location']} locations.")
+        self.saver._save_data(data, "evi")
 
-        printt(
-            f"Computation on the entire dataset. {self.data.sizes['location']} samples"
+        # Step 1: Gap-filling & noise removal
+        gapfilled_data = self.noise_removal.clean_and_gapfill_timeseries(
+            data,
+            nan_fill_windows=nan_fill_windows,
+            noise_half_windows=noise_half_windows,
         )
-        gapfilled_data, clean_data = self.clean_timeseries(
-            self.data, window_sizes=[10, 3]
-        )
-        self.saver._save_data(clean_data, "evi2")
-        self.msc = self.compute_msc(gapfilled_data)
-        self.saver._save_data(self.msc, "msc")
 
-        self.msc = self.msc.transpose("location", "dayofyear", ...)
+        # Compute Mean Seasonal Cycle (MSC)
+        msc = self.compute_msc(gapfilled_data)
+        msc = msc.transpose("location", "dayofyear", ...)
+        self.saver._save_data(msc, "msc")
+
         if not return_time_series:
-            return self.msc
-        else:
-            self.data = self.data.transpose("location", "time", ...)
-            return self.msc, self.data
+            return msc
+
+        # Step 2: Cloud removal
+        data = self.noise_removal.cloudfree_timeseries(
+            data, noise_half_windows=noise_half_windows
+        )
+        self.saver._save_data(data, "clean_data")
+
+        # Step 3: Deseasonalization
+        data = self._deseasonalize(data, msc)  # needed?
+        self.saver._save_data(data, "deseasonalized")
+
+        # Step 5: Cumulative EVI computation
+        data = self.cumulative_evi(data, window_size=4)
+        self.saver._save_data(data, "cumulative_evi")
+
+        data = _ensure_time_chunks(data)
+        data = data.transpose("location", "time", ...).compute()
+        return msc, data

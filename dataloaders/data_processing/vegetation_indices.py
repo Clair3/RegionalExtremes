@@ -1,5 +1,5 @@
 from ..sentinel2 import Sentinel2Dataloader
-from ..modis import ModisSamplingDataloader
+from ..modis import ModisDataloader
 
 # TODO
 
@@ -15,7 +15,7 @@ class VegetationIndices:
         self.dataloader = dataloader
 
         # Checking the type of dataloader to adjust index computation accordingly
-        if isinstance(dataloader, ModisSamplingDataloader):
+        if isinstance(dataloader, ModisDataloader):
             self.band_mapping = {
                 "NDVI": ("sur_refl_b02", "sur_refl_b01"),  # MODIS specific bands
                 "EVI": ("sur_refl_b02", "sur_refl_b01", "sur_refl_b07"),

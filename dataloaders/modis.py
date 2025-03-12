@@ -1,6 +1,6 @@
 from .common_imports import *
 from .sentinel2 import Sentinel2Dataloader
-from .data_processing.helpers import _ensure_time_chunks
+from .data_processing.helpers import _ensure_time_chunks, circular_rolling_mean
 
 
 class ModisDataloader(Sentinel2Dataloader):
@@ -47,64 +47,12 @@ class ModisDataloader(Sentinel2Dataloader):
 
             return data
 
-    def cumulative_evi(self, deseaonalized, window_size=2):
-
-        # Ensure input is xarray DataArray
-        if not isinstance(deseaonalized, xr.DataArray):
-            deseaonalized = xr.DataArray(deseaonalized, dims=["time"])
-
-        # Create arrays to store sum and count for before/after
-        sum = 0
-        count = 0
-
-        # Calculate sums using shifts instead of rolling
-        for i in range(1, window_size + 1):
-            # Before window
-            shifted_before = deseaonalized.shift(time=i)
-            mask_before = ~np.isnan(shifted_before)
-            sum += xr.where(mask_before, shifted_before, 0)
-            count += mask_before.astype(int)
-
-        # Calculate means, avoiding division by zero
-        mean = xr.where(count > 1, sum / (count + 1e-10), np.nan)
-        return mean
-
     def compute_msc(
         self,
         clean_data: xr.DataArray,
         smoothing_window: int = 5,
         poly_order: int = 2,
     ):
-        def rolling_window_mean(arr, window_size=4, min_periods=1):
-            """Apply a rolling mean to a numpy array with cyclic handling.
-
-            Args:
-                arr (numpy.ndarray): Input array for which the rolling mean is calculated.
-                window_size (int): Number of elements in the rolling window. Default is 4.
-                min_periods (int): Minimum valid (non-NaN) values required to compute the mean. Default is 1.
-
-            Returns:
-                numpy.ndarray: Array with rolling mean applied, handling NaN values gracefully.
-            """
-            n = arr.shape[0]  # Get the length of the input array
-            result = np.full_like(arr, np.nan)  # Initialize result array with NaNs
-            half_window = (
-                window_size // 2
-            )  # Determine half the window size for indexing
-
-            for i in range(n):
-                # Compute cyclic indices for the rolling window
-                indices = [(i + j - half_window) % n for j in range(window_size)]
-
-                # Extract valid (non-NaN) values from the array within the computed window
-                valid_values = arr[indices][~np.isnan(arr[indices])]
-
-                # Compute the mean only if enough valid values exist
-                if len(valid_values) >= min_periods:
-                    result[i] = np.mean(valid_values)
-
-            # Replace NaN values in the result where original array had NaNs
-            return np.nan_to_num(np.where(np.isnan(arr), result, arr), nan=0.0)
 
         # Step 1: Compute mean seasonal cycle
         mean_seasonal_cycle = clean_data.groupby("time.dayofyear").mean(
@@ -121,12 +69,15 @@ class ModisDataloader(Sentinel2Dataloader):
             ),  # Pad along the dayofyear axis
             mode="wrap",  # Wrap-around to maintain continuity
         )
+        padded_values = np.nan_to_num(padded_values, nan=0)
         #
-        rolled_values = rolling_window_mean(padded_values, window_size=4, min_periods=1)
+        # rolled_values = circular_rolling_mean(
+        #    padded_values, window_size=4, min_periods=1
+        # )
 
         # Step 5: Apply Savitzky-Golay smoothing
         smoothed_values = savgol_filter(
-            rolled_values, smoothing_window, poly_order, axis=0
+            padded_values, smoothing_window, poly_order, axis=0
         )
         mean_seasonal_cycle = mean_seasonal_cycle.copy(
             data=smoothed_values[smoothing_window:-smoothing_window]
@@ -192,79 +143,3 @@ class ModisDataloader(Sentinel2Dataloader):
         growing_season_mask = (doy_expanded >= sos_doy) & (doy_expanded <= eos_doy)
         evi_growing_season = evi.where(growing_season_mask)
         return evi_growing_season
-
-    def preprocess_data(
-        self,
-        # scale=True,
-        # reduce_temporal_resolution=True,
-        return_time_series=False,  # Renamed for clarity
-        minicube_path=None,
-    ):
-        """
-        Preprocess dataset by applying noise removal, gap-filling, cloud removal,
-        deseasonalization, and cumulative EVI computation.
-
-        Parameters
-        ----------
-        scale : bool, optional
-            Whether to scale the data (not yet implemented in this function).
-        reduce_temporal_resolution : bool, optional
-            Whether to reduce the temporal resolution of the dataset.
-        return_time_series : bool, optional
-            If True, return both the mean seasonal cycle (MSC) and processed time series.
-        minicube_path : str, optional
-            Path to a precomputed minicube dataset for loading.
-
-        Returns
-        -------
-        xr.DataArray
-            Mean seasonal cycle (MSC), and optionally, the processed time series.
-        """
-
-        printt("Starting preprocessing...")
-
-        # Define window sizes for gap-filling and cloud noise removal
-        nan_fill_windows = [5, 7]
-        noise_half_windows = [1, 3]
-
-        # Load data either from a minicube or from the default dataset
-        if minicube_path:
-            data = self.load_minicube(minicube_path=minicube_path)
-        else:
-            data = self.load_dataset()
-
-        printt(f"Processing entire dataset: {data.sizes['location']} locations.")
-        self.saver._save_data(data, "evi")
-
-        # Step 1: Gap-filling & noise removal
-        gapfilled_data = self.noise_removal.clean_and_gapfill_timeseries(
-            data,
-            nan_fill_windows=nan_fill_windows,
-            noise_half_windows=noise_half_windows,
-        )
-
-        # Compute Mean Seasonal Cycle (MSC)
-        msc = self.compute_msc(gapfilled_data)
-        msc = msc.transpose("location", "dayofyear", ...)
-        self.saver._save_data(msc, "msc")
-
-        if not return_time_series:
-            return msc
-
-        # Step 2: Cloud removal
-        data = self.noise_removal.cloudfree_timeseries(
-            data, noise_half_windows=noise_half_windows
-        )
-        self.saver._save_data(data, "clean_data")
-
-        # Step 3: Deseasonalization
-        data = self._deseasonalize(data, msc)  # needed?
-        self.saver._save_data(data, "deseasonalized")
-
-        # Step 5: Cumulative EVI computation
-        data = self.cumulative_evi(data, window_size=4)
-        self.saver._save_data(data, "cumulative_evi")
-
-        data = _ensure_time_chunks(data)
-        data = data.transpose("location", "time", ...).compute()
-        return msc, data
