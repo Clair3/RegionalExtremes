@@ -87,7 +87,7 @@ class Dataloader(ABC):
             return self.msc
 
     @abstractmethod
-    def _dataset_loading(self, *args, **kwargs):
+    def load_dataset(self, *args, **kwargs):
         pass
 
     @abstractmethod

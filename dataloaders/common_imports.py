@@ -20,7 +20,7 @@ from RegionalExtremesPackage.utils.config import (
     MODIS_INDICES,
 )
 from RegionalExtremesPackage.utils import Loader, Saver
-from .data_processing import *
+from RegionalExtremesPackage.dataloaders.data_processing import NoiseRemovalBase
 from RegionalExtremesPackage.utils.logger import printt
 
 

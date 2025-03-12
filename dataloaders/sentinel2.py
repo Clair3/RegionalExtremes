@@ -4,11 +4,12 @@ from dask import delayed, compute
 from dask.diagnostics import ProgressBar
 from pyproj import Transformer
 import cf_xarray as cfxr
+from .data_processing.helpers import _ensure_time_chunks
 
 
 class Sentinel2Dataloader(Dataloader):
 
-    def _dataset_loading(self):
+    def load_dataset(self):
         """
         Preprocess data based on the index and load the dataset.
         """
@@ -37,7 +38,7 @@ class Sentinel2Dataloader(Dataloader):
         printt("Loading dataset...")
 
         # Use dask.delayed to parallelize the loading and processing
-        data = [delayed(self.load_minicube)(path) for path in samples_paths]
+        data = [delayed(self.load_file)(path) for path in samples_paths]
 
         with ProgressBar():
             data = compute(*data, scheduler="processes")
@@ -56,11 +57,13 @@ class Sentinel2Dataloader(Dataloader):
         self.saver._save_data(self.data, "temp_file")
         self.data = self.loader._load_data("temp_file")
         printt("Dataset loaded.")
-
+        self.data = self.data[self.variable_name]
+        # Ensure dataset has time chunks before further processing
+        self.data = _ensure_time_chunks(self.data)
         return self.data
 
-    def _minicube_loading(self, minicube_path):
-        data = self.load_minicube(minicube_path, process_entire_minicube=True)
+    def load_minicube(self, minicube_path):
+        data = self.load_file(minicube_path, process_entire_minicube=True)
         self.data = data.stack(location=("longitude", "latitude"))
         if self.n_samples:
             random_indices = np.random.choice(
@@ -68,6 +71,9 @@ class Sentinel2Dataloader(Dataloader):
             )
             self.data = self.data.isel(location=random_indices)
         # self.data = self.data  # .isel(location=slice(0, 100))
+        self.data = self.data[self.variable_name]
+        # Ensure dataset has time chunks before further processing
+        self.data = _ensure_time_chunks(self.data)
         return self.data
 
     def sample_locations(self, n_samples):
@@ -109,7 +115,7 @@ class Sentinel2Dataloader(Dataloader):
         sampled_indices = np.random.choice(df.index, size=n_samples, replace=True)
         return df.loc[sampled_indices].values  # df.loc[sampled_indices, "path"].values
 
-    def load_minicube(self, minicube_path, process_entire_minicube=False):
+    def load_file(self, minicube_path, process_entire_minicube=False):
         filepath = Path(minicube_path)  # EARTHNET_FILEPATH + minicube_path
         with xr.open_zarr(filepath, chunks="auto") as ds:
             # Add landcover
@@ -390,7 +396,7 @@ class Sentinel2Dataloader(Dataloader):
         self,
         scale=True,
         reduce_temporal_resolution=True,
-        return_time_serie=False,
+        return_time_series=False,
         remove_nan=True,
         minicube_path=None,
     ):
@@ -399,17 +405,17 @@ class Sentinel2Dataloader(Dataloader):
         """
         printt("start of the preprocess")
 
-        if not return_time_serie:
+        if not return_time_series:
             self.msc = self.loader._load_data("msc")
             if self.msc is not None:
                 return self.msc.msc
 
         if minicube_path:
-            self._minicube_loading(minicube_path=minicube_path)
+            data = self.load_minicube(minicube_path=minicube_path)
         else:
-            self._dataset_loading()
+            data = self.load_dataset()
         # self.filter_dataset_specific()  # useless, legacy...
-        self.data = self.data[self.variable_name]
+
         self.saver._save_data(self.data, "evi")
         # Randomly select n indices from the location dimension
 
@@ -424,7 +430,7 @@ class Sentinel2Dataloader(Dataloader):
         self.saver._save_data(self.msc, "msc")
 
         self.msc = self.msc.transpose("location", "dayofyear", ...)
-        if not return_time_serie:
+        if not return_time_series:
             return self.msc
         else:
             self.data = self.data.transpose("location", "time", ...)

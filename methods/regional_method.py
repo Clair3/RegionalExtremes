@@ -656,17 +656,15 @@ def regional_extremes_method(args):
     )
     msc, data = dataset_processor.preprocess_data(
         scale=False,
-        return_time_serie=True,
+        return_time_series=True,
         reduce_temporal_resolution=False,
         remove_nan=False,
         # minicube_path=minicube_path,
     )
     extremes_processor.apply_pca(scaled_data=msc)
     extremes_processor.find_eco_clusters()
-    # Deseasonalize the data
-    deseasonalized = dataset_processor._deseasonalize(data, msc)
     # Compute the quantiles per eco_clusters
-    extremes_processor.compute_regional_threshold(deseasonalized)
+    extremes_processor.compute_regional_threshold(data)
 
     return extremes_processor
 
@@ -693,15 +691,11 @@ def regional_extremes_minicube(args, minicube_path):
         config=config, n_samples=None  # config.n_samples
     )
     msc, data = dataset_processor.preprocess_data(
-        scale=False,
-        return_time_serie=True,
-        reduce_temporal_resolution=False,
-        remove_nan=False,
+        return_time_series=True,
         minicube_path=minicube_path,
     )
+
     extremes_processor.apply_pca(scaled_data=msc)
     extremes_processor.find_eco_clusters()
-    # Deseasonalize the data
-    deseasonalized = dataset_processor._deseasonalize(data, msc)
     # Compute the quantiles per regions/biome (=eco_clusters)
-    extremes_processor.apply_regional_threshold(deseasonalized)
+    extremes_processor.apply_regional_threshold(data)

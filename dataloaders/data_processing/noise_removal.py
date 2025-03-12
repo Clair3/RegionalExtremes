@@ -38,7 +38,7 @@ class NoiseRemovalBase(ABC):
         self,
         data: xr.DataArray,
         nan_fill_windows: list = [5, 7],
-        cloud_noise_half_windows: list = [1, 3],
+        noise_half_windows: list = [1, 3],
     ) -> xr.DataArray:
         """
         Cleans and smooths a time series using outlier removal, cloud noise correction,
@@ -66,7 +66,7 @@ class NoiseRemovalBase(ABC):
         data = data.where((data >= 0) & (data <= 1), np.nan)
 
         # Step 2: Remove cloud noise using specified window sizes
-        for window in cloud_noise_half_windows:
+        for window in noise_half_windows:
             data = self.remove_cloud_noise(data, half_window=window, gapfill=False)
 
         # Step 3: Fill NaN values using specified window sizes
@@ -74,11 +74,11 @@ class NoiseRemovalBase(ABC):
             data = self.fill_nans(data, window)
 
         # Step 4: Final cloud noise removal after NaN gap-filling
-        data = self.remove_cloud_noise(data, half_window=cloud_noise_half_windows[0])
+        data = self.remove_cloud_noise(data, half_window=noise_half_windows[0])
 
         return data
 
-    def cloudfree_timeseries(self, data, cloud_noise_half_windows=[1, 3]):
-        for half_window in cloud_noise_half_windows:
+    def cloudfree_timeseries(self, data, noise_half_windows=[1, 3]):
+        for half_window in noise_half_windows:
             data = self.remove_cloud_noise(data, half_window=half_window, gapfill=False)
         return data

@@ -1,7 +1,6 @@
 from .common_imports import *
 from .sentinel2 import Sentinel2Dataloader
-
-# from .common_imports import _ensure_time_chunks
+from .data_processing.helpers import _ensure_time_chunks
 
 
 class ModisDataloader(Sentinel2Dataloader):
@@ -9,7 +8,7 @@ class ModisDataloader(Sentinel2Dataloader):
         """Calculates the Enhanced Vegetation Index (EVI)."""
         return (ds["250m_16_days_EVI"] + 2000) / 12000
 
-    def load_minicube(self, minicube_path, process_entire_minicube=False):
+    def load_file(self, minicube_path, process_entire_minicube=False):
         filepath = Path(minicube_path)
         with xr.open_zarr(filepath) as ds:
 
@@ -45,6 +44,7 @@ class ModisDataloader(Sentinel2Dataloader):
             )
             if process_entire_minicube:
                 self.saver.update_saving_path(filepath.stem)
+
             return data
 
     def cumulative_evi(self, deseaonalized, window_size=2):
@@ -195,58 +195,76 @@ class ModisDataloader(Sentinel2Dataloader):
 
     def preprocess_data(
         self,
-        scale=True,
-        reduce_temporal_resolution=True,
-        return_time_serie=False,
-        remove_nan=True,
+        # scale=True,
+        # reduce_temporal_resolution=True,
+        return_time_series=False,  # Renamed for clarity
         minicube_path=None,
     ):
         """
-        Preprocess data based on the index.
+        Preprocess dataset by applying noise removal, gap-filling, cloud removal,
+        deseasonalization, and cumulative EVI computation.
+
+        Parameters
+        ----------
+        scale : bool, optional
+            Whether to scale the data (not yet implemented in this function).
+        reduce_temporal_resolution : bool, optional
+            Whether to reduce the temporal resolution of the dataset.
+        return_time_series : bool, optional
+            If True, return both the mean seasonal cycle (MSC) and processed time series.
+        minicube_path : str, optional
+            Path to a precomputed minicube dataset for loading.
+
+        Returns
+        -------
+        xr.DataArray
+            Mean seasonal cycle (MSC), and optionally, the processed time series.
         """
-        printt("start of the preprocess")
+
+        printt("Starting preprocessing...")
+
+        # Define window sizes for gap-filling and cloud noise removal
         nan_fill_windows = [5, 7]
-        cloud_noise_half_windows = [1, 3]
+        noise_half_windows = [1, 3]
 
+        # Load data either from a minicube or from the default dataset
         if minicube_path:
-            self._minicube_loading(minicube_path=minicube_path)
+            data = self.load_minicube(minicube_path=minicube_path)
         else:
-            self._dataset_loading()
-        self.data = self.data[self.variable_name]
-        # Randomly select n indices from the location dimension
+            data = self.load_dataset()
 
-        printt(
-            f"Computation on the entire dataset. {self.data.sizes['location']} samples"
-        )
-        self.data = _ensure_time_chunks(self.data)
-        self.saver._save_data(self.data, "evi")
+        printt(f"Processing entire dataset: {data.sizes['location']} locations.")
+        self.saver._save_data(data, "evi")
+
+        # Step 1: Gap-filling & noise removal
         gapfilled_data = self.noise_removal.clean_and_gapfill_timeseries(
-            self.data,
+            data,
             nan_fill_windows=nan_fill_windows,
-            cloud_noise_half_windows=cloud_noise_half_windows,
+            noise_half_windows=noise_half_windows,
         )
 
-        self.msc = self.compute_msc(gapfilled_data)
-        self.msc = self.msc.transpose("location", "dayofyear", ...)
-        self.saver._save_data(self.msc, "msc")
+        # Compute Mean Seasonal Cycle (MSC)
+        msc = self.compute_msc(gapfilled_data)
+        msc = msc.transpose("location", "dayofyear", ...)
+        self.saver._save_data(msc, "msc")
 
-        clean_data = self.noise_removal.cloudfree_timeseries(
-            self.data, cloud_noise_half_windows=cloud_noise_half_windows
+        if not return_time_series:
+            return msc
+
+        # Step 2: Cloud removal
+        data = self.noise_removal.cloudfree_timeseries(
+            data, noise_half_windows=noise_half_windows
         )
-        self.saver._save_data(clean_data, "clean_data")
-        deseasonalized = self._deseasonalize(clean_data, self.msc)
-        self.saver._save_data(deseasonalized, "deseasonalized")
-        # Align the seasonal cycle with the deseasonalized data
-        aligned_msc = self.msc.sel(dayofyear=deseasonalized.time.dt.dayofyear)
+        self.saver._save_data(data, "clean_data")
 
-        deseasonalized = self.cumulative_evi(deseasonalized, window_size=4)
-        self.saver._save_data(deseasonalized, "cumulative_evi")
-        self.data = deseasonalized + aligned_msc
-        self.data = self.data.reset_coords("dayofyear", drop=True)
+        # Step 3: Deseasonalization
+        data = self._deseasonalize(data, msc)  # needed?
+        self.saver._save_data(data, "deseasonalized")
 
-        if return_time_serie:
-            self.data = _ensure_time_chunks(self.data)
-            self.data = self.data.transpose("location", "time", ...).compute()
-            return self.msc, self.data
-        else:
-            return self.msc
+        # Step 5: Cumulative EVI computation
+        data = self.cumulative_evi(data, window_size=4)
+        self.saver._save_data(data, "cumulative_evi")
+
+        data = _ensure_time_chunks(data)
+        data = data.transpose("location", "time", ...).compute()
+        return msc, data

@@ -174,15 +174,10 @@ def local_extremes_method(args, minicube_path):
 
     dataset_processor = create_handler(config=config, n_samples=None)  # all the dataset
 
-    msc, data = dataset_processor.preprocess_data(
-        scale=False,
-        return_time_serie=True,
-        reduce_temporal_resolution=False,
-        remove_nan=False,
+    _, data = dataset_processor.preprocess_data(
+        return_time_series=True,
         minicube_path=minicube_path,
     )
-    # Deseasonalized data
-    deseasonalized = dataset_processor._deseasonalize(data, msc)
     # Apply the local threshold
-    extremes_processor.compute_local_threshold(deseasonalized)
+    extremes_processor.compute_local_threshold(data)
     printt("Local extremes computed")
