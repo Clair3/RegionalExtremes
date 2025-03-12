@@ -12,7 +12,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
 from RegionalExtremesPackage.utils.logger import printt
 from RegionalExtremesPackage.utils import Loader, Saver
-from RegionalExtremesPackage.datahandlers import create_handler
+from RegionalExtremesPackage.dataloaders import create_handler
 from RegionalExtremesPackage.utils.config import (
     InitializationConfig,
     CLIMATIC_INDICES,

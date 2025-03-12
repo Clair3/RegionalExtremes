@@ -1,9 +1,9 @@
 from .common_imports import *
-from .base import DatasetHandler
+from .base import Dataloader
 
 
-class ClimaticDatasetHandler(DatasetHandler):
-    def _dataset_specific_loading(self):
+class Era5Dataloader(Dataloader):
+    def _dataset_loading(self):
         """
         Preprocess data based on the index.
         """
@@ -72,8 +72,3 @@ class ClimaticDatasetHandler(DatasetHandler):
         self.data = self._spatial_filtering(self.data)
 
         printt(f"Climatic data loaded with dimensions: {self.data.sizes}")
-
-    @abstractmethod
-    def _remove_low_vegetation_location(self, data):
-        # not applicable to this dataset
-        return data

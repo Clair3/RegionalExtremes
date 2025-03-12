@@ -1,17 +1,14 @@
 from .common_imports import *
-from .base import DatasetHandler
+from .base import Dataloader
 from dask import delayed, compute
 from dask.diagnostics import ProgressBar
 from pyproj import Transformer
 import cf_xarray as cfxr
-from s2cloudless import S2PixelCloudDetector
-
-violent = False
 
 
-class Sentinel2DatasetHandler(DatasetHandler):
+class Sentinel2Dataloader(Dataloader):
 
-    def _dataset_specific_loading(self):
+    def _dataset_loading(self):
         """
         Preprocess data based on the index and load the dataset.
         """
@@ -21,7 +18,6 @@ class Sentinel2DatasetHandler(DatasetHandler):
         # Attempt to load preprocessed training data
         # training_data = self.loader._load_data("temp_file")
         path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-12-21_13:11:46_30000_locations/EVI_EN/temp_file.zarr"
-        # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-01-23_10:01:46_deep_extreme_global/EVI_EN/temp_file.zarr"
         training_data = xr.open_zarr(path)
         training_data = cfxr.decode_compress_to_multi_index(training_data, "location")
         if training_data is not None:
@@ -63,7 +59,7 @@ class Sentinel2DatasetHandler(DatasetHandler):
 
         return self.data
 
-    def _minicube_specific_loading(self, minicube_path):
+    def _minicube_loading(self, minicube_path):
         data = self.load_minicube(minicube_path, process_entire_minicube=True)
         self.data = data.stack(location=("longitude", "latitude"))
         if self.n_samples:
@@ -129,7 +125,7 @@ class Sentinel2DatasetHandler(DatasetHandler):
                 if not self._has_sufficient_vegetation(ds):
                     print("Not enough vegetation")
                     return None
-            self.variable_name = "evi"  # ds.attrs["data_id"]
+            self.variable_name = "evi"
             # Filter based on vegetation occurrence
 
             # Calculate EVI and apply cloud/vegetation mask
@@ -231,7 +227,7 @@ class Sentinel2DatasetHandler(DatasetHandler):
     def _has_excessive_nan(self, data):
         """Checks if the masked data contains excessive NaN values."""
         nan_percentage = data.isnull().mean().values * 100
-        return nan_percentage > 99
+        return nan_percentage > 80
 
     def filter_dataset_specific(self):
         """
@@ -369,6 +365,18 @@ class Sentinel2DatasetHandler(DatasetHandler):
         mean_seasonal_cycle = mean_seasonal_cycle.where(mean_seasonal_cycle > 0, 0)
         return mean_seasonal_cycle
 
+    # def clean_timeseries_fixed_stats(self, deseasonalized):
+    #     # Calculate GLOBAL median and std for each location (not rolling)
+    #     global_mean = deseasonalized.mean(dim="time", skipna=True)
+    #     global_std = deseasonalized.std(dim="time", skipna=True).clip(min=0.01)
+    #     # # Broadcast to match dimensions for computation
+    #     mean_broadcast = global_mean.broadcast_like(deseasonalized)
+    #     std_broadcast = global_std.broadcast_like(deseasonalized)
+    #     # Identify and replace outliers using global statistics
+    #     is_negative_outlier = deseasonalized < (mean_broadcast - 2 * std_broadcast)
+    #     cleaned_data = xr.where(is_negative_outlier, np.nan, deseasonalized)
+    #     return cleaned_data
+
     def _remove_low_vegetation_location(self, threshold, msc):
         # Calculate mean data across the dayofyear dimension
         mean_msc = msc.mean("dayofyear", skipna=True)
@@ -397,9 +405,9 @@ class Sentinel2DatasetHandler(DatasetHandler):
                 return self.msc.msc
 
         if minicube_path:
-            self._minicube_specific_loading(minicube_path=minicube_path)
+            self._minicube_loading(minicube_path=minicube_path)
         else:
-            self._dataset_specific_loading()
+            self._dataset_loading()
         # self.filter_dataset_specific()  # useless, legacy...
         self.data = self.data[self.variable_name]
         self.saver._save_data(self.data, "evi")

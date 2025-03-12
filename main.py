@@ -5,7 +5,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from RegionalExtremesPackage.utils.logger import int_or_none
-from RegionalExtremesPackage.datahandlers import create_handler
+from RegionalExtremesPackage.dataloaders import create_handler
 
 
 import argparse

@@ -4,7 +4,7 @@ from typing import Union, Optional
 from .common_imports import *
 
 
-class DatasetHandler(ABC):
+class Dataloader(ABC):
     def __init__(
         self,
         config: InitializationConfig,
@@ -28,6 +28,8 @@ class DatasetHandler(ABC):
         # Saver class to save intermediate steps.
         self.saver = Saver(config)
 
+        self.noise_removal = NoiseRemovalBase()
+
         self.start_year = self.config.start_year
 
         # data loaded from the dataset
@@ -50,7 +52,7 @@ class DatasetHandler(ABC):
         """
         Preprocess data based on the index.
         """
-        self._dataset_specific_loading()
+        self._dataset_loading()
         self.filter_dataset_specific()
 
         # Stack the dimensions
@@ -85,7 +87,7 @@ class DatasetHandler(ABC):
             return self.msc
 
     @abstractmethod
-    def _dataset_specific_loading(self, *args, **kwargs):
+    def _dataset_loading(self, *args, **kwargs):
         pass
 
     @abstractmethod
@@ -116,11 +118,6 @@ class DatasetHandler(ABC):
         mask = ~mask
 
         return mask
-
-    @abstractmethod
-    def _remove_low_vegetation_location(self, data):
-        # This method will be implemented by subclasses
-        pass
 
     def randomly_select_n_samples(self, factor=5):
         """

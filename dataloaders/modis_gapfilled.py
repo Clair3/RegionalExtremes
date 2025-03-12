@@ -1,10 +1,10 @@
 from .common_imports import *
-from .base import DatasetHandler
+from .base import Dataloader
 
 
-class EcologicalDatasetHandler(DatasetHandler):
+class ModisGapfilledDataloader(Dataloader):
 
-    def _dataset_specific_loading(self):
+    def _dataset_loading(self):
         """
         Preprocess data based on the index.
         """
