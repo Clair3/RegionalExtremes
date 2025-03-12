@@ -143,3 +143,11 @@ class ModisDataloader(Sentinel2Dataloader):
         growing_season_mask = (doy_expanded >= sos_doy) & (doy_expanded <= eos_doy)
         evi_growing_season = evi.where(growing_season_mask)
         return evi_growing_season
+
+    def get_config(self):
+        # Define window sizes for gap-filling and cloud noise removal
+        config = dict()
+        config["nan_fill_windows"] = [5, 7]
+        config["noise_half_windows"] = [3, 1]
+        config["cumulative_evi_window"] = 4
+        return config

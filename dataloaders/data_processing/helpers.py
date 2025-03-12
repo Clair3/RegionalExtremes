@@ -49,6 +49,8 @@ def _ensure_xarray(data):
 
 
 def _ensure_time_chunks(data):
-    if data.chunks[0][0] != 50:
-        data = data.chunk({"time": 50, "location": -1})
+    # TODO quick fix
+    data = data.chunk({"time": 50, "location": -1})
+    # if data.chunks[0][0] != 50:
+    #     data = data.chunk({"time": 50, "location": -1})
     return data

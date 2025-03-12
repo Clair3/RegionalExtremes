@@ -130,9 +130,12 @@ class Saver:
             return
         # if name == "deseazonalized" or name == "clean_data":
         if "time" in data.dims and "location" in data.dims:
-            data = data.chunk({"time": 100, "location": 50})
+            data = data.chunk({"time": 50, "location": -1})
+            # data = _ensure_time_chunks(
+            #     data
+            # )  # data.chunk({"time": 100, "location": 50})
         if "dayofyear" in data.dims:
-            data = data.chunk({"dayofyear": 100, "location": 50})
+            data = data.chunk({"dayofyear": 50, "location": -1})
         # else:
         #    data = data.chunk("auto")
         data.to_zarr(path, mode="w")

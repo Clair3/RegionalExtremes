@@ -633,6 +633,7 @@ def regional_extremes_method(args):
         )
         # Load and preprocess the dataset
         data = dataset_processor.preprocess_data()  # minicube_path=minicube_path)
+        print(data)
         # Fit the PCA on the data
         extremes_processor.compute_pca_and_transform(scaled_data=data)
 
@@ -655,11 +656,7 @@ def regional_extremes_method(args):
         n_samples=None,
     )
     msc, data = dataset_processor.preprocess_data(
-        scale=False,
         return_time_series=True,
-        reduce_temporal_resolution=False,
-        remove_nan=False,
-        # minicube_path=minicube_path,
     )
     extremes_processor.apply_pca(scaled_data=msc)
     extremes_processor.find_eco_clusters()

@@ -58,7 +58,7 @@ class NoiseRemovalBase(ABC):
         xr.DataArray
             Cleaned and gap-filled time series.
         """
-
+        # data = _ensure_xarray(data):
         if not isinstance(data, xr.DataArray):
             raise TypeError("Input must be an xarray DataArray")
 

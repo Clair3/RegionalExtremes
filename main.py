@@ -115,10 +115,10 @@ def parser_arguments():
 
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
-    args.name = "Final_20"
-    args.index = "EVI_MODIS"
+    args.name = "new_training"
+    args.index = "EVI_EN"
     args.k_pca = False
-    args.n_samples = 40000
+    args.n_samples = 10  # 40000
     args.n_components = 3
     args.n_eco_clusters = 20
     args.compute_variance = False
@@ -128,11 +128,11 @@ if __name__ == "__main__":
     args.lower_quantiles = [0.01, 0.025, 0.05]
     args.upper_quantiles = [0.95, 0.975, 0.99]
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-02-25_00:52:19_Final_20"
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-03-12_16:12:05_new_training"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-02-25_00:52:19_Final_20"  #
 
     if args.method == "regional":
         # Train the regional extreme method on a subset of locations
-        # regional_extremes_method(args)
+        regional_extremes_method(args)
         # Apply the regional extremes method on a single minicube
         parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/"
 
@@ -145,8 +145,8 @@ if __name__ == "__main__":
         # parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/_test/"
         subfolders = [
             # "ES-Cnd_37.91_-3.23_v0.zarr.zip",
-            "FR-LGt_47.32_2.28_v0.zarr.zip"
-            # "DE-Hai_51.08_10.45_v0.zarr.zip",
+            "FR-LGt_47.32_2.28_v0.zarr.zip",
+            "DE-Hai_51.08_10.45_v0.zarr.zip",
             # "DE-Geb_51.10_10.91_v0.zarr.zip",
             # "DE-Wet_50.45_11.46_v0.zarr.zip",
             # "DE-Bay_50.14_11.87_v0.zarr.zip",

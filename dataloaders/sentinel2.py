@@ -4,7 +4,7 @@ from dask import delayed, compute
 from dask.diagnostics import ProgressBar
 from pyproj import Transformer
 import cf_xarray as cfxr
-from .data_processing.helpers import _ensure_time_chunks, circular_rolling_mean
+from .data_processing.helpers import _ensure_time_chunks
 
 
 class Sentinel2Dataloader(Dataloader):
@@ -28,6 +28,8 @@ class Sentinel2Dataloader(Dataloader):
                     len(self.data.location), size=self.n_samples, replace=False
                 )
                 self.data = self.data.isel(location=random_indices)
+            self.data = self.data[self.variable_name]
+            self.data = _ensure_time_chunks(self.data)
             return self.data
 
         # Determine the number of samples to process (default: 10,000)
@@ -337,6 +339,14 @@ class Sentinel2Dataloader(Dataloader):
     #     cleaned_data = xr.where(is_negative_outlier, np.nan, deseasonalized)
     #     return cleaned_data
 
+    def get_config(self):
+        # Define window sizes for gap-filling and cloud noise removal
+        config = dict()
+        config["nan_fill_windows"] = [5, 7]
+        config["noise_half_windows"] = [10, 3, 1]
+        config["cumulative_evi_window"] = 5
+        return config
+
     def preprocess_data(
         self,
         return_time_series=False,
@@ -358,29 +368,25 @@ class Sentinel2Dataloader(Dataloader):
         xr.DataArray
             Mean seasonal cycle (MSC), and optionally, the processed time series.
         """
+        msc = self.loader._load_data("msc")
+        if msc is not None and not return_time_series:
+            return msc.msc
 
         printt("Starting preprocessing...")
-
-        # Define window sizes for gap-filling and cloud noise removal
-        nan_fill_windows = [5, 7]
-        noise_half_windows = [10, 3]
-
+        dict_config = self.get_config()
         # Load data either from a minicube or from the default dataset
         if minicube_path:
             data = self.load_minicube(minicube_path=minicube_path)
         else:
             data = self.load_dataset()
-
         printt(f"Processing entire dataset: {data.sizes['location']} locations.")
-        self.saver._save_data(data, "evi")
-
+        # self.saver._save_data(data, "evi")
         # Step 1: Gap-filling & noise removal
         gapfilled_data = self.noise_removal.clean_and_gapfill_timeseries(
             data,
-            nan_fill_windows=nan_fill_windows,
-            noise_half_windows=noise_half_windows,
+            nan_fill_windows=dict_config["nan_fill_windows"],
+            noise_half_windows=dict_config["noise_half_windows"],
         )
-
         # Compute Mean Seasonal Cycle (MSC)
         msc = self.compute_msc(gapfilled_data)
         msc = msc.transpose("location", "dayofyear", ...)
@@ -389,9 +395,13 @@ class Sentinel2Dataloader(Dataloader):
         if not return_time_series:
             return msc
 
+        cumulative_evi = self.loader._load_data("cumulative_evi")
+        if cumulative_evi is not None:
+            return msc, cumulative_evi
+
         # Step 2: Cloud removal
         data = self.noise_removal.cloudfree_timeseries(
-            data, noise_half_windows=noise_half_windows
+            data, noise_half_windows=dict_config["noise_half_windows"]
         )
         self.saver._save_data(data, "clean_data")
 
@@ -400,7 +410,9 @@ class Sentinel2Dataloader(Dataloader):
         self.saver._save_data(data, "deseasonalized")
 
         # Step 5: Cumulative EVI computation
-        data = self.cumulative_evi(data, window_size=4)
+        data = self.cumulative_evi(
+            data, window_size=dict_config["cumulative_evi_window"]
+        )
         self.saver._save_data(data, "cumulative_evi")
 
         data = _ensure_time_chunks(data)
