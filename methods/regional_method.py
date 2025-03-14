@@ -437,7 +437,7 @@ class RegionalExtremes:
         # Process and filter groups
         data = deseasonalized.groupby(eco_cluster_labels).map(_process_group)
         filtered_data = data.where(data.valid_group, drop=True)
-        if filtered_data.size == 0:
+        if filtered_data.sizes == 0:
             raise ValueError("No valid groups found.")
 
         aligned_labels = eco_cluster_labels.sel(location=filtered_data.location)
@@ -633,7 +633,6 @@ def regional_extremes_method(args):
         )
         # Load and preprocess the dataset
         data = dataset_processor.preprocess_data()  # minicube_path=minicube_path)
-        print(data)
         # Fit the PCA on the data
         extremes_processor.compute_pca_and_transform(scaled_data=data)
 
@@ -643,7 +642,7 @@ def regional_extremes_method(args):
     # Define the boundaries of the eco_clusters
     if extremes_processor.limits_eco_clusters is None:
         dataset_processor = create_handler(
-            config=config, n_samples=10000
+            config=config, n_samples=None
         )  # all the dataset
         data = dataset_processor.preprocess_data()  # minicube_path=minicube_path)
         extremes_processor.apply_pca(scaled_data=data)

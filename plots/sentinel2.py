@@ -205,6 +205,7 @@ class PlotsSentinel2(Plots):
     def plot_msc(self, colored_by_eco_cluster=False):
         # Load and preprocess the time series dataset
         data = self.loader._load_data("msc")
+        data = data.chunk({"location": 50, "dayofyear": -1})
 
         # Randomly select n indices from the location dimension
         # random_indices = np.random.choice(len(data.location), size=10000, replace=False)
@@ -283,9 +284,14 @@ class PlotsSentinel2(Plots):
         plt.show()
 
     def plot_rgb(self):
-        path = glob.glob(
+        paths = glob.glob(
+            f"/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/{self.minicube_name}*"
+        ) or glob.glob(
             f"/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/_test/{self.minicube_name}*"
-        )[0]
+        )
+        print(paths)
+        path = paths[0]
+
         ds = xr.open_zarr(path)
         if "time" not in ds.dims:
             ds = ds.rename({"time_sentinel-2-l2a": "time"})
@@ -474,24 +480,26 @@ class PlotsSentinel2(Plots):
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-02-25_00:52:19_Final_20"
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-03-13_13:27:53_new_training2"
 
     subfolders = [
-        "FR-LGt_47.32_2.28_v0.zarr"
-        # "custom_cube_50.90_11.56.zarr",
-        # "custom_cube_44.17_5.24.zarr",
-        # "custom_cube_44.24_5.14.zarr",
-        # "custom_cube_47.31_0.18.zarr",
-        # "DE-Hai_51.08_10.45_v0.zarr",
-        # "ES-Cnd_37.91_-3.23_v0.zarr",
+        "ES-LM1_39.94_-5.78_v0.zarr",
+        "ES-LM2_39.93_-5.78_v0.zarr",
+        "ES-LMa_39.94_-5.77_v0.zarr",
+        "DE-Hai_51.08_10.45_v0.zarr",
+        "ES-Cnd_37.91_-3.23_v0.zarr",
+        "FR-LGt_47.32_2.28_v0.zarr",
+        # "DE-Lnf_51.33_10.37_v0.zarr",
         # "DE-Geb_51.10_10.91_v0.zarr",
         # "DE-Wet_50.45_11.46_v0.zarr",
         # "DE-Bay_50.14_11.87_v0.zarr",
         # "DE-Meh_51.28_10.66_v0.zarr",
-        # "DE-Lnf_51.33_10.37_v0.zarr",
-        # ]
-        # subfolders = [
+        # "custom_cube_50.90_11.56.zarr",
+        # "custom_cube_44.17_5.24.zarr",
+        # "custom_cube_44.24_5.14.zarr",
+        # "custom_cube_47.31_0.18.zarr",
     ]
+    # subfolders = [
     # #  subfolders = [
     #      ""
     #      # "IT-Tor_45.84_7.58_v0.zarr"

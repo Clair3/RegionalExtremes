@@ -116,18 +116,21 @@ class Saver:
             data = cfxr.encode_multi_index_as_compress(data, "eco_cluster")
         if name is "thresholds" and self.config.method == "regional":  # in data.dims:
             # data = data.chunk({"location": 1000, "quantile": -1})
-            chunk_size = 1000
-            encoding = {
-                "thresholds": {"chunks": (chunk_size, -1)},
-                "component_1": {"chunks": (chunk_size,)},
-                "component_2": {"chunks": (chunk_size,)},
-                "component_3": {"chunks": (chunk_size,)},
-            }
-            if "location" in data.dims:
-                data = data.chunk({"location": chunk_size, "quantile": -1})
+            try:
+                data.to_zarr(path, mode="w")
+            except:
+                chunk_size = 1000
+                encoding = {
+                    "thresholds": {"chunks": (chunk_size, -1)},
+                    "component_1": {"chunks": (chunk_size,)},
+                    "component_2": {"chunks": (chunk_size,)},
+                    "component_3": {"chunks": (chunk_size,)},
+                }
+                if "location" in data.dims:
+                    data = data.chunk({"location": chunk_size, "quantile": -1})
 
-            data.to_zarr(path, mode="w", encoding=encoding)
-            return
+                data.to_zarr(path, mode="w", encoding=encoding)
+                return
         # if name == "deseazonalized" or name == "clean_data":
         if "time" in data.dims and "location" in data.dims:
             data = data.chunk({"time": 50, "location": -1})
@@ -135,7 +138,7 @@ class Saver:
             #     data
             # )  # data.chunk({"time": 100, "location": 50})
         if "dayofyear" in data.dims:
-            data = data.chunk({"dayofyear": 50, "location": -1})
+            data = data.chunk({"location": 50, "dayofyear": -1})
         # else:
         #    data = data.chunk("auto")
         data.to_zarr(path, mode="w")

@@ -79,6 +79,7 @@ class NoiseRemovalBase(ABC):
         return data
 
     def cloudfree_timeseries(self, data, noise_half_windows=[1, 3]):
+        data = data.where((data >= 0) & (data <= 1), np.nan)
         for half_window in noise_half_windows:
             data = self.remove_cloud_noise(data, half_window=half_window, gapfill=False)
         return data

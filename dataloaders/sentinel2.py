@@ -171,6 +171,7 @@ class Sentinel2Dataloader(Dataloader):
             raise ValueError("EPSG code not found in dataset attributes.")
 
         transformer = Transformer.from_crs(epsg, 4326, always_xy=True)
+
         lon, lat = transformer.transform(ds.x.values, ds.y.values)
 
         if "time" not in ds.dims:
@@ -206,6 +207,9 @@ class Sentinel2Dataloader(Dataloader):
 
     def _calculate_evi(self, ds):
         """Calculates the Enhanced Vegetation Index (EVI)."""
+        # return (2.5 * (ds.B08 - ds.B04)) / (
+        #    ds.B08 + 6 * ds.B04 - 7.5 * ds.B02 + 1 + 10e-8
+        # )
         return (2.5 * (ds.B8A - ds.B04)) / (
             ds.B8A + 6 * ds.B04 - 7.5 * ds.B02 + 1 + 10e-8
         )
@@ -235,7 +239,7 @@ class Sentinel2Dataloader(Dataloader):
     def _has_excessive_nan(self, data):
         """Checks if the masked data contains excessive NaN values."""
         nan_percentage = data.isnull().mean().values * 100
-        return nan_percentage > 80
+        return nan_percentage > 90
 
     def filter_dataset_specific(self):
         """
@@ -368,9 +372,9 @@ class Sentinel2Dataloader(Dataloader):
         xr.DataArray
             Mean seasonal cycle (MSC), and optionally, the processed time series.
         """
-        msc = self.loader._load_data("msc")
-        if msc is not None and not return_time_series:
-            return msc.msc
+        # msc = self.loader._load_data("msc")
+        # if msc is not None and not return_time_series:
+        #    return msc.msc
 
         printt("Starting preprocessing...")
         dict_config = self.get_config()
