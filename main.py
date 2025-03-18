@@ -115,7 +115,7 @@ def parser_arguments():
 
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
-    args.name = "new_training3"
+    args.name = "dayofyear_quantiles"
     args.index = "EVI_EN"
     args.k_pca = False
     args.n_samples = 10  # 40000
@@ -145,16 +145,16 @@ if __name__ == "__main__":
         # parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/_test/"
         subfolders = [
             "DE-Hai_51.08_10.45_v0.zarr.zip",
-            "ES-LM1_39.94_-5.78_v0.zarr.zip",
-            "ES-LM2_39.93_-5.78_v0.zarr.zip",
-            # "ES-LMa_39.94_-5.77_v0.zarr.zip",
-            "ES-Cnd_37.91_-3.23_v0.zarr.zip",
-            "FR-LGt_47.32_2.28_v0.zarr.zip",
-            "DE-Lnf_51.33_10.37_v0.zarr.zip",
-            "DE-Geb_51.10_10.91_v0.zarr.zip",
-            "DE-Wet_50.45_11.46_v0.zarr.zip",
-            "DE-Bay_50.14_11.87_v0.zarr.zip",
-            "DE-Meh_51.28_10.66_v0.zarr.zip",
+            #     "ES-LM1_39.94_-5.78_v0.zarr.zip",
+            #     "ES-LM2_39.93_-5.78_v0.zarr.zip",
+            #     # "ES-LMa_39.94_-5.77_v0.zarr.zip",
+            #     "ES-Cnd_37.91_-3.23_v0.zarr.zip",
+            #     "FR-LGt_47.32_2.28_v0.zarr.zip",
+            #     "DE-Lnf_51.33_10.37_v0.zarr.zip",
+            #     "DE-Geb_51.10_10.91_v0.zarr.zip",
+            #     "DE-Wet_50.45_11.46_v0.zarr.zip",
+            #     "DE-Bay_50.14_11.87_v0.zarr.zip",
+            #     "DE-Meh_51.28_10.66_v0.zarr.zip",
         ]
 
         # subfolders = [
@@ -163,12 +163,15 @@ if __name__ == "__main__":
         #     "custom_cube_47.31_0.18.zarr.zip",
         #     "custom_cube_50.90_11.56.zarr.zip",
         # ]
-
-        for folder in subfolders:
-            regional_extremes_minicube(
-                args,
-                minicube_path=parent_folder + folder,
-            )
+        regional_extremes_minicube(
+            args,
+            minicube_path="/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/32UNB_Hainich.zarr",
+        )
+        # for folder in subfolders:
+        #     regional_extremes_minicube(
+        #         args,
+        #         minicube_path=parent_folder + folder,
+        #     )
         # regional_extremes_minicube(
         #     args,
         #     minicube_path="/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/DE-RuS_50.87_6.45_v0.zarr.zip",  # ES-Cnd_37.91_-3.23_v0.zarr.zip",
@@ -187,15 +190,15 @@ if __name__ == "__main__":
         subfolders = [
             # "DE-Hai_51.08_10.45_v0.zarr.zip",
             "FR-LGt_47.32_2.28_v0.zarr.zip",
-            "ES-Cnd_37.91_-3.23_v0.zarr.zip",
-            "ES-LM1_39.94_-5.78_v0.zarr.zip",
-            "ES-LM2_39.93_-5.78_v0.zarr.zip",
-            "ES-LMa_39.94_-5.77_v0.zarr.zip",
-            "DE-Geb_51.10_10.91_v0.zarr.zip",
-            "DE-Wet_50.45_11.46_v0.zarr.zip",
-            "DE-Bay_50.14_11.87_v0.zarr.zip",
-            "DE-Meh_51.28_10.66_v0.zarr.zip",
-            "DE-Lnf_51.33_10.37_v0.zarr.zip",
+            # "ES-Cnd_37.91_-3.23_v0.zarr.zip",
+            # "ES-LM1_39.94_-5.78_v0.zarr.zip",
+            # "ES-LM2_39.93_-5.78_v0.zarr.zip",
+            # "ES-LMa_39.94_-5.77_v0.zarr.zip",
+            # "DE-Geb_51.10_10.91_v0.zarr.zip",
+            # "DE-Wet_50.45_11.46_v0.zarr.zip",
+            # "DE-Bay_50.14_11.87_v0.zarr.zip",
+            # "DE-Meh_51.28_10.66_v0.zarr.zip",
+            # "DE-Lnf_51.33_10.37_v0.zarr.zip",
         ]
         # parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/_test/"
         # subfolders = [

@@ -5,7 +5,7 @@ import dask.array as da
 import numpy as np
 from typing import Union, Optional
 from abc import ABC, abstractmethod
-from .helpers import _compute_shifted_sums, _ensure_xarray
+from .helpers import _compute_shifted_sums, _ensure_xarray, _compute_shifted_max
 
 
 class NoiseRemovalBase(ABC):
@@ -13,21 +13,36 @@ class NoiseRemovalBase(ABC):
 
     def remove_cloud_noise(self, data, half_window=2, gapfill=True):
         """Detect and remove cloud noise using shifted mean values."""
+        before_max = _compute_shifted_max(data, half_window, direction=1)
+        after_max = _compute_shifted_max(data, half_window, direction=-1)
 
-        before_sum, before_count = _compute_shifted_sums(data, half_window, direction=1)
-        after_sum, after_count = _compute_shifted_sums(data, half_window, direction=-1)
+        # mean_before = xr.where(
+        #     before_max > 0, before_sum / (before_count + 1e-10), np.nan
+        # )
+        # mean_after = xr.where(
+        #     after_count > 0, after_sum / (after_count + 1e-10), np.nan
+        # )
 
-        mean_before = xr.where(
-            before_count > 0, before_sum / (before_count + 1e-10), np.nan
-        )
-        mean_after = xr.where(
-            after_count > 0, after_sum / (after_count + 1e-10), np.nan
-        )
+        is_cloud = (data + 0.01 < before_max) & (data + 0.01 < after_max)
 
-        is_cloud = (data < mean_before) & (data < mean_after)
-        replacement_values = (mean_before + mean_after) / 2
+        if gapfill:
+            before_sum, before_count = _compute_shifted_sums(
+                data, half_window, direction=1
+            )
+            after_sum, after_count = _compute_shifted_sums(
+                data, half_window, direction=-1
+            )
 
-        return xr.where(is_cloud, replacement_values if gapfill else np.nan, data)
+            mean_before = xr.where(
+                before_count > 0, before_sum / (before_count + 1e-10), np.nan
+            )
+            mean_after = xr.where(
+                after_count > 0, after_sum / (after_count + 1e-10), np.nan
+            )
+            replacement_values = (mean_before + mean_after) / 2
+            return xr.where(is_cloud, replacement_values, data)
+
+        return xr.where(is_cloud, np.nan, data)
 
     def fill_nans(self, series: xr.DataArray, window: int) -> xr.DataArray:
         """Fill NaN values using rolling mean."""

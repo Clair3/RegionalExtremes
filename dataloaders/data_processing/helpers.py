@@ -19,6 +19,27 @@ def _compute_shifted_sums(data, window_size, direction=1):
     return sum_vals, count_vals
 
 
+def _compute_shifted_max(data, window_size, direction=1):
+    """Helper function to compute shifted maximum values."""
+    data = _ensure_xarray(data)
+    max_vals = xr.full_like(data, fill_value=np.nan)  # Initialize with NaNs
+
+    for i in range(1, window_size + 1):
+        shifted = data.shift(time=i * direction)
+
+        # Compute element-wise max between max_vals and shifted
+        max_vals = xr.where(
+            np.isnan(max_vals),
+            shifted,
+            xr.where(np.isnan(shifted), max_vals, np.maximum(max_vals, shifted)),
+        )
+
+        # max_vals = np.fmax(max_vals, shifted)
+        # max_vals = xr.maximum(max_vals, shifted)  # Compute element-wise max
+
+    return max_vals
+
+
 def circular_rolling_mean(arr, window_size=4, min_periods=1):
     """Apply a rolling mean to a numpy array with cyclic handling.
     Args:

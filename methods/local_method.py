@@ -1,7 +1,6 @@
 import xarray as xr
 
 import numpy as np
-from sklearn.decomposition import PCA, KernelPCA
 import sys
 from pathlib import Path
 
@@ -86,12 +85,11 @@ class LocalExtremes:
         quantile_levels_combined = np.concatenate(
             (self.lower_quantiles, self.upper_quantiles)
         )
-        print(deseasonalized.chunk)
-        deseasonalized = deseasonalized  # .chunk("auto").chunk(dict(time=-1))
 
         quantiles_xr = deseasonalized.quantile(
             quantile_levels_combined, dim="time"
         ).assign_coords(quantile=quantile_levels_combined)
+        print(quantiles_xr)
 
         # Return thresholds only if requested
         if return_only_thresholds:

@@ -164,6 +164,20 @@ class Sentinel2Dataloader(Dataloader):
 
     def _transform_utm_to_latlon(self, ds):
         """Transforms UTM coordinates to latitude and longitude."""
+        if "time" not in ds.dims:
+            ds = ds.rename({"time_sentinel-2-l2a": "time"})
+        if "longitude" not in ds.dims:
+            ds = ds.rename({"x": "longitude", "y": "latitude"})
+
+        if "x_20" in ds.dims:
+            for band in bands_20m:
+                bands_20m = ["B05", "B06", "B07", "B8A", "SCL"]
+                ds[band] = ds[band].interp(
+                    x=xr.DataArray(ds.x, dims="x"),
+                    y=xr.DataArray(ds.y, dims="y"),
+                    method="linear",
+                )
+        return ds
         epsg = (
             ds.attrs.get("spatial_ref") or ds.attrs.get("EPSG") or ds.attrs.get("CRS")
         )
@@ -228,7 +242,7 @@ class Sentinel2Dataloader(Dataloader):
             valid_ratio = valid_scl.sum(
                 dim=["latitude", "longitude"]
             ) / valid_scl.count(dim=["latitude", "longitude"])
-            invalid_time_steps = valid_ratio < 0.50
+            invalid_time_steps = valid_ratio < 0.25
             mask = mask.where(~invalid_time_steps, np.nan)
 
         if "cloudmask_en" in ds.data_vars:
@@ -384,7 +398,8 @@ class Sentinel2Dataloader(Dataloader):
         else:
             data = self.load_dataset()
         printt(f"Processing entire dataset: {data.sizes['location']} locations.")
-        # self.saver._save_data(data, "evi")
+        self.saver._save_data(data, "evi")
+
         # Step 1: Gap-filling & noise removal
         gapfilled_data = self.noise_removal.clean_and_gapfill_timeseries(
             data,

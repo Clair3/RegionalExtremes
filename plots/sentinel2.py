@@ -6,6 +6,11 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import glob
 import rioxarray as rio
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+
 
 plt.rcParams.update({"font.size": 20})
 
@@ -475,6 +480,129 @@ class PlotsSentinel2(Plots):
         saving_path = self.saving_path / "thresholds.png"
         plt.savefig(saving_path)
         plt.show()
+
+    def plot_time_series(self):
+
+        plt.rcParams.update({"font.size": 18})
+        random_locations = np.random.choice(evi.location, size=16, replace=False)
+        # Define constants
+        TIME_PERIOD = slice("2016-01-01", "2025-01-01")
+        PLOT_SIZE = (40, 16)
+
+        # Ensure plot directory exists
+        plot_path = os.path.join(base_path, "plots")
+        os.makedirs(plot_path, exist_ok=True)
+
+        # Get all unique quantile values present in extremes, ignoring NaN values
+        unique_quantiles = np.sort(
+            np.unique(extremes.values[~np.isnan(extremes.values)])
+        )
+        # Split quantiles into two groups
+        low_quantiles = [q for q in unique_quantiles if q < 0.5]  # [:-2]
+        high_quantiles = [q for q in unique_quantiles if q >= 0.5]  # [2:]
+
+        # Define color maps
+        reds = cm.get_cmap(
+            "Reds_r", len(low_quantiles)
+        )  # More intense for smaller quantiles
+        blues = cm.get_cmap(
+            "Blues_r", len(high_quantiles)
+        )  # More intense for higher quantiles
+
+        # Loop over locations
+        for loc in random_locations[:3]:
+            loc_tuple = (loc[0], loc[1])
+
+            # Extract data for the given location and time period
+            clean_data_loc = clean_data.sel(location=loc_tuple, time=TIME_PERIOD)
+            deseasonalized_loc = deseasonalized.sel(
+                location=loc_tuple, time=TIME_PERIOD
+            )
+            cumulative_evi_loc = cumulative_evi.sel(
+                location=loc_tuple, time=TIME_PERIOD
+            )
+            evi_loc = evi.sel(location=loc_tuple, time=TIME_PERIOD)
+            thresholds_loc = thresholds.sel(location=loc_tuple)
+
+            # Compute masks to remove NaNs
+            mask_clean = ~np.isnan(clean_data_loc).compute()
+            mask_deseasonalized = ~np.isnan(deseasonalized_loc).compute()
+            mask_cumulative = ~np.isnan(cumulative_evi_loc).compute()
+
+            # Extract valid data points
+            valid_time = clean_data_loc.time[mask_clean]
+            valid_values = clean_data_loc.values[mask_clean]
+
+            valid_time2 = deseasonalized_loc.time[mask_deseasonalized]
+            valid_values2 = deseasonalized_loc.values[mask_deseasonalized]
+
+            cumulative_time = cumulative_evi_loc.time[mask_cumulative]
+            cumulative_values = cumulative_evi_loc.values[mask_cumulative]
+
+            # Plot setup
+            plt.figure(figsize=PLOT_SIZE)
+
+            # Plot clean data
+            plt.plot(valid_time, valid_values, color="blue", label="Clean Data")
+            plt.plot(
+                valid_time2, valid_values2, "--", color="blue", label="Deseasonalized"
+            )
+            plt.plot(cumulative_time, cumulative_values, color="red", label="EVI Trend")
+
+            # Scatter plots
+            plt.scatter(deseasonalized_loc.time, deseasonalized_loc, color="blue")
+            plt.scatter(
+                cumulative_time, cumulative_values, color="red", label="EVI Trend"
+            )
+            plt.scatter(evi_loc.time, evi_loc, color="black", label="EVI Raw Data")
+
+            # Plot quantile thresholds
+            time_values = evi_loc.time
+            for i, q in enumerate(low_quantiles):
+                plt.plot(
+                    time_values,
+                    [thresholds_loc.sel(quantile=q)] * len(time_values),
+                    color=reds(i / len(low_quantiles)),
+                    alpha=0.7,
+                    label=f"quantile bellow 50%" if i == 0 else "",
+                )
+
+            for i, q in enumerate(reversed(high_quantiles)):
+                plt.plot(
+                    time_values,
+                    [thresholds_loc.sel(quantile=q)] * len(time_values),
+                    color=blues(i / len(high_quantiles)),
+                    alpha=0.7,
+                    label=f"quantile above 50%" if i == 0 else "",
+                )
+
+            # Overlay seasonal cycle per year
+            for year in range(2016, 2025):
+                msc_dates = [
+                    pd.Timestamp(f"{year}-01-01") + pd.Timedelta(days=int(doy) - 1)
+                    for doy in msc.dayofyear.values
+                ]
+                plt.plot(
+                    msc_dates,
+                    msc.sel(location=loc_tuple),
+                    color="black",
+                    alpha=0.5,
+                    label="Mean Seasonal Cycle" if year == 2016 else "",
+                )
+
+            # Final plot adjustments
+            plt.minorticks_on()  # Enable minor ticks
+            plt.grid(True, which="both", linestyle="--", linewidth=0.5)
+            plt.legend()
+            plt.title(f"Data Visualization for Location {loc_tuple}")
+            plt.xlabel("Time")
+            plt.ylabel("Value")
+
+            # Save and show plot
+            plt.savefig(
+                os.path.join(plot_path, f"location_{loc_tuple[0]}_{loc_tuple[1]}.png")
+            )
+            plt.show()
 
 
 if __name__ == "__main__":
