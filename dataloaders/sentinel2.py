@@ -4,7 +4,8 @@ from dask import delayed, compute
 from dask.diagnostics import ProgressBar
 from pyproj import Transformer
 import cf_xarray as cfxr
-from .data_processing.helpers import _ensure_time_chunks
+from .data_processing.helpers import _ensure_time_chunks, circular_rolling_mean
+from datetime import datetime, timedelta
 
 
 class Sentinel2Dataloader(Dataloader):
@@ -178,21 +179,6 @@ class Sentinel2Dataloader(Dataloader):
                     method="linear",
                 )
         return ds
-        epsg = (
-            ds.attrs.get("spatial_ref") or ds.attrs.get("EPSG") or ds.attrs.get("CRS")
-        )
-        if epsg is None:
-            raise ValueError("EPSG code not found in dataset attributes.")
-
-        transformer = Transformer.from_crs(epsg, 4326, always_xy=True)
-
-        lon, lat = transformer.transform(ds.x.values, ds.y.values)
-
-        if "time" not in ds.dims:
-            ds = ds.rename({"time_sentinel-2-l2a": "time"})
-        return ds.assign_coords({"x": ("x", lon), "y": ("y", lat)}).rename(
-            {"x": "longitude", "y": "latitude"}
-        )
 
     def _get_random_vegetation_pixel_series(self, ds):
         """Selects a random time serie vegetation pixel location in the minicube based on SCL classification."""
@@ -235,14 +221,14 @@ class Sentinel2Dataloader(Dataloader):
         # Apply vegetation mask if SCL exists
         if "SCL" in ds.data_vars:
             # keep only pixel valid accordingly to the SCL
-            valid_scl = ds.SCL.isin([4, 5, 6])
+            valid_scl = ds.SCL.isin([4, 5, 6, 7])
             mask = mask.where(valid_scl, np.nan)
 
             # keep only time steps with more than 50% of valid pixels
             valid_ratio = valid_scl.sum(
                 dim=["latitude", "longitude"]
             ) / valid_scl.count(dim=["latitude", "longitude"])
-            invalid_time_steps = valid_ratio < 0.25
+            invalid_time_steps = valid_ratio < 0.5
             mask = mask.where(~invalid_time_steps, np.nan)
 
         if "cloudmask_en" in ds.data_vars:
@@ -275,27 +261,72 @@ class Sentinel2Dataloader(Dataloader):
         deseasonalized = deseasonalized.reset_coords("dayofyear", drop=True)
         return deseasonalized
 
+    # def compute_msc(
+    #    self,
+    #    clean_data: xr.DataArray,
+    #    bin_size: int = 5,
+    #    smoothing_window: int = 12,
+    #    poly_order: int = 2,
+    # ):
+    #    # Step 5: Add day of year for deseasonalizing data
+    #    clean_data = clean_data.assign_coords(dayofyear=clean_data["time"].dt.dayofyear)
+    #    bins = np.arange(1, 367, bin_size)
+    #    mean_seasonal_cycle = (
+    #        clean_data.groupby_bins("time.dayofyear", bins=bins, right=False)
+    #        .mean("time", skipna=True)
+    #        .rename({"dayofyear_bins": "dayofyear"})
+    #    )
+    #
+    #    # Set dayofyear to bin midpoints
+    #    mean_seasonal_cycle["dayofyear"] = [
+    #        interval.mid for interval in mean_seasonal_cycle.dayofyear.values
+    #    ]
+    #
+    #    padded_values = np.pad(
+    #        mean_seasonal_cycle.values,
+    #        (
+    #            (smoothing_window, smoothing_window),
+    #            (0, 0),
+    #        ),  # Pad along the dayofyear axis
+    #        mode="wrap",  # Wrap-around to maintain continuity
+    #    )
+    #    padded_values = np.nan_to_num(padded_values, nan=0)
+    #    #
+    #    # rolled_values = circular_rolling_mean(
+    #    #     padded_values, window_size=4, min_periods=1
+    #    # )
+    #
+    #    # Fill any remaining NaNs with 0
+    #    # mean_seasonal_cycle = mean_seasonal_cycle.fillna(0)
+    #    # Step 6: Apply Savitzky-Golay smoothing
+    #    smoothed_values = savgol_filter(
+    #        padded_values, smoothing_window, poly_order, axis=0
+    #    )
+    #    mean_seasonal_cycle = mean_seasonal_cycle.copy(
+    #        data=smoothed_values[smoothing_window:-smoothing_window]
+    #    )
+    #    # Ensure all values are non-negative
+    #    mean_seasonal_cycle = mean_seasonal_cycle.where(mean_seasonal_cycle > 0, 0)
+    #    return mean_seasonal_cycle
+
     def compute_msc(
         self,
         clean_data: xr.DataArray,
-        bin_size: int = 5,
-        smoothing_window: int = 12,
+        smoothing_window: int = 5,
         poly_order: int = 2,
     ):
-        # Step 5: Add day of year for deseasonalizing data
-        clean_data = clean_data.assign_coords(dayofyear=clean_data["time"].dt.dayofyear)
-        bins = np.arange(1, 367, bin_size)
-        mean_seasonal_cycle = (
-            clean_data.groupby_bins("time.dayofyear", bins=bins, right=False)
-            .mean("time", skipna=True)
-            .rename({"dayofyear_bins": "dayofyear"})
+
+        # Step 1: Compute mean seasonal cycle
+        grouped = clean_data.groupby("time.dayofyear")
+        count_per_group = grouped.count(dim="time")
+
+        # Apply mean only where count is at least 3
+        mean_seasonal_cycle = grouped.mean("time", skipna=True).where(
+            count_per_group >= 3
         )
 
-        # Set dayofyear to bin midpoints
-        mean_seasonal_cycle["dayofyear"] = [
-            interval.mid for interval in mean_seasonal_cycle.dayofyear.values
-        ]
-
+        # Step 2: Apply circular padding along the dayofyear axis before rolling
+        # # edge case growing season during the change of year
         padded_values = np.pad(
             mean_seasonal_cycle.values,
             (
@@ -304,22 +335,19 @@ class Sentinel2Dataloader(Dataloader):
             ),  # Pad along the dayofyear axis
             mode="wrap",  # Wrap-around to maintain continuity
         )
-        padded_values = np.nan_to_num(padded_values, nan=0)
-        #
-        # rolled_values = circular_rolling_mean(
-        #     padded_values, window_size=4, min_periods=1
-        # )
 
-        # Fill any remaining NaNs with 0
-        # mean_seasonal_cycle = mean_seasonal_cycle.fillna(0)
-        # Step 6: Apply Savitzky-Golay smoothing
+        padded_values = circular_rolling_mean(
+            padded_values, window_size=5, min_periods=1
+        )  # np.nan_to_num(padded_values, nan=0)
+
+        # Step 5: Apply Savitzky-Golay smoothing
         smoothed_values = savgol_filter(
             padded_values, smoothing_window, poly_order, axis=0
         )
         mean_seasonal_cycle = mean_seasonal_cycle.copy(
             data=smoothed_values[smoothing_window:-smoothing_window]
         )
-        # Ensure all values are non-negative
+        # Step 6: Ensure all values are non-negative
         mean_seasonal_cycle = mean_seasonal_cycle.where(mean_seasonal_cycle > 0, 0)
         return mean_seasonal_cycle
 
@@ -357,12 +385,74 @@ class Sentinel2Dataloader(Dataloader):
     #     cleaned_data = xr.where(is_negative_outlier, np.nan, deseasonalized)
     #     return cleaned_data
 
+    def compute_max_per_period(self, data, period_size=10):
+        # Function to generate valid dates (time bins) for all years at once
+        def get_time_periods(bin_size, years):
+            periods = []
+            for year in years:
+                bins = np.arange(1, 367, bin_size)
+                base_date = datetime(year, 1, 1).date()
+                dates = [base_date + timedelta(days=int(d - 1)) for d in bins]
+                periods.extend(dates)
+            return periods
+
+        # Define a function to map the timestamp to the corresponding period using searchsorted
+        def get_period_from_timestamp(timestamp, periods):
+            period_dates = pd.to_datetime(periods)  # Convert periods to datetime
+            # Efficient way to find the period index using searchsorted
+            period_index = np.searchsorted(period_dates, timestamp, side="right") - 1
+            return period_index
+
+        # For transforming period back to time (middle of the bin period)
+        def period_to_time(period_index, periods):
+            start_date = pd.to_datetime(periods[period_index])
+            end_date = pd.to_datetime(
+                periods[period_index + 1]
+                if period_index + 1 < len(periods)
+                else periods[period_index]
+            )
+            midpoint = start_date + (end_date - start_date) / 2
+            return midpoint
+
+        # Remove unrealistic values
+        data = data.where((data >= 0) & (data <= 1), np.nan)
+
+        # Prepare the periods list (one time-period list for all years in the dataset)
+        years = pd.to_datetime(data.time).year.unique()
+        periods = get_time_periods(period_size, years)
+        # Map each timestamp to a period
+        periods_assigned = [
+            get_period_from_timestamp(t, periods) for t in pd.to_datetime(data.time)
+        ]
+
+        # Add period as a new dimension to the DataArray
+        data.coords["period"] = ("time", periods_assigned)
+
+        # Group by the 'period' and compute max per period
+        data_grouped = data.groupby("period")
+
+        # Compute max for each period
+        max_per_period = data_grouped.max(dim="time")
+
+        # Apply the transformation to convert periods back to midpoints in time
+        midpoint_times = [
+            period_to_time(p, periods) for p in max_per_period.coords["period"].values
+        ]
+
+        # Update max_per_period with the transformed 'time' coordinates (midpoints)
+        max_per_period.coords["time"] = ("period", midpoint_times)
+        max_per_period = max_per_period.swap_dims({"period": "time"}).drop_vars(
+            "period"
+        )
+        return max_per_period
+
     def get_config(self):
         # Define window sizes for gap-filling and cloud noise removal
         config = dict()
-        config["nan_fill_windows"] = [5, 7]
-        config["noise_half_windows"] = [10, 3, 1]
+        config["nan_fill_windows"] = [3, 5]
+        config["noise_half_windows"] = [1, 2]
         config["cumulative_evi_window"] = 5
+        config["period_size"] = 15
         return config
 
     def preprocess_data(
@@ -388,7 +478,7 @@ class Sentinel2Dataloader(Dataloader):
         """
         # msc = self.loader._load_data("msc")
         # if msc is not None and not return_time_series:
-        #    return msc.msc
+        #     return msc.msc
 
         printt("Starting preprocessing...")
         dict_config = self.get_config()
@@ -398,25 +488,23 @@ class Sentinel2Dataloader(Dataloader):
         else:
             data = self.load_dataset()
         printt(f"Processing entire dataset: {data.sizes['location']} locations.")
+
+        data = self.compute_max_per_period(data, dict_config["period_size"])
         self.saver._save_data(data, "evi")
 
         # Step 1: Gap-filling & noise removal
-        gapfilled_data = self.noise_removal.clean_and_gapfill_timeseries(
+        clean_data = self.noise_removal.cloudfree_timeseries(
             data,
-            nan_fill_windows=dict_config["nan_fill_windows"],
+            #    nan_fill_windows=dict_config["nan_fill_windows"],
             noise_half_windows=dict_config["noise_half_windows"],
         )
         # Compute Mean Seasonal Cycle (MSC)
-        msc = self.compute_msc(gapfilled_data)
+        msc = self.compute_msc(clean_data)
         msc = msc.transpose("location", "dayofyear", ...)
         self.saver._save_data(msc, "msc")
 
         if not return_time_series:
             return msc
-
-        cumulative_evi = self.loader._load_data("cumulative_evi")
-        if cumulative_evi is not None:
-            return msc, cumulative_evi
 
         # Step 2: Cloud removal
         data = self.noise_removal.cloudfree_timeseries(
@@ -429,10 +517,10 @@ class Sentinel2Dataloader(Dataloader):
         self.saver._save_data(data, "deseasonalized")
 
         # Step 5: Cumulative EVI computation
-        data = self.cumulative_evi(
-            data, window_size=dict_config["cumulative_evi_window"]
-        )
-        self.saver._save_data(data, "cumulative_evi")
+        # data = self.cumulative_evi(
+        #     data, window_size=dict_config["cumulative_evi_window"]
+        # )
+        # self.saver._save_data(data, "cumulative_evi")
 
         data = _ensure_time_chunks(data)
         data = data.transpose("location", "time", ...).compute()

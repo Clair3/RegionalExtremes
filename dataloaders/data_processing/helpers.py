@@ -40,11 +40,11 @@ def _compute_shifted_max(data, window_size, direction=1):
     return max_vals
 
 
-def circular_rolling_mean(arr, window_size=4, min_periods=1):
+def circular_rolling_mean(arr, window_size=5, min_periods=1):
     """Apply a rolling mean to a numpy array with cyclic handling.
     Args:
         arr (numpy.ndarray): Input array for which the rolling mean is calculated.
-        window_size (int): Number of elements in the rolling window. Default is 4.
+        window_size (int): Number of elements in the rolling window. Default is 5.
         min_periods (int): Minimum valid (non-NaN) values required to compute the mean. Default is 1.
     Returns:
         numpy.ndarray: Array with rolling mean applied, handling NaN values gracefully.

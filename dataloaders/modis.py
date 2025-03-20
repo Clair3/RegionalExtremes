@@ -70,10 +70,6 @@ class ModisDataloader(Sentinel2Dataloader):
             mode="wrap",  # Wrap-around to maintain continuity
         )
         padded_values = np.nan_to_num(padded_values, nan=0)
-        #
-        # rolled_values = circular_rolling_mean(
-        #    padded_values, window_size=4, min_periods=1
-        # )
 
         # Step 5: Apply Savitzky-Golay smoothing
         smoothed_values = savgol_filter(
