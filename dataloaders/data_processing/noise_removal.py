@@ -29,12 +29,20 @@ class NoiseRemovalBase(ABC):
         # mean_after = xr.where(
         #     after_count > 0, after_sum / (after_count + 1e-10), np.nan
         # )
+<<<<<<< HEAD
         #
         # is_cloud = (
         #     (data < mean_before)
         #     & (data < mean_after)
         #     & ((mean_before - data > 0.05) & (mean_after - data > 0.05))
         # )
+=======
+        is_cloud = (
+            (data < before_max)
+            & (data < after_max)
+            & ((before_max - data > 0.05) | (after_max - data > 0.05))
+        )
+>>>>>>> 59a47c8... end cloud removal
 
         if gapfill:
             replacement_values = (before_max + after_max) / 2
