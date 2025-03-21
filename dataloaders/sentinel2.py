@@ -439,6 +439,7 @@ class Sentinel2Dataloader(Dataloader):
         max_per_period = max_per_period.swap_dims({"period": "time"}).drop_vars(
             "period"
         )
+        max_per_period = max_per_period.set_index(location=["longitude", "latitude"])
         # max_per_period = max_per_period.to_dataset()
         # max_per_period = max_per_period.set_coords(["longitude", "latitude"])
         # max_per_period = max_per_period.to_array()

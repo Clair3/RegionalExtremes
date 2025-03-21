@@ -435,10 +435,7 @@ class RegionalExtremes:
         unique_clusters, eco_cluster_labels = _create_cluster_labels(self.eco_clusters)
 
         # Process and filter groups
-        print(deseasonalized.dims, deseasonalized.coords)
-        print(eco_cluster_labels.dims, eco_cluster_labels.coords)
-        data = deseasonalized.groupby(eco_cluster_labels, dim="time")
-        data = data.map(_process_group)
+        data = deseasonalized.groupby(eco_cluster_labels).map(_process_group)
         filtered_data = data.where(data.valid_group, drop=True)
         if filtered_data.sizes == 0:
             raise ValueError("No valid groups found.")
