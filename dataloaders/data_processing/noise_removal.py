@@ -22,8 +22,11 @@ class NoiseRemovalBase(ABC):
         # mean_after = xr.where(
         #     after_count > 0, after_sum / (after_count + 1e-10), np.nan
         # )
-
-        is_cloud = (data + 0.01 < before_max) & (data + 0.01 < after_max)
+        is_cloud = (
+            (data < before_max)
+            & (data < after_max)
+            & ((before_max - data > 0.05) | (after_max - data > 0.05))
+        )
 
         if gapfill:
             before_sum, before_count = _compute_shifted_sums(

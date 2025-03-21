@@ -5,7 +5,7 @@ from dask.diagnostics import ProgressBar
 from pyproj import Transformer
 import cf_xarray as cfxr
 from .data_processing.helpers import _ensure_time_chunks, circular_rolling_mean
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 
 
 class Sentinel2Dataloader(Dataloader):
@@ -123,6 +123,7 @@ class Sentinel2Dataloader(Dataloader):
         with xr.open_zarr(filepath) as ds:
             # Transform UTM to lat/lon
             ds = self._transform_utm_to_latlon(ds)
+            ds = ds.sel(time=slice(date(2017, 3, 1), None))
             # Add landcover
             if "esa_worldcover_2021" not in ds.data_vars:
                 ds = self.loader._load_and_add_landcover(filepath, ds)
@@ -228,7 +229,7 @@ class Sentinel2Dataloader(Dataloader):
             valid_ratio = valid_scl.sum(
                 dim=["latitude", "longitude"]
             ) / valid_scl.count(dim=["latitude", "longitude"])
-            invalid_time_steps = valid_ratio < 0.5
+            invalid_time_steps = valid_ratio < 0.9
             mask = mask.where(~invalid_time_steps, np.nan)
 
         if "cloudmask_en" in ds.data_vars:
@@ -252,11 +253,20 @@ class Sentinel2Dataloader(Dataloader):
             dim in self.data.sizes for dim in ("time", "location")
         ), f"Dimension missing. dimension are: {self.data.size}"
 
+    # def _deseasonalize(self, data, msc):
+    #     daily_msc = msc.interp(dayofyear=np.arange(1, 367, 1))
+    #     # Align subset_msc with subset_data
+    #     aligned_msc = daily_msc.sel(dayofyear=data["time.dayofyear"])
+    #     # Subtract the seasonal cycle
+    #     deseasonalized = data - aligned_msc
+    #     deseasonalized = deseasonalized.reset_coords("dayofyear", drop=True)
+    #     return deseasonalized
+
     def _deseasonalize(self, data, msc):
-        daily_msc = msc.interp(dayofyear=np.arange(1, 367, 1))
         # Align subset_msc with subset_data
-        aligned_msc = daily_msc.sel(dayofyear=data["time.dayofyear"])
+        aligned_msc = msc.sel(dayofyear=data["time.dayofyear"])
         # Subtract the seasonal cycle
+
         deseasonalized = data - aligned_msc
         deseasonalized = deseasonalized.reset_coords("dayofyear", drop=True)
         return deseasonalized
@@ -264,7 +274,7 @@ class Sentinel2Dataloader(Dataloader):
     # def compute_msc(
     #    self,
     #    clean_data: xr.DataArray,
-    #    bin_size: int = 5,
+    #    bin_size: int = 15,
     #    smoothing_window: int = 12,
     #    poly_order: int = 2,
     # ):
@@ -312,17 +322,13 @@ class Sentinel2Dataloader(Dataloader):
     def compute_msc(
         self,
         clean_data: xr.DataArray,
-        smoothing_window: int = 5,
+        smoothing_window: int = 7,
         poly_order: int = 2,
     ):
 
         # Step 1: Compute mean seasonal cycle
-        grouped = clean_data.groupby("time.dayofyear")
-        count_per_group = grouped.count(dim="time")
-
-        # Apply mean only where count is at least 3
-        mean_seasonal_cycle = grouped.mean("time", skipna=True).where(
-            count_per_group >= 3
+        mean_seasonal_cycle = clean_data.groupby("time.dayofyear").mean(
+            "time", skipna=True
         )
 
         # Step 2: Apply circular padding along the dayofyear axis before rolling
@@ -373,18 +379,6 @@ class Sentinel2Dataloader(Dataloader):
         mean = xr.where(count > 1, sum / (count + 1e-10), np.nan)
         return mean
 
-    # def clean_timeseries_fixed_stats(self, deseasonalized):
-    #     # Calculate GLOBAL median and std for each location (not rolling)
-    #     global_mean = deseasonalized.mean(dim="time", skipna=True)
-    #     global_std = deseasonalized.std(dim="time", skipna=True).clip(min=0.01)
-    #     # # Broadcast to match dimensions for computation
-    #     mean_broadcast = global_mean.broadcast_like(deseasonalized)
-    #     std_broadcast = global_std.broadcast_like(deseasonalized)
-    #     # Identify and replace outliers using global statistics
-    #     is_negative_outlier = deseasonalized < (mean_broadcast - 2 * std_broadcast)
-    #     cleaned_data = xr.where(is_negative_outlier, np.nan, deseasonalized)
-    #     return cleaned_data
-
     def compute_max_per_period(self, data, period_size=10):
         # Function to generate valid dates (time bins) for all years at once
         def get_time_periods(bin_size, years):
@@ -433,6 +427,7 @@ class Sentinel2Dataloader(Dataloader):
 
         # Compute max for each period
         max_per_period = data_grouped.max(dim="time")
+        # max_per_period = data_grouped.max(dim="time")
 
         # Apply the transformation to convert periods back to midpoints in time
         midpoint_times = [
@@ -489,6 +484,13 @@ class Sentinel2Dataloader(Dataloader):
             data = self.load_dataset()
         printt(f"Processing entire dataset: {data.sizes['location']} locations.")
 
+        # Compute Mean Seasonal Cycle (MSC)
+        # clean_data = self.noise_removal.cloudfree_timeseries(
+        #     data,
+        #     #    nan_fill_windows=dict_config["nan_fill_windows"],
+        #     noise_half_windows=dict_config["noise_half_windows"],
+        # )
+
         data = self.compute_max_per_period(data, dict_config["period_size"])
         self.saver._save_data(data, "evi")
 
@@ -498,19 +500,14 @@ class Sentinel2Dataloader(Dataloader):
             #    nan_fill_windows=dict_config["nan_fill_windows"],
             noise_half_windows=dict_config["noise_half_windows"],
         )
-        # Compute Mean Seasonal Cycle (MSC)
+        self.saver._save_data(clean_data, "clean_data")
+
         msc = self.compute_msc(clean_data)
         msc = msc.transpose("location", "dayofyear", ...)
         self.saver._save_data(msc, "msc")
 
         if not return_time_series:
             return msc
-
-        # Step 2: Cloud removal
-        data = self.noise_removal.cloudfree_timeseries(
-            data, noise_half_windows=dict_config["noise_half_windows"]
-        )
-        self.saver._save_data(data, "clean_data")
 
         # Step 3: Deseasonalization
         data = self._deseasonalize(data, msc)  # needed?
@@ -524,4 +521,6 @@ class Sentinel2Dataloader(Dataloader):
 
         data = _ensure_time_chunks(data)
         data = data.transpose("location", "time", ...).compute()
+        print(msc.values.shape)
+        print(data.values.shape)
         return msc, data

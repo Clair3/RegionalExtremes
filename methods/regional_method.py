@@ -435,6 +435,8 @@ class RegionalExtremes:
         unique_clusters, eco_cluster_labels = _create_cluster_labels(self.eco_clusters)
 
         # Process and filter groups
+        print(deseasonalized.values.shape)
+        print(eco_cluster_labels.values.shape)
         data = deseasonalized.groupby(eco_cluster_labels).map(_process_group)
         filtered_data = data.where(data.valid_group, drop=True)
         if filtered_data.sizes == 0:
