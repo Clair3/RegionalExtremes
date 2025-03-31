@@ -56,7 +56,6 @@ class Sentinel2Dataloader(Dataloader):
             location=~self.data.get_index("location").duplicated()
         )
         self.data = self.data.drop("band")
-        # self.data = self.data.chunk({"time": -1, "latitude": 10, "longitude": 10})
         self.saver._save_data(self.data, "temp_file")
         self.data = self.loader._load_data("temp_file")
         printt("Dataset loaded.")
@@ -120,51 +119,51 @@ class Sentinel2Dataloader(Dataloader):
 
     def load_file(self, minicube_path, process_entire_minicube=False):
         filepath = Path(minicube_path)  # EARTHNET_FILEPATH + minicube_path
-        with xr.open_zarr(filepath) as ds:
-            # Transform UTM to lat/lon
-            ds = self._transform_utm_to_latlon(ds)
-            ds = ds.sel(time=slice(date(2017, 3, 1), None))
-            # Add landcover
-            if "esa_worldcover_2021" not in ds.data_vars:
-                ds = self.loader._load_and_add_landcover(filepath, ds)
+        ds = xr.open_zarr(filepath)
 
-            if not process_entire_minicube:
-                # Select a random vegetation location
-                print("single pixel")
-                ds = self._get_random_vegetation_pixel_series(ds)
-                if ds is None:
-                    return None
-            else:
-                if not self._has_sufficient_vegetation(ds):
-                    print("Not enough vegetation")
-                    return None
-            self.variable_name = "evi"
-            # Filter based on vegetation occurrence
+        ds = self._ensure_coordinates(ds)
+        ds = ds.sel(time=slice(date(2017, 3, 1), None))
 
-            # Calculate EVI and apply cloud/vegetation mask
-            evi = self._calculate_evi(ds)
-            masked_evi = self._apply_masks(ds, evi)
-            data = xr.Dataset(
-                data_vars={
-                    f"{self.variable_name}": masked_evi,  # Adding 'evi' as a variable
-                    # "landcover": ds[
-                    #    "esa_worldcover_2021"
-                    # ],  # Adding 'landcover' as another variable
-                },
-                coords={
-                    "source_path": minicube_path,  # Add the path as a coordinate
-                },
-            )
-            # Check for excessive missing data
-            if self._has_excessive_nan(masked_evi):
-                print("Excessive NaN values")
+        # Add landcover
+        if "esa_worldcover_2021" not in ds.data_vars:
+            ds = self.loader._load_and_add_landcover(filepath, ds)
+
+        if not process_entire_minicube:
+            # Select a random vegetation location
+            ds = self._get_random_vegetation_pixel_series(ds)
+            if ds is None:
                 return None
-            if process_entire_minicube:
-                self.saver.update_saving_path(filepath.stem)
+        else:
+            self.saver.update_saving_path(filepath.stem)
 
-            return data
+        data = self.compute_vegetation_index(ds, filepath)
+        return data
 
-    def _transform_utm_to_latlon(self, ds):
+    def compute_vegetation_index(self, ds, filepath):
+        """ """
+        self.variable_name = "evi"
+
+        # Calculate EVI and apply cloud/vegetation mask
+        evi = self._calculate_evi(ds)
+        masked_evi = self._apply_masks(ds, evi)
+        data = xr.Dataset(
+            data_vars={
+                f"{self.variable_name}": masked_evi,  # Adding 'evi' as a variable
+                # "landcover": ds[
+                #    "esa_worldcover_2021"
+                # ],  # Adding 'landcover' as another variable
+            },
+            coords={
+                "source_path": filepath,  # Add the path as a coordinate
+            },
+        )
+        # Check for excessive missing data
+        if self._has_excessive_nan(masked_evi):
+            print("Excessive NaN values")
+            return None
+        return data
+
+    def _ensure_coordinates(self, ds):
         """Transforms UTM coordinates to latitude and longitude."""
         if "time" not in ds.dims:
             ds = ds.rename({"time_sentinel-2-l2a": "time"})
@@ -183,10 +182,8 @@ class Sentinel2Dataloader(Dataloader):
 
     def _get_random_vegetation_pixel_series(self, ds):
         """Selects a random time serie vegetation pixel location in the minicube based on SCL classification."""
-        count_of_4 = (ds.SCL == 4).sum(dim="time")  # Count vegetation occurrences
-        mask = count_of_4 > 24  # Threshold for sufficient vegetation
+        eligible_indices = self._has_sufficient_vegetation(ds)
 
-        eligible_indices = np.argwhere(mask.values)
         if eligible_indices.size > 0:
             random_index = eligible_indices[np.random.choice(eligible_indices.shape[0])]
             selected_data = ds.isel(longitude=random_index[0], latitude=random_index[1])
@@ -202,9 +199,12 @@ class Sentinel2Dataloader(Dataloader):
     def _has_sufficient_vegetation(self, ds):
         """Checks if sufficient vegetation exists across the dataset."""
         count_of_4 = (ds.SCL == 4).sum(dim="time")
-        mask = count_of_4 > 24
+        mask = count_of_4 > 1 / 4 * (366 / self.config_dict["period_size"]) * len(
+            np.unique(ds.time.dt.year)
+        )
+
         eligible_indices = np.argwhere(mask.values)
-        return eligible_indices.size > 0
+        return eligible_indices  # .size > 0
 
     def _calculate_evi(self, ds):
         """Calculates the Enhanced Vegetation Index (EVI)."""
@@ -253,15 +253,6 @@ class Sentinel2Dataloader(Dataloader):
             dim in self.data.sizes for dim in ("time", "location")
         ), f"Dimension missing. dimension are: {self.data.size}"
 
-    # def _deseasonalize(self, data, msc):
-    #     daily_msc = msc.interp(dayofyear=np.arange(1, 367, 1))
-    #     # Align subset_msc with subset_data
-    #     aligned_msc = daily_msc.sel(dayofyear=data["time.dayofyear"])
-    #     # Subtract the seasonal cycle
-    #     deseasonalized = data - aligned_msc
-    #     deseasonalized = deseasonalized.reset_coords("dayofyear", drop=True)
-    #     return deseasonalized
-
     def _deseasonalize(self, data, msc):
         # Align subset_msc with subset_data
         aligned_msc = msc.sel(dayofyear=data["time.dayofyear"])
@@ -270,54 +261,6 @@ class Sentinel2Dataloader(Dataloader):
         deseasonalized = data - aligned_msc
         deseasonalized = deseasonalized.reset_coords("dayofyear", drop=True)
         return deseasonalized
-
-    # def compute_msc(
-    #    self,
-    #    clean_data: xr.DataArray,
-    #    bin_size: int = 15,
-    #    smoothing_window: int = 12,
-    #    poly_order: int = 2,
-    # ):
-    #    # Step 5: Add day of year for deseasonalizing data
-    #    clean_data = clean_data.assign_coords(dayofyear=clean_data["time"].dt.dayofyear)
-    #    bins = np.arange(1, 367, bin_size)
-    #    mean_seasonal_cycle = (
-    #        clean_data.groupby_bins("time.dayofyear", bins=bins, right=False)
-    #        .mean("time", skipna=True)
-    #        .rename({"dayofyear_bins": "dayofyear"})
-    #    )
-    #
-    #    # Set dayofyear to bin midpoints
-    #    mean_seasonal_cycle["dayofyear"] = [
-    #        interval.mid for interval in mean_seasonal_cycle.dayofyear.values
-    #    ]
-    #
-    #    padded_values = np.pad(
-    #        mean_seasonal_cycle.values,
-    #        (
-    #            (smoothing_window, smoothing_window),
-    #            (0, 0),
-    #        ),  # Pad along the dayofyear axis
-    #        mode="wrap",  # Wrap-around to maintain continuity
-    #    )
-    #    padded_values = np.nan_to_num(padded_values, nan=0)
-    #    #
-    #    # rolled_values = circular_rolling_mean(
-    #    #     padded_values, window_size=4, min_periods=1
-    #    # )
-    #
-    #    # Fill any remaining NaNs with 0
-    #    # mean_seasonal_cycle = mean_seasonal_cycle.fillna(0)
-    #    # Step 6: Apply Savitzky-Golay smoothing
-    #    smoothed_values = savgol_filter(
-    #        padded_values, smoothing_window, poly_order, axis=0
-    #    )
-    #    mean_seasonal_cycle = mean_seasonal_cycle.copy(
-    #        data=smoothed_values[smoothing_window:-smoothing_window]
-    #    )
-    #    # Ensure all values are non-negative
-    #    mean_seasonal_cycle = mean_seasonal_cycle.where(mean_seasonal_cycle > 0, 0)
-    #    return mean_seasonal_cycle
 
     def compute_msc(
         self,
@@ -398,18 +341,6 @@ class Sentinel2Dataloader(Dataloader):
             # Efficient way to find the period index using searchsorted
             period_index = np.searchsorted(period_dates, timestamp, side="right") - 1
             return period_index
-
-        # For transforming period back to time (middle of the bin period)
-        def period_to_time(period_index, periods):
-            start_date = pd.to_datetime(periods[period_index])
-            return start_date
-            # end_date = pd.to_datetime(
-            #     periods[period_index + 1]
-            #     if period_index + 1 < len(periods)
-            #     else periods[period_index]
-            # )
-            # midpoint = start_date + (end_date - start_date) / 2
-            # return midpoint
 
         # Remove unrealistic values
         data = data.where((data >= 0) & (data <= 1), np.nan)
