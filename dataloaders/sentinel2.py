@@ -322,7 +322,7 @@ class Sentinel2Dataloader(Dataloader):
     def compute_msc(
         self,
         clean_data: xr.DataArray,
-        smoothing_window: int = 9,
+        smoothing_window: int = 7,  # 9,
         poly_order: int = 2,
     ):
 
@@ -343,7 +343,7 @@ class Sentinel2Dataloader(Dataloader):
         )
 
         padded_values = circular_rolling_mean(
-            padded_values, window_size=7, min_periods=1
+            padded_values, window_size=smoothing_window, min_periods=1
         )
 
         padded_values = np.nan_to_num(padded_values, nan=0)
@@ -402,13 +402,14 @@ class Sentinel2Dataloader(Dataloader):
         # For transforming period back to time (middle of the bin period)
         def period_to_time(period_index, periods):
             start_date = pd.to_datetime(periods[period_index])
-            end_date = pd.to_datetime(
-                periods[period_index + 1]
-                if period_index + 1 < len(periods)
-                else periods[period_index]
-            )
-            midpoint = start_date + (end_date - start_date) / 2
-            return midpoint
+            return start_date
+            # end_date = pd.to_datetime(
+            #     periods[period_index + 1]
+            #     if period_index + 1 < len(periods)
+            #     else periods[period_index]
+            # )
+            # midpoint = start_date + (end_date - start_date) / 2
+            # return midpoint
 
         # Remove unrealistic values
         data = data.where((data >= 0) & (data <= 1), np.nan)
@@ -432,12 +433,12 @@ class Sentinel2Dataloader(Dataloader):
         # mean_per_period = data_grouped.max(dim="time")
 
         # Apply the transformation to convert periods back to midpoints in time
-        midpoint_times = [
-            period_to_time(p, periods) for p in mean_per_period.coords["period"].values
+        start_period_times = [
+            pd.to_datetime(periods[p]) for p in mean_per_period.coords["period"].values
         ]
 
         # Update mean_per_period with the transformed 'time' coordinates (midpoints)
-        mean_per_period.coords["time"] = ("period", midpoint_times)
+        mean_per_period.coords["time"] = ("period", start_period_times)
         mean_per_period = mean_per_period.swap_dims({"period": "time"}).drop_vars(
             "period"
         )
@@ -450,7 +451,10 @@ class Sentinel2Dataloader(Dataloader):
         config["nan_fill_windows"] = [3, 5]
         config["noise_half_windows"] = [1, 2]
         config["cumulative_evi_window"] = 5
-        config["period_size"] = 8
+        config["period_size"] = 16
+        config["smoothing_window_msc"] = 7
+        config["poly_msc"] = 2
+
         return config
 
     def preprocess_data(
@@ -486,6 +490,7 @@ class Sentinel2Dataloader(Dataloader):
         else:
             data = self.load_dataset()
         printt(f"Processing entire dataset: {data.sizes['location']} locations.")
+
         data = self.compute_mean_per_period(data, dict_config["period_size"])
         data = self.noise_removal.cloudfree_timeseries(
             data, noise_half_windows=dict_config["noise_half_windows"]

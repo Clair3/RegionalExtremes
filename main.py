@@ -140,8 +140,8 @@ if __name__ == "__main__":
         # subfolders = [folder for folder in os.listdir(parent_folder)]
         # parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/_test/"
         subfolders = [
-            "DE-Hai_51.08_10.45_v0.zarr.zip",
-            # "ES-LM1_39.94_-5.78_v0.zarr.zip",
+            # "DE-Hai_51.08_10.45_v0.zarr.zip",
+            "ES-LM1_39.94_-5.78_v0.zarr.zip",
             # "ES-LM2_39.93_-5.78_v0.zarr.zip",
             #    # "ES-LMa_39.94_-5.77_v0.zarr.zip",
             #    "ES-Cnd_37.91_-3.23_v0.zarr.zip",

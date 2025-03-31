@@ -34,9 +34,6 @@ def _compute_shifted_max(data, window_size, direction=1):
             xr.where(np.isnan(shifted), max_vals, np.maximum(max_vals, shifted)),
         )
 
-        # max_vals = np.fmax(max_vals, shifted)
-        # max_vals = xr.maximum(max_vals, shifted)  # Compute element-wise max
-
     return max_vals
 
 
