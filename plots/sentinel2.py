@@ -593,20 +593,20 @@ class PlotsSentinel2(Plots):
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-03-21_18:41:40_new_cleaning"
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-03-31_16:21:43_new_cleaning"
 
     subfolders = [
-        "DE-Hai_51.08_10.45_v0.zarr",
+        # "DE-Hai_51.08_10.45_v0.zarr",
         "ES-LM1_39.94_-5.78_v0.zarr",
-        "ES-LM2_39.93_-5.78_v0.zarr",
-        # "ES-LMa_39.94_-5.77_v0.zarr",
-        "ES-Cnd_37.91_-3.23_v0.zarr",
-        "FR-LGt_47.32_2.28_v0.zarr",
-        "DE-Lnf_51.33_10.37_v0.zarr",
-        "DE-Geb_51.10_10.91_v0.zarr",
-        "DE-Wet_50.45_11.46_v0.zarr",
-        "DE-Bay_50.14_11.87_v0.zarr",
-        "DE-Meh_51.28_10.66_v0.zarr",
+        # "ES-LM2_39.93_-5.78_v0.zarr",
+        # # "ES-LMa_39.94_-5.77_v0.zarr",
+        # "ES-Cnd_37.91_-3.23_v0.zarr",
+        # "FR-LGt_47.32_2.28_v0.zarr",
+        # "DE-Lnf_51.33_10.37_v0.zarr",
+        # "DE-Geb_51.10_10.91_v0.zarr",
+        # # "DE-Wet_50.45_11.46_v0.zarr",
+        # "DE-Bay_50.14_11.87_v0.zarr",
+        # "DE-Meh_51.28_10.66_v0.zarr",
     ]
     # subfolders = [
     #    "ES-LM1_39.94_-5.78_v0.zarr",
@@ -637,8 +637,8 @@ if __name__ == "__main__":
         config = InitializationConfig(args)
         plot = PlotsSentinel2(config=config, minicube_name=minicube_name)
         # plot.plot_location_in_europe()
-        # plot.plot_thresholds()
-        # plot.plot_minicube_eco_clusters()
+        plot.plot_thresholds()
+        plot.plot_minicube_eco_clusters()
         plot.plot_extremes()
         # plot.plot_rgb()
         plot.plot_msc(colored_by_eco_cluster=True)

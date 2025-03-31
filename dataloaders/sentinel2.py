@@ -389,6 +389,14 @@ class Sentinel2Dataloader(Dataloader):
 
         return config
 
+    def _remove_low_vegetation_location(self, vegetation_index, threshold=0.1):
+        mean_vi = vegetation_index.mean("time", skipna=True)
+        valid_locations = (mean_vi > 0.2) & ~np.isnan(mean_vi)
+
+        # remove low vegetation locations
+        filtered_vegetation_index = vegetation_index.sel(location=valid_locations)
+        return filtered_vegetation_index
+
     def preprocess_data(
         self,
         return_time_series=False,
@@ -430,6 +438,7 @@ class Sentinel2Dataloader(Dataloader):
         data = self.noise_removal.cloudfree_timeseries(
             data, noise_half_windows=dict_config["noise_half_windows"]
         )
+        data = self._remove_low_vegetation_location(data, threshold=0.2)
         self.saver._save_data(data, "evi")
 
         # Compute Mean Seasonal Cycle (MSC)
