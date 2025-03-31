@@ -66,6 +66,8 @@ class Sentinel2Dataloader(Dataloader):
 
     def load_minicube(self, minicube_path):
         data = self.load_file(minicube_path, process_entire_minicube=True)
+        if data is None:
+            return None
         self.data = data.stack(location=("longitude", "latitude"))
         if self.n_samples:
             random_indices = np.random.choice(
@@ -74,7 +76,6 @@ class Sentinel2Dataloader(Dataloader):
             self.data = self.data.isel(location=random_indices)
         # self.data = self.data  # .isel(location=slice(0, 100))
         self.data = self.data[self.variable_name]
-        # Ensure dataset has time chunks before further processing
         self.data = _ensure_time_chunks(self.data)
         return self.data
 
@@ -132,15 +133,15 @@ class Sentinel2Dataloader(Dataloader):
             # Select a random vegetation location
             ds = self._get_random_vegetation_pixel_series(ds)
             if ds is None:
+                printt(f"No valid vegetation pixel found in {minicube_path}.")
                 return None
         else:
             self.saver.update_saving_path(filepath.stem)
 
-        data = self.compute_vegetation_index(ds, filepath)
+        data = self.compute_vegetation_index(ds, minicube_path)
         return data
 
     def compute_vegetation_index(self, ds, filepath):
-        """ """
         self.variable_name = "evi"
 
         # Calculate EVI and apply cloud/vegetation mask
@@ -159,7 +160,7 @@ class Sentinel2Dataloader(Dataloader):
         )
         # Check for excessive missing data
         if self._has_excessive_nan(masked_evi):
-            print("Excessive NaN values")
+            printt(f"Excessive NaN values in {filepath}.")
             return None
         return data
 
@@ -417,11 +418,14 @@ class Sentinel2Dataloader(Dataloader):
         dict_config = self.get_config()
         # Load data either from a minicube or from the default dataset
         if minicube_path:
+            printt(f"Loading minicube from {minicube_path}")
             data = self.load_minicube(minicube_path=minicube_path)
+            if data is None:
+                return None, None
         else:
             data = self.load_dataset()
-        printt(f"Processing entire dataset: {data.sizes['location']} locations.")
 
+        printt(f"Processing entire dataset: {data.sizes['location']} locations.")
         data = self.compute_mean_per_period(data, dict_config["period_size"])
         data = self.noise_removal.cloudfree_timeseries(
             data, noise_half_windows=dict_config["noise_half_windows"]
