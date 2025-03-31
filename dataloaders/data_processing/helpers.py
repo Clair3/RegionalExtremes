@@ -61,7 +61,7 @@ def circular_rolling_mean(arr, window_size=5, min_periods=1):
         if len(valid_values) >= min_periods:
             result[i] = np.mean(valid_values)
     # Replace NaN values in the result where original array had NaNs
-    return np.nan_to_num(np.where(np.isnan(arr), result, arr), nan=0.0)
+    return np.where(np.isnan(arr), result, arr)
 
 
 def _ensure_xarray(data):

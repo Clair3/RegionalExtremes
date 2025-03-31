@@ -672,14 +672,6 @@ def regional_extremes_minicube(args, minicube_path):
     config = InitializationConfig(args)
     assert config.method == "regional"
 
-    dataset_processor = create_handler(
-        config=config, n_samples=None  # config.n_samples
-    )
-    msc, data = dataset_processor.preprocess_data(
-        return_time_series=True,
-        minicube_path=minicube_path,
-    )
-
     # Initialization of RegionalExtremes, load data if already computed.
     extremes_processor = RegionalExtremes(
         config=config,

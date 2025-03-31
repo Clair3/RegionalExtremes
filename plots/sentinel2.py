@@ -476,157 +476,155 @@ class PlotsSentinel2(Plots):
 
         cbar = plt.colorbar(pcm, ax=ax, orientation="vertical", pad=0.02)
         cbar.set_label("Value")  # Set the label for the colorbar
-        print(self.saving_path)
         saving_path = self.saving_path / "thresholds.png"
         plt.savefig(saving_path)
         plt.show()
 
-    def plot_time_series(self):
+    def plot_extremes(self):
+        extremes = self.loader._load_data("extremes").extremes
+        # extremes = extremes.unstack("location")
 
-        plt.rcParams.update({"font.size": 18})
-        random_locations = np.random.choice(evi.location, size=16, replace=False)
-        # Define constants
-        TIME_PERIOD = slice("2016-01-01", "2025-01-01")
-        PLOT_SIZE = (40, 16)
-
-        # Ensure plot directory exists
-        plot_path = os.path.join(base_path, "plots")
-        os.makedirs(plot_path, exist_ok=True)
+        extremes = extremes.sel(time=slice("2016-01-01", None))
 
         # Get all unique quantile values present in extremes, ignoring NaN values
         unique_quantiles = np.sort(
             np.unique(extremes.values[~np.isnan(extremes.values)])
         )
         # Split quantiles into two groups
-        low_quantiles = [q for q in unique_quantiles if q < 0.5]  # [:-2]
-        high_quantiles = [q for q in unique_quantiles if q >= 0.5]  # [2:]
+        low_quantiles = [q for q in unique_quantiles if q <= 0.5]
+        high_quantiles = [q for q in unique_quantiles if q > 0.5]
 
-        # Define color maps
+        # Total locations
+        # total_locations = extremes.notnull().sum(dim="location")
+        # total_locations = len(extremes.location)
+        total_locations = extremes.notnull().sum(dim="location")
+
+        # Compute daily percentage for each quantile
+        daily_percentages = {}
+        for q in unique_quantiles:
+            daily_percentages[q] = (
+                (extremes == q).sum(dim="location").values / total_locations * 100
+            )  # Convert to NumPy array
+
+        # Define color maps with correct intensity
         reds = cm.get_cmap(
-            "Reds_r", len(low_quantiles)
-        )  # More intense for smaller quantiles
+            "Reds", len(low_quantiles)
+        )  # Normal Reds (more intense for larger values)
         blues = cm.get_cmap(
-            "Blues_r", len(high_quantiles)
-        )  # More intense for higher quantiles
+            "Blues", len(high_quantiles)
+        )  # Normal Blues (more intense for larger values)
 
-        # Loop over locations
-        for loc in random_locations[:3]:
-            loc_tuple = (loc[0], loc[1])
+        # Convert time values to NumPy array
+        time_values = extremes["time"].values
 
-            # Extract data for the given location and time period
-            clean_data_loc = clean_data.sel(location=loc_tuple, time=TIME_PERIOD)
-            deseasonalized_loc = deseasonalized.sel(
-                location=loc_tuple, time=TIME_PERIOD
+        # Create a single figure
+        plt.figure(figsize=(25, 12))
+        plt.rcParams.update({"font.size": 18})
+        # Stack the lower quantiles in the negative direction
+        bottom = np.zeros_like(time_values, dtype=float)
+        low_handles, low_labels = [], []
+        for i, q in enumerate(
+            low_quantiles[::-1]
+        ):  # Reverse order to have most intense at the bottom
+            percentage_values = np.array(
+                daily_percentages[q]
+            )  # Ensure it's a NumPy array
+            handle = plt.fill_between(
+                time_values,
+                -bottom,
+                -(bottom + percentage_values),
+                color=reds((i + 2) / (len(low_quantiles) + 2)),
             )
-            cumulative_evi_loc = cumulative_evi.sel(
-                location=loc_tuple, time=TIME_PERIOD
+            low_handles.append(handle)
+            low_labels.append(f"{q*100} %")
+            bottom += percentage_values
+
+        # Stack the higher quantiles in the positive direction
+        bottom = np.zeros_like(time_values, dtype=float)
+        high_handles, high_labels = [], []
+        for i, q in enumerate(
+            high_quantiles
+        ):  # Keep normal order to have most intense at the top
+            percentage_values = np.array(
+                daily_percentages[q]
+            )  # Ensure it's a NumPy array
+            handle = plt.fill_between(
+                time_values,
+                bottom,
+                bottom + percentage_values,
+                color=blues((i + 2) / (len(high_quantiles) + 2)),
             )
-            evi_loc = evi.sel(location=loc_tuple, time=TIME_PERIOD)
-            thresholds_loc = thresholds.sel(location=loc_tuple)
+            high_handles.append(handle)
+            high_labels.append(f"{q*100} %")
+            bottom += percentage_values
 
-            # Compute masks to remove NaNs
-            mask_clean = ~np.isnan(clean_data_loc).compute()
-            mask_deseasonalized = ~np.isnan(deseasonalized_loc).compute()
-            mask_cumulative = ~np.isnan(cumulative_evi_loc).compute()
+        plt.ylim(-100, 100)
+        plt.xlabel("Time")
+        plt.ylabel("Percentage (%)")
+        plt.title("Stacked Daily Percentage of Quantiles")
+        plt.axhline(0, color="black", linewidth=1)
+        plt.grid()
 
-            # Extract valid data points
-            valid_time = clean_data_loc.time[mask_clean]
-            valid_values = clean_data_loc.values[mask_clean]
+        # Add separate legends on the right
+        # Create legends with precise positioning
+        high_legend = plt.legend(
+            handles=high_handles,
+            labels=high_labels,
+            loc="upper right",
+            bbox_to_anchor=(0.14, 1),
+            title="Quantiles (Above)",
+        )
+        low_legend = plt.legend(
+            handles=low_handles,
+            labels=low_labels,
+            loc="lower right",
+            bbox_to_anchor=(1, 0),
+            title="Quantiles (Bellow)",
+        )
 
-            valid_time2 = deseasonalized_loc.time[mask_deseasonalized]
-            valid_values2 = deseasonalized_loc.values[mask_deseasonalized]
+        # Add both legends to the plot
+        plt.gca().add_artist(high_legend)
+        plt.gca().add_artist(low_legend)
 
-            cumulative_time = cumulative_evi_loc.time[mask_cumulative]
-            cumulative_values = cumulative_evi_loc.values[mask_cumulative]
-
-            # Plot setup
-            plt.figure(figsize=PLOT_SIZE)
-
-            # Plot clean data
-            plt.plot(valid_time, valid_values, color="blue", label="Clean Data")
-            plt.plot(
-                valid_time2, valid_values2, "--", color="blue", label="Deseasonalized"
-            )
-            plt.plot(cumulative_time, cumulative_values, color="red", label="EVI Trend")
-
-            # Scatter plots
-            plt.scatter(deseasonalized_loc.time, deseasonalized_loc, color="blue")
-            plt.scatter(
-                cumulative_time, cumulative_values, color="red", label="EVI Trend"
-            )
-            plt.scatter(evi_loc.time, evi_loc, color="black", label="EVI Raw Data")
-
-            # Plot quantile thresholds
-            time_values = evi_loc.time
-            for i, q in enumerate(low_quantiles):
-                plt.plot(
-                    time_values,
-                    [thresholds_loc.sel(quantile=q)] * len(time_values),
-                    color=reds(i / len(low_quantiles)),
-                    alpha=0.7,
-                    label=f"quantile bellow 50%" if i == 0 else "",
-                )
-
-            for i, q in enumerate(reversed(high_quantiles)):
-                plt.plot(
-                    time_values,
-                    [thresholds_loc.sel(quantile=q)] * len(time_values),
-                    color=blues(i / len(high_quantiles)),
-                    alpha=0.7,
-                    label=f"quantile above 50%" if i == 0 else "",
-                )
-
-            # Overlay seasonal cycle per year
-            for year in range(2016, 2025):
-                msc_dates = [
-                    pd.Timestamp(f"{year}-01-01") + pd.Timedelta(days=int(doy) - 1)
-                    for doy in msc.dayofyear.values
-                ]
-                plt.plot(
-                    msc_dates,
-                    msc.sel(location=loc_tuple),
-                    color="black",
-                    alpha=0.5,
-                    label="Mean Seasonal Cycle" if year == 2016 else "",
-                )
-
-            # Final plot adjustments
-            plt.minorticks_on()  # Enable minor ticks
-            plt.grid(True, which="both", linestyle="--", linewidth=0.5)
-            plt.legend()
-            plt.title(f"Data Visualization for Location {loc_tuple}")
-            plt.xlabel("Time")
-            plt.ylabel("Value")
-
-            # Save and show plot
-            plt.savefig(
-                os.path.join(plot_path, f"location_{loc_tuple[0]}_{loc_tuple[1]}.png")
-            )
-            plt.show()
+        plt.savefig(self.saving_path / "combined_quantiles_percentages.png")
+        plt.show()
 
 
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-03-13_13:27:53_new_training2"
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-03-21_18:41:40_new_cleaning"
 
     subfolders = [
+        "DE-Hai_51.08_10.45_v0.zarr",
         "ES-LM1_39.94_-5.78_v0.zarr",
         "ES-LM2_39.93_-5.78_v0.zarr",
-        "ES-LMa_39.94_-5.77_v0.zarr",
-        "DE-Hai_51.08_10.45_v0.zarr",
+        # "ES-LMa_39.94_-5.77_v0.zarr",
         "ES-Cnd_37.91_-3.23_v0.zarr",
         "FR-LGt_47.32_2.28_v0.zarr",
-        # "DE-Lnf_51.33_10.37_v0.zarr",
-        # "DE-Geb_51.10_10.91_v0.zarr",
-        # "DE-Wet_50.45_11.46_v0.zarr",
-        # "DE-Bay_50.14_11.87_v0.zarr",
-        # "DE-Meh_51.28_10.66_v0.zarr",
-        # "custom_cube_50.90_11.56.zarr",
-        # "custom_cube_44.17_5.24.zarr",
-        # "custom_cube_44.24_5.14.zarr",
-        # "custom_cube_47.31_0.18.zarr",
+        "DE-Lnf_51.33_10.37_v0.zarr",
+        "DE-Geb_51.10_10.91_v0.zarr",
+        "DE-Wet_50.45_11.46_v0.zarr",
+        "DE-Bay_50.14_11.87_v0.zarr",
+        "DE-Meh_51.28_10.66_v0.zarr",
     ]
+    # subfolders = [
+    #    "ES-LM1_39.94_-5.78_v0.zarr",
+    #    "ES-LM2_39.93_-5.78_v0.zarr",
+    #    "ES-LMa_39.94_-5.77_v0.zarr",
+    #    "DE-Hai_51.08_10.45_v0.zarr",
+    #    "ES-Cnd_37.91_-3.23_v0.zarr",
+    #    "FR-LGt_47.32_2.28_v0.zarr",
+    #    # "DE-Lnf_51.33_10.37_v0.zarr",
+    #    # "DE-Geb_51.10_10.91_v0.zarr",
+    #    # "DE-Wet_50.45_11.46_v0.zarr",
+    #    # "DE-Bay_50.14_11.87_v0.zarr",
+    #    # "DE-Meh_51.28_10.66_v0.zarr",
+    #    # "custom_cube_50.90_11.56.zarr",
+    #    # "custom_cube_44.17_5.24.zarr",
+    #    # "custom_cube_44.24_5.14.zarr",
+    #    # "custom_cube_47.31_0.18.zarr",
+    # ]
     # subfolders = [
     # #  subfolders = [
     #      ""
@@ -638,11 +636,12 @@ if __name__ == "__main__":
     for minicube_name in subfolders:
         config = InitializationConfig(args)
         plot = PlotsSentinel2(config=config, minicube_name=minicube_name)
-        plot.plot_location_in_europe()
+        # plot.plot_location_in_europe()
+        # plot.plot_thresholds()
+        # plot.plot_minicube_eco_clusters()
+        plot.plot_extremes()
+        # plot.plot_rgb()
         plot.plot_msc(colored_by_eco_cluster=True)
-        plot.plot_thresholds()
-        plot.plot_minicube_eco_clusters()
-        plot.plot_rgb()
 
     # for minicube_name in subfolders:
     #     config = InitializationConfig(args)

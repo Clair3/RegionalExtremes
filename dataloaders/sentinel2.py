@@ -222,14 +222,14 @@ class Sentinel2Dataloader(Dataloader):
         # Apply vegetation mask if SCL exists
         if "SCL" in ds.data_vars:
             # keep only pixel valid accordingly to the SCL
-            valid_scl = ds.SCL.isin([4, 5, 6, 7])
+            valid_scl = ds.SCL.isin([4, 5, 6])
             mask = mask.where(valid_scl, np.nan)
 
             # keep only time steps with more than 50% of valid pixels
             valid_ratio = valid_scl.sum(
                 dim=["latitude", "longitude"]
             ) / valid_scl.count(dim=["latitude", "longitude"])
-            invalid_time_steps = valid_ratio < 0.9
+            invalid_time_steps = valid_ratio < 0.97
             mask = mask.where(~invalid_time_steps, np.nan)
 
         if "cloudmask_en" in ds.data_vars:
@@ -322,7 +322,7 @@ class Sentinel2Dataloader(Dataloader):
     def compute_msc(
         self,
         clean_data: xr.DataArray,
-        smoothing_window: int = 7,
+        smoothing_window: int = 9,
         poly_order: int = 2,
     ):
 
@@ -343,8 +343,10 @@ class Sentinel2Dataloader(Dataloader):
         )
 
         padded_values = circular_rolling_mean(
-            padded_values, window_size=5, min_periods=1
-        )  # np.nan_to_num(padded_values, nan=0)
+            padded_values, window_size=7, min_periods=1
+        )
+
+        padded_values = np.nan_to_num(padded_values, nan=0)
 
         # Step 5: Apply Savitzky-Golay smoothing
         smoothed_values = savgol_filter(
@@ -379,7 +381,7 @@ class Sentinel2Dataloader(Dataloader):
         mean = xr.where(count > 1, sum / (count + 1e-10), np.nan)
         return mean
 
-    def compute_max_per_period(self, data, period_size=10):
+    def compute_mean_per_period(self, data, period_size=10):
         # Function to generate valid dates (time bins) for all years at once
         def get_time_periods(bin_size, years):
             periods = []
@@ -426,25 +428,21 @@ class Sentinel2Dataloader(Dataloader):
         data_grouped = data.groupby("period")
 
         # Compute max for each period
-        max_per_period = data_grouped.max(dim="time")
-        # max_per_period = data_grouped.max(dim="time")
+        mean_per_period = data_grouped.mean(dim="time")
+        # mean_per_period = data_grouped.max(dim="time")
 
         # Apply the transformation to convert periods back to midpoints in time
         midpoint_times = [
-            period_to_time(p, periods) for p in max_per_period.coords["period"].values
+            period_to_time(p, periods) for p in mean_per_period.coords["period"].values
         ]
 
-        # Update max_per_period with the transformed 'time' coordinates (midpoints)
-        max_per_period.coords["time"] = ("period", midpoint_times)
-        max_per_period = max_per_period.swap_dims({"period": "time"}).drop_vars(
+        # Update mean_per_period with the transformed 'time' coordinates (midpoints)
+        mean_per_period.coords["time"] = ("period", midpoint_times)
+        mean_per_period = mean_per_period.swap_dims({"period": "time"}).drop_vars(
             "period"
         )
-        max_per_period = max_per_period.set_index(location=["longitude", "latitude"])
-        # max_per_period = max_per_period.to_dataset()
-        # max_per_period = max_per_period.set_coords(["longitude", "latitude"])
-        # max_per_period = max_per_period.to_array()
-        # print(max_per_period)
-        return max_per_period
+        mean_per_period = mean_per_period.set_index(location=["longitude", "latitude"])
+        return mean_per_period
 
     def get_config(self):
         # Define window sizes for gap-filling and cloud noise removal
@@ -452,7 +450,7 @@ class Sentinel2Dataloader(Dataloader):
         config["nan_fill_windows"] = [3, 5]
         config["noise_half_windows"] = [1, 2]
         config["cumulative_evi_window"] = 5
-        config["period_size"] = 15
+        config["period_size"] = 8
         return config
 
     def preprocess_data(
@@ -476,9 +474,9 @@ class Sentinel2Dataloader(Dataloader):
         xr.DataArray
             Mean seasonal cycle (MSC), and optionally, the processed time series.
         """
-        # msc = self.loader._load_data("msc")
-        # if msc is not None and not return_time_series:
-        #     return msc.msc
+        msc = self.loader._load_data("msc")
+        if msc is not None and not return_time_series:
+            return msc.msc
 
         printt("Starting preprocessing...")
         dict_config = self.get_config()
@@ -488,26 +486,14 @@ class Sentinel2Dataloader(Dataloader):
         else:
             data = self.load_dataset()
         printt(f"Processing entire dataset: {data.sizes['location']} locations.")
-
-        # Compute Mean Seasonal Cycle (MSC)
-        # clean_data = self.noise_removal.cloudfree_timeseries(
-        #     data,
-        #     #    nan_fill_windows=dict_config["nan_fill_windows"],
-        #     noise_half_windows=dict_config["noise_half_windows"],
-        # )
-
-        data = self.compute_max_per_period(data, dict_config["period_size"])
+        data = self.compute_mean_per_period(data, dict_config["period_size"])
+        data = self.noise_removal.cloudfree_timeseries(
+            data, noise_half_windows=dict_config["noise_half_windows"]
+        )
         self.saver._save_data(data, "evi")
 
-        # Step 1: Gap-filling & noise removal
-        clean_data = self.noise_removal.cloudfree_timeseries(
-            data,
-            #    nan_fill_windows=dict_config["nan_fill_windows"],
-            noise_half_windows=dict_config["noise_half_windows"],
-        )
-        self.saver._save_data(clean_data, "clean_data")
-
-        msc = self.compute_msc(clean_data)
+        # Compute Mean Seasonal Cycle (MSC)
+        msc = self.compute_msc(data)
         msc = msc.transpose("location", "dayofyear", ...)
         self.saver._save_data(msc, "msc")
 

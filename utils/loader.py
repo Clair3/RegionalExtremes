@@ -65,6 +65,7 @@ class Loader:
 
     def _load_limits_eco_clusters(self) -> list[np.ndarray]:
         """Loads the limits eco_clusters from a file."""
+        print(self.config.saving_path)
         limits_eco_clusters_path = self.config.saving_path / "limits_eco_clusters.npz"
         if not os.path.exists(limits_eco_clusters_path):
             limits_eco_clusters_path = self.config.saving_path / "limits_bins.npz"

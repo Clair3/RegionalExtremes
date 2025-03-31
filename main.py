@@ -1,6 +1,7 @@
 import numpy as np
 import sys
 from pathlib import Path
+import os
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
@@ -136,25 +137,20 @@ if __name__ == "__main__":
         # Apply the regional extremes method on a single minicube
         parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/"
 
-        # subfolders = [
-        #     folder
-        #     for folder in os.listdir(parent_folder)
-        #     if os.path.isdir(os.path.join(parent_folder, folder))
-        #     and folder.startswith("mc_")
-        # ]
+        # subfolders = [folder for folder in os.listdir(parent_folder)]
         # parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/_test/"
         subfolders = [
             "DE-Hai_51.08_10.45_v0.zarr.zip",
-            "ES-LM1_39.94_-5.78_v0.zarr.zip",
-            "ES-LM2_39.93_-5.78_v0.zarr.zip",
-            # "ES-LMa_39.94_-5.77_v0.zarr.zip",
-            "ES-Cnd_37.91_-3.23_v0.zarr.zip",
-            "FR-LGt_47.32_2.28_v0.zarr.zip",
-            "DE-Lnf_51.33_10.37_v0.zarr.zip",
-            "DE-Geb_51.10_10.91_v0.zarr.zip",
-            "DE-Wet_50.45_11.46_v0.zarr.zip",
-            "DE-Bay_50.14_11.87_v0.zarr.zip",
-            "DE-Meh_51.28_10.66_v0.zarr.zip",
+            # "ES-LM1_39.94_-5.78_v0.zarr.zip",
+            # "ES-LM2_39.93_-5.78_v0.zarr.zip",
+            #    # "ES-LMa_39.94_-5.77_v0.zarr.zip",
+            #    "ES-Cnd_37.91_-3.23_v0.zarr.zip",
+            #    "FR-LGt_47.32_2.28_v0.zarr.zip",
+            #    "DE-Lnf_51.33_10.37_v0.zarr.zip",
+            #    "DE-Geb_51.10_10.91_v0.zarr.zip",
+            #    "DE-Wet_50.45_11.46_v0.zarr.zip",
+            #    "DE-Bay_50.14_11.87_v0.zarr.zip",
+            #    "DE-Meh_51.28_10.66_v0.zarr.zip",
         ]
 
         # subfolders = [
