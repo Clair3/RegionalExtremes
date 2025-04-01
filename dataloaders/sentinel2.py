@@ -419,15 +419,20 @@ class Sentinel2Dataloader(Dataloader):
         xr.DataArray
             Mean seasonal cycle (MSC), and optionally, the processed time series.
         """
-        msc = self.loader._load_data("msc")
-        if msc is not None and not return_time_series:
-            return msc.msc
-        data = self.loader._load_data("deseasonalized")
-        if msc is not None and data is not None:
-            return msc.msc, data.deseasonalized
-
-        printt("Starting preprocessing...")
         dict_config = self.get_config()
+        # msc = self.loader._load_data("msc")
+        # if msc is not None and not return_time_series:
+        #     return msc.msc
+        # if dict_config["deseasonalization"]:
+        #     data = self.loader._load_data("deseasonalized")
+        #     if msc is not None and data is not None:
+        #         return msc.msc, data.deseasonalized
+        # else:
+        #     data = self.loader._load_data("evi")
+        #     if msc is not None and data is not None:
+        #         return msc.msc, data.evi
+        printt("Starting preprocessing...")
+
         # Load data either from a minicube or from the default dataset
         if minicube_path:
             printt(f"Loading minicube from {minicube_path}")

@@ -28,6 +28,7 @@ class Quantiles:
     def __init__(
         self,
         config: InitializationConfig,
+        eco_clusters: xr.DataArray = None,
     ):
         """
         Compute the regional extremes by defining boxes of similar region using a PCA computed on the mean seasonal cycle of the samples.
@@ -39,8 +40,13 @@ class Quantiles:
             n_eco_clusters (int): Number of eco_clusters per component to define the boxes. Number of boxes = n_eco_clusters**n_components
         """
         self.config = config
+        self.eco_clusters = eco_clusters
         self.lower_quantiles = self.config.lower_quantiles
         self.upper_quantiles = self.config.upper_quantiles
+        self.dayofyear = False  # self.config.dayofyear # TODO better naming
+        self.quantile_levels_combined = np.concatenate(
+            (self.lower_quantiles, self.upper_quantiles)
+        )
         # Loader class to load intermediate steps.
         self.loader = Loader(config)
         # Saver class to save intermediate steps.
@@ -48,23 +54,13 @@ class Quantiles:
 
         if self.config.path_load_experiment:
             # Load every variable if already available, otherwise return None.
-            self.pca = self.loader._load_pca_matrix()
-            self.projected_data = self.loader._load_pca_projection()
-            self.limits_eco_clusters = self.loader._load_limits_eco_clusters()
-            self.eco_clusters = self.loader._load_data("eco_clusters")
+            # self.eco_clusters = self.loader._load_data("eco_clusters")
             self.thresholds = self.loader._load_data(
                 "thresholds", location=False, cluster=True
             )
 
         else:
-            # Initialize a new PCA.
-            if self.config.k_pca:
-                self.pca = KernelPCA(n_components=self.n_components, kernel="rbf")
-            else:
-                self.pca = PCA(n_components=self.n_components)
-            self.projected_data = None
-            self.limits_eco_clusters = None
-            self.eco_clusters = None
+            # self.eco_clusters = None
             self.thresholds = None
 
     def apply_regional_threshold(self, deseasonalized):
@@ -326,7 +322,7 @@ class Quantiles:
 
     def _compute_thresholds(
         self,
-        deseasonalized: xr.DataArray,
+        data: xr.DataArray,
         quantile_levels,
         return_only_thresholds=False,
     ):
@@ -334,7 +330,7 @@ class Quantiles:
         Assign quantile levels to deseasonalized data.
 
         Args:
-            deseasonalized (xarray.DataArray): Deseasonalized data.
+            data (xarray.DataArray): Data used to compute the quantiles.
             quantile_levels (tuple): Tuple of lower and upper quantile levels.
             return_only_thresholds (bool): If True, only return quantile thresholds.
 
@@ -346,22 +342,31 @@ class Quantiles:
         # Unpack quantile levels and prepare data
         lower_quantiles, upper_quantiles = quantile_levels
         quantile_levels_combined = np.concatenate((lower_quantiles, upper_quantiles))
-        # deseasonalized = deseasonalized.chunk("auto")
+        # print(data)
+        # print(data.chunk)
+        data = data.chunk("auto")
+        # data = data.chunk({"location": -1, "time": -1})
+        # print(data)
 
         # Compute quantiles based on the method
-        quantiles_xr = self._compute_regional_quantiles(
-            deseasonalized, quantile_levels_combined
-        )
+        if self.dayofyear:
+            quantile_per_doy = data.groupby("time.dayofyear").map(
+                self._compute_quantiles_per_grp
+            )
+        else:
+            quantiles_xr = self._compute_quantiles_per_grp(
+                data, quantile_levels_combined
+            )
 
         # Return thresholds only if requested
         if return_only_thresholds:
             return xr.Dataset({"thresholds": quantiles_xr})
 
-        extremes = self._apply_thresholds(deseasonalized, quantiles_xr, quantile_levels)
+        extremes = self._apply_thresholds(data, quantiles_xr, quantile_levels)
         results = xr.Dataset({"extremes": extremes, "thresholds": quantiles_xr})
         return results
 
-    def _compute_quantiles_flatten(self, data, quantile_levels):
+    def _compute_quantiles_per_grp(self, data, quantile_levels):
         """
         Compute regional quantiles for the provided data.
         Args:
@@ -370,7 +375,6 @@ class Quantiles:
         Returns:
             xarray.DataArray: Regional quantiles as an xarray.DataArray.
         """
-        # Mask NaN values and flatten the data
         data = data.data
         flattened_nonan = data.flatten()[~da.isnan(data.flatten())]
 
@@ -387,49 +391,6 @@ class Quantiles:
             dims=["quantile"],
         )
         return quantiles_xr
-
-    def _compute_regional_quantiles(self, data, quantile_levels):
-        """
-        Compute regional quantiles for the provided data.
-        Args:
-            data (dask.array.Array): Flattened data to compute quantiles for.
-            quantile_levels (np.ndarray): Combined lower and upper quantile levels.
-        Returns:
-            xarray.DataArray: Regional quantiles as an xarray.DataArray.
-        """
-
-        def _compute_quantiles_doy(grp):
-            """
-            Compute quantiles for a single group.
-
-            Args:
-                grp: xarray DataArray group for a specific day of the year
-
-            Returns:
-                xarray.DataArray: Quantiles for the current day of the year
-            """
-            data = grp.data
-            flattened_nonan = data.flatten()[~da.isnan(data.flatten())]
-
-            # Compute quantiles using Dask
-            quantiles = da.percentile(
-                flattened_nonan,
-                quantile_levels * 100,  # Convert to percentages
-                method="linear",
-            )
-            # print(grp["time.dayofyear"])
-            quantiles_xr = xr.DataArray(
-                quantiles,
-                coords={
-                    "quantile": quantile_levels,
-                },
-                dims=["quantile"],
-            )
-
-            return quantiles_xr
-
-        quantile_per_doy = data.groupby("time.dayofyear").map(_compute_quantiles_doy)
-        return quantile_per_doy
 
     def _apply_thresholds(
         self,
