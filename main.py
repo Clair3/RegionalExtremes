@@ -6,8 +6,6 @@ import os
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from RegionalExtremesPackage.utils.logger import int_or_none
-from RegionalExtremesPackage.dataloaders import create_handler
-
 
 import argparse
 from RegionalExtremesPackage.methods import (
