@@ -129,11 +129,11 @@ if __name__ == "__main__":
     args.lower_quantiles = [0.025, 0.05, 0.10, 0.2, 0.3, 0.4, 0.50]
     args.upper_quantiles = [0.501, 0.6, 0.7, 0.8, 0.9, 0.95, 0.975]
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-03-31_16:21:43_new_cleaning"  #
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-03-31_22:06:55_new_cleaning"  #
 
     if args.method == "regional":
         # Train the regional extreme method on a subset of locations
-        # regional_extremes_method(args)
+        regional_extremes_method(args)
         # Apply the regional extremes method on a single minicube
         parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/"
 

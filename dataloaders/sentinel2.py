@@ -386,6 +386,7 @@ class Sentinel2Dataloader(Dataloader):
         config["period_size"] = 16
         config["smoothing_window_msc"] = 7
         config["poly_msc"] = 2
+        config["deseasonalization"] = False
 
         return config
 
@@ -421,6 +422,9 @@ class Sentinel2Dataloader(Dataloader):
         msc = self.loader._load_data("msc")
         if msc is not None and not return_time_series:
             return msc.msc
+        data = self.loader._load_data("deseasonalized")
+        if msc is not None and data is not None:
+            return msc.msc, data.deseasonalized
 
         printt("Starting preprocessing...")
         dict_config = self.get_config()
@@ -450,8 +454,9 @@ class Sentinel2Dataloader(Dataloader):
             return msc
 
         # Step 3: Deseasonalization
-        data = self._deseasonalize(data, msc)  # needed?
-        self.saver._save_data(data, "deseasonalized")
+        if dict_config["deseasonalization"]:
+            data = self._deseasonalize(data, msc)  # needed?
+            self.saver._save_data(data, "deseasonalized")
 
         # Step 5: Cumulative EVI computation
         # data = self.cumulative_evi(

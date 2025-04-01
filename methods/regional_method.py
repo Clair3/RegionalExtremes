@@ -6,6 +6,7 @@ from sklearn.decomposition import PCA, KernelPCA
 import sys
 from pathlib import Path
 from scipy.spatial.distance import pdist, squareform
+import dask.array as da
 
 
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
@@ -505,7 +506,6 @@ class RegionalExtremes:
         Args:
             deseasonalized (xarray.DataArray): Deseasonalized data.
             quantile_levels (tuple): Tuple of lower and upper quantile levels.
-            method (str): Method for computing quantiles. Either "regional" or "local".
             return_only_thresholds (bool): If True, only return quantile thresholds.
 
         Returns:
@@ -516,11 +516,11 @@ class RegionalExtremes:
         # Unpack quantile levels and prepare data
         lower_quantiles, upper_quantiles = quantile_levels
         quantile_levels_combined = np.concatenate((lower_quantiles, upper_quantiles))
-        deseasonalized = deseasonalized.chunk("auto")
+        # deseasonalized = deseasonalized.chunk("auto")
 
         # Compute quantiles based on the method
         quantiles_xr = self._compute_regional_quantiles(
-            deseasonalized.data, quantile_levels_combined
+            deseasonalized, quantile_levels_combined
         )
 
         # Return thresholds only if requested
@@ -531,7 +531,7 @@ class RegionalExtremes:
         results = xr.Dataset({"extremes": extremes, "thresholds": quantiles_xr})
         return results
 
-    def _compute_regional_quantiles(self, data, quantile_levels):
+    def _compute_quantiles_flatten(self, data, quantile_levels):
         """
         Compute regional quantiles for the provided data.
         Args:
@@ -540,10 +540,10 @@ class RegionalExtremes:
         Returns:
             xarray.DataArray: Regional quantiles as an xarray.DataArray.
         """
-        import dask.array as da
-
         # Mask NaN values and flatten the data
+        data = data.data
         flattened_nonan = data.flatten()[~da.isnan(data.flatten())]
+
         # Compute quantiles using Dask
         quantiles = da.percentile(
             flattened_nonan,
@@ -557,6 +557,51 @@ class RegionalExtremes:
             dims=["quantile"],
         )
         return quantiles_xr
+
+    def _compute_regional_quantiles(self, data, quantile_levels):
+        """
+        Compute regional quantiles for the provided data.
+        Args:
+            data (dask.array.Array): Flattened data to compute quantiles for.
+            quantile_levels (np.ndarray): Combined lower and upper quantile levels.
+        Returns:
+            xarray.DataArray: Regional quantiles as an xarray.DataArray.
+        """
+
+        def _compute_quantiles_doy(grp):
+            """
+            Compute quantiles for a single group.
+
+            Args:
+                grp: xarray DataArray group for a specific day of the year
+
+            Returns:
+                xarray.DataArray: Quantiles for the current day of the year
+            """
+            data = grp.data
+            flattened_nonan = data.flatten()[~da.isnan(data.flatten())]
+
+            # Compute quantiles using Dask
+            quantiles = da.percentile(
+                flattened_nonan,
+                quantile_levels * 100,  # Convert to percentages
+                method="linear",
+            )
+            # print(grp["time.dayofyear"])
+            quantiles_xr = xr.DataArray(
+                quantiles,
+                coords={
+                    "quantile": quantile_levels,
+                },
+                dims=["quantile"],
+            )
+
+            return quantiles_xr
+
+        quantile_per_doy = data.groupby("time.dayofyear").map(_compute_quantiles_doy)
+        print(quantile_per_doy)
+
+        return quantile_per_doy
 
     def _apply_thresholds(
         self,
