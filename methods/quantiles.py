@@ -473,3 +473,35 @@ class QuantilesPerDoy(QuantilesBase):
         extremes = self._apply_thresholds(data, quantiles_xr)
         results = xr.Dataset({"extremes": extremes, "thresholds": quantiles_xr})
         return results
+
+    def _create_quantile_masks(self, data, quantiles):
+        """
+        Create masks for each quantile level.
+
+        Args:
+            data (xarray.DataArray): Input data.
+            lower_quantiles (xarray.DataArray): Lower quantiles.
+            upper_quantiles (xarray.DataArray): Upper quantiles.
+
+        Returns:
+            list: List of boolean masks for each quantile level.
+        """
+        lower_quantiles_thresholds = quantiles.sel(quantile=self.lower_quantiles).values
+        upper_quantiles_thresholds = quantiles.sel(quantile=self.upper_quantiles).values
+        print(data.shape)
+        print(lower_quantiles_thresholds.shape)
+        masks = [
+            data < lower_quantiles_thresholds[0],
+            *[
+                (data >= lower_quantiles_thresholds[i - 1])
+                & (data < lower_quantiles_thresholds[i])
+                for i in range(1, len(self.lower_quantiles))
+            ],
+            *[
+                (data > upper_quantiles_thresholds[i - 1])
+                & (data <= upper_quantiles_thresholds[i])
+                for i in range(1, len(self.upper_quantiles))
+            ],
+            data > upper_quantiles_thresholds[-1],
+        ]
+        return masks
