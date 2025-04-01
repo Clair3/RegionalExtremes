@@ -7,7 +7,7 @@ from scipy.spatial.distance import pdist, squareform
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
 from RegionalExtremesPackage.methods.eco_cluster import EcoCluster
-from RegionalExtremesPackage.methods.quantiles import Quantiles
+from RegionalExtremesPackage.methods.quantiles import quantiles
 from RegionalExtremesPackage.utils.logger import printt
 from RegionalExtremesPackage.utils import Loader, Saver
 from RegionalExtremesPackage.dataloaders import dataloader
@@ -107,7 +107,7 @@ def regional_extremes_method(args):
     eco_cluster_processor.apply_pca(scaled_data=msc)
     eco_clusters = eco_cluster_processor.find_eco_clusters()
     # Compute the quantiles per eco_clusters
-    quantiles_processor = Quantiles(config=config, eco_clusters=eco_clusters)
+    quantiles_processor = quantiles(config=config, eco_clusters=eco_clusters)
     quantiles_processor.compute_regional_threshold(data)
 
 
@@ -140,5 +140,5 @@ def regional_extremes_minicube(args, minicube_path):
     eco_cluster_processor.apply_pca(scaled_data=msc)
     eco_clusters = eco_cluster_processor.find_eco_clusters()
     # Compute the quantiles per regions/biome (=eco_clusters)
-    quantiles_processor = Quantiles(config=config, eco_clusters=eco_clusters)
+    quantiles_processor = quantiles(config=config, eco_clusters=eco_clusters)
     quantiles_processor.apply_regional_threshold(data)
