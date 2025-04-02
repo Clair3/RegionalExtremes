@@ -441,6 +441,7 @@ class Sentinel2Dataloader(Dataloader):
                 return None, None
         else:
             data = self.load_dataset()
+        data = data.astype(np.float32)
 
         printt(f"Processing entire dataset: {data.sizes['location']} locations.")
         data = self.compute_mean_per_period(data, dict_config["period_size"])
@@ -469,6 +470,8 @@ class Sentinel2Dataloader(Dataloader):
         # )
         # self.saver._save_data(data, "cumulative_evi")
 
-        data = _ensure_time_chunks(data)
+        # data = _ensure_time_chunks(data)
         data = data.transpose("location", "time", ...).compute()
+        data = data.chunk({"time": -1, "location": 100})
+        # data = _ensure_time_chunks(data)
         return msc, data

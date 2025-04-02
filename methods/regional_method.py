@@ -108,6 +108,7 @@ def regional_extremes_method(args):
     eco_clusters = eco_cluster_processor.find_eco_clusters()
     # Compute the quantiles per eco_clusters
     quantiles_processor = quantiles(config=config, eco_clusters=eco_clusters)
+    print(data)
     quantiles_processor.compute_regional_threshold(data)
 
 

@@ -167,6 +167,7 @@ class QuantilesBase(ABC):
 
         # Calculate thresholds
         thresholds = grouped.map(lambda grp: map_thresholds_to_clusters(grp))
+
         thresholds = thresholds.sel(eco_cluster=data["eco_cluster"])
         thresholds = thresholds.drop_vars(["eco_cluster"])
         # Save thresholds
@@ -268,7 +269,6 @@ class QuantilesBase(ABC):
             return unique_clusters, labels
 
         unique_clusters, eco_cluster_labels = _create_cluster_labels(self.eco_clusters)
-
         # Process and filter groups
         data = data.groupby(eco_cluster_labels).map(_process_group)
         filtered_data = data.where(data.valid_group, drop=True)
@@ -276,13 +276,13 @@ class QuantilesBase(ABC):
             raise ValueError("No valid groups found.")
 
         aligned_labels = eco_cluster_labels.sel(location=filtered_data.location)
+
         results = filtered_data.groupby(aligned_labels).map(
             lambda grp: self._compute_thresholds(
                 grp,
                 return_only_thresholds=self.config.is_generic_xarray_dataset,
             )
         )
-
         # Compute cluster-level thresholds
         group_thresholds = results["thresholds"].groupby(aligned_labels).mean()
         unique_clusters, _ = _create_cluster_labels(
@@ -342,7 +342,6 @@ class QuantilesBase(ABC):
             data (xarray.DataArray): Data used to compute the quantiles.
             quantile_levels (tuple): Tuple of lower and upper quantile levels.
             return_only_thresholds (bool): If True, only return quantile thresholds.
-
         Returns:
             xarray.Dataset: Dataset containing extremes and thresholds.
         """
@@ -371,15 +370,22 @@ class QuantilesBase(ABC):
         Returns:
             xarray.DataArray: Regional quantiles as an xarray.DataArray.
         """
+        data = data.chunk({"time": -1, "location": -1})
         data = data.data
+        non_nan_count = da.count_nonzero(~da.isnan(data))
+        # print("non_nan_count", non_nan_count)
         flattened_nonan = data.flatten()[~da.isnan(data.flatten())]
-
-        # Compute quantiles using Dask
-        quantiles = da.percentile(
-            flattened_nonan,
-            self.quantile_levels_combined * 100,  # Convert to percentages
-            method="linear",
-        )
+        if non_nan_count < 30:
+            quantiles = da.full(
+                self.quantile_levels_combined.shape, np.nan, dtype=float
+            )  # Fill with NaNs
+        else:
+            # Compute quantiles using Dask
+            quantiles = da.percentile(
+                flattened_nonan,
+                self.quantile_levels_combined * 100,  # Convert to percentages
+                method="linear",
+            )
         # Wrap quantiles in an xarray.DataArray
         quantiles_xr = xr.DataArray(
             quantiles,
@@ -419,8 +425,12 @@ class QuantilesBase(ABC):
             list: List of boolean masks for each quantile level.
         """
 
-        lower_quantiles_thresholds = quantiles.sel(quantile=self.lower_quantiles).values
-        upper_quantiles_thresholds = quantiles.sel(quantile=self.upper_quantiles).values
+        lower_quantiles_thresholds = quantiles.sel(
+            quantile=self.lower_quantiles
+        )  # .values
+        upper_quantiles_thresholds = quantiles.sel(
+            quantile=self.upper_quantiles
+        )  # .values
 
         # except:
         #    print("mask", data)
@@ -465,7 +475,8 @@ class QuantilesPerDoy(QuantilesBase):
 
         # Unpack quantile levels and prepare data
         # print(data)
-        data = data.chunk("auto")
+        # data = data.chunk({"time": -1, "location": -1})
+        # data = data.chunk("auto")
         # print(data)
 
         # Compute quantiles based on the method
@@ -490,21 +501,17 @@ class QuantilesPerDoy(QuantilesBase):
             return extremes
 
         def compute_doy_mask(grp):
-            try:
-                thresholds_doy = thresholds.sel(dayofyear=grp.time.dt.dayofyear[0])
-                extremes = xr.full_like(grp.astype(float), np.nan)
-                if thresholds_doy is np.nan:
-                    return extremes
-                masks = self._create_quantile_masks(grp, thresholds_doy)
-            except:
-                print(
-                    "Error in compute_doy_mask: ",
-                    grp.time.dt.dayofyear[0].compute(),
-                    thresholds,
-                    grp,
-                    thresholds_doy.values,
-                )
-                print(thresholds.dayofyear)
+            # try:
+            thresholds_doy = thresholds.sel(
+                dayofyear=grp.time.dt.dayofyear[0]  # .compute()
+            )  # .compute()
+            extremes = xr.full_like(grp.astype(float), np.nan)
+            if thresholds_doy is np.nan:
+                return extremes
+            masks = self._create_quantile_masks(grp, thresholds_doy)
+            # except:
+            #     print("Error in compute_doy_mask: ")
+            #     print(thresholds.compute())
             for i, mask in enumerate(masks):
                 extremes = xr.where(mask, self.quantile_levels_combined[i], extremes)
             return extremes
