@@ -18,7 +18,7 @@ class Sentinel2Dataloader(Dataloader):
         self.variable_name = "evi_earthnet"
 
         # Attempt to load preprocessed training data
-        # training_data = self.loader._load_data("temp_file")
+        training_data = self.loader._load_data("temp_file")
         path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-12-21_13:11:46_30000_locations/EVI_EN/temp_file.zarr"
         training_data = xr.open_zarr(path)
         training_data = cfxr.decode_compress_to_multi_index(training_data, "location")
@@ -119,8 +119,9 @@ class Sentinel2Dataloader(Dataloader):
         return df.loc[sampled_indices].values  # df.loc[sampled_indices, "path"].values
 
     def load_file(self, minicube_path, process_entire_minicube=False):
+        print(minicube_path)
         filepath = Path(minicube_path)  # EARTHNET_FILEPATH + minicube_path
-        ds = xr.open_zarr(filepath)
+        ds = xr.open_zarr(filepath).astype(np.float32)
 
         ds = self._ensure_coordinates(ds)
         ds = ds.sel(time=slice(date(2017, 3, 1), None))
@@ -441,7 +442,6 @@ class Sentinel2Dataloader(Dataloader):
                 return None, None
         else:
             data = self.load_dataset()
-        data = data.astype(np.float32)
 
         printt(f"Processing entire dataset: {data.sizes['location']} locations.")
         data = self.compute_mean_per_period(data, dict_config["period_size"])
@@ -470,8 +470,8 @@ class Sentinel2Dataloader(Dataloader):
         # )
         # self.saver._save_data(data, "cumulative_evi")
 
-        # data = _ensure_time_chunks(data)
+        data = _ensure_time_chunks(data)
         data = data.transpose("location", "time", ...).compute()
-        data = data.chunk({"time": -1, "location": 100})
+        # data = data.chunk({"time": -1, "location": 100})
         # data = _ensure_time_chunks(data)
         return msc, data

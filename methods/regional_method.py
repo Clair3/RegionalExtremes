@@ -73,6 +73,7 @@ def regional_extremes_method(args):
     eco_cluster_processor = EcoCluster(
         config=config,
     )
+    quantiles_processor = quantiles(config=config)
     # Load a subset of the dataset and fit the PCA
     if not hasattr(eco_cluster_processor.pca, "explained_variance_"):
         # Initialization of the climatic or ecological DatasetHandler
@@ -107,9 +108,8 @@ def regional_extremes_method(args):
     eco_cluster_processor.apply_pca(scaled_data=msc)
     eco_clusters = eco_cluster_processor.find_eco_clusters()
     # Compute the quantiles per eco_clusters
-    quantiles_processor = quantiles(config=config, eco_clusters=eco_clusters)
-    print(data)
-    quantiles_processor.compute_regional_threshold(data)
+
+    quantiles_processor.compute_regional_threshold(data, eco_clusters_load=eco_clusters)
 
 
 def regional_extremes_minicube(args, minicube_path):
@@ -123,10 +123,11 @@ def regional_extremes_minicube(args, minicube_path):
     eco_cluster_processor = EcoCluster(
         config=config,
     )
+    quantiles_processor = quantiles(config=config)
     if eco_cluster_processor.limits_eco_clusters is None:
         raise FileNotFoundError("limits_eco_clusters file unavailable.")
-    if eco_cluster_processor.thresholds is None:
-        raise FileNotFoundError("thresholds file unavailable.")
+    # if eco_cluster_processor.thresholds is None:
+    #     raise FileNotFoundError("thresholds file unavailable.")
 
     # Apply the regional threshold and compute the extremes
     # Load the data
@@ -141,5 +142,5 @@ def regional_extremes_minicube(args, minicube_path):
     eco_cluster_processor.apply_pca(scaled_data=msc)
     eco_clusters = eco_cluster_processor.find_eco_clusters()
     # Compute the quantiles per regions/biome (=eco_clusters)
-    quantiles_processor = quantiles(config=config, eco_clusters=eco_clusters)
-    quantiles_processor.apply_regional_threshold(data)
+
+    quantiles_processor.apply_regional_threshold(data, eco_clusters_load=eco_clusters)

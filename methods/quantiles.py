@@ -25,22 +25,18 @@ np.set_printoptions(threshold=sys.maxsize)
 
 
 @staticmethod
-def quantiles(
-    config: InitializationConfig,
-    eco_clusters: xr.DataArray,
-):
-    config.dayofyear = True
+def quantiles(config: InitializationConfig):
+    config.dayofyear = False
     if config.dayofyear:
-        return QuantilesPerDoy(config, eco_clusters)
+        return QuantilesPerDoy(config)
     else:
-        return QuantilesBase(config, eco_clusters)
+        return QuantilesBase(config)
 
 
 class QuantilesBase(ABC):
     def __init__(
         self,
         config: InitializationConfig,
-        eco_clusters: xr.DataArray,
     ):
         """
         Compute the regional extremes by defining boxes of similar region using a PCA computed on the mean seasonal cycle of the samples.
@@ -52,7 +48,7 @@ class QuantilesBase(ABC):
             n_eco_clusters (int): Number of eco_clusters per component to define the boxes. Number of boxes = n_eco_clusters**n_components
         """
         self.config = config
-        self.eco_clusters = eco_clusters
+        # self.eco_clusters = eco_clusters
         self.lower_quantiles = self.config.lower_quantiles
         self.upper_quantiles = self.config.upper_quantiles
         self.dayofyear = True  # self.config.dayofyear # TODO better naming
@@ -63,19 +59,19 @@ class QuantilesBase(ABC):
         self.loader = Loader(config)
         # Saver class to save intermediate steps.
         self.saver = Saver(config)
-
         if self.config.path_load_experiment:
             # Load every variable if already available, otherwise return None.
             # self.eco_clusters = self.loader._load_data("eco_clusters")
             self.thresholds = self.loader._load_data(
                 "thresholds", location=False, cluster=True
             )
+            print(self.thresholds)
 
         else:
             # self.eco_clusters = None
             self.thresholds = None
 
-    def apply_regional_threshold(self, data):
+    def apply_regional_threshold(self, data, eco_clusters_load):
         """
         Compute and save a xarray indicating the quantiles of extremes using the regional threshold definition.
 
@@ -98,12 +94,12 @@ class QuantilesBase(ABC):
         # Initialize parameters
         compute_only_thresholds = self.config.is_generic_xarray_dataset
 
-        def create_eco_cluster_labels():
+        def create_eco_cluster_labels(eco_clusters_load):
             """Create standardized eco-cluster labels."""
-            if not hasattr(self, "eco_clusters"):  # or not self.eco_clusters:
-                raise ValueError("eco_clusters not properly initialized")
+            # if not hasattr(self, "eco_clusters"):  # or not self.eco_clusters:
+            #     raise ValueError("eco_clusters not properly initialized")
             return np.array(
-                ["_".join(map(str, cluster)) for cluster in self.eco_clusters.values]
+                ["_".join(map(str, cluster)) for cluster in eco_clusters_load.values]
             )
 
         def prepare_data(data, labels):
@@ -161,7 +157,7 @@ class QuantilesBase(ABC):
         extremes_array = xr.full_like(data.astype(float), np.nan)
 
         # Process data
-        eco_cluster_labels = create_eco_cluster_labels()
+        eco_cluster_labels = create_eco_cluster_labels(eco_clusters_load)
         data = prepare_data(data, eco_cluster_labels)
         grouped = data.groupby("eco_cluster")
 
@@ -187,14 +183,13 @@ class QuantilesBase(ABC):
 
         return thresholds
 
-    def compute_regional_threshold(self, data):
+    def compute_regional_threshold(self, data, eco_clusters_load):
         """
         Compute and save regional thresholds for extremes.
 
         Parameters:
         -----------
-        data : xarray.DataArray
-            The data dataset
+        data : xarray.DataArray (time, location) to compute the distribution
         """
         assert self.config.method == "regional"
 
@@ -268,7 +263,7 @@ class QuantilesBase(ABC):
             )
             return unique_clusters, labels
 
-        unique_clusters, eco_cluster_labels = _create_cluster_labels(self.eco_clusters)
+        unique_clusters, eco_cluster_labels = _create_cluster_labels(eco_clusters_load)
         # Process and filter groups
         data = data.groupby(eco_cluster_labels).map(_process_group)
         filtered_data = data.where(data.valid_group, drop=True)
@@ -277,48 +272,77 @@ class QuantilesBase(ABC):
 
         aligned_labels = eco_cluster_labels.sel(location=filtered_data.location)
 
-        results = filtered_data.groupby(aligned_labels).map(
-            lambda grp: self._compute_thresholds(
-                grp,
-                return_only_thresholds=self.config.is_generic_xarray_dataset,
-            )
-        )
+        results = self._compute_thresholds_per_grp(filtered_data, aligned_labels)
         # Compute cluster-level thresholds
         group_thresholds = results["thresholds"].groupby(aligned_labels).mean()
+        # group_thresholds = self._group_by(
+        #     results["thresholds"].groupby(aligned_labels), lambda grp: grp.mean()
+        # )
         unique_clusters, _ = _create_cluster_labels(
-            self.eco_clusters.sel(location=filtered_data.location)
+            eco_clusters_load.sel(location=filtered_data.location)
         )
 
         multi_index = pd.MultiIndex.from_arrays(
             unique_clusters.T, names=["component_1", "component_2", "component_3"]
         )
-
+        # printt(group_thresholds)
+        # print(group_thresholds.values.shape)
+        # print(filtered_data.time.dayofyear)
         thresholds_by_cluster = xr.DataArray(
             data=group_thresholds.values,
-            dims=("eco_cluster", "quantile"),
+            dims=("eco_cluster", "quantile"),  # , "dayofyear"),
             coords={
                 "eco_cluster": multi_index,
                 "quantile": self.quantile_levels_combined,
+                # "dayofyear": group_thresholds.dayofyear,
             },
             name="thresholds",
         )
+
+        # thresholds_by_cluster = xr.DataArray(
+        #     data=group_thresholds.values,
+        #     dims=("eco_cluster", "quantile"),
+        #     coords={
+        #         "eco_cluster": multi_index,
+        #         "quantile": self.quantile_levels_combined,
+        #     },
+        #     name="thresholds",
+        # )
 
         self.saver._save_data(
             thresholds_by_cluster, "thresholds", location=False, eco_cluster=True
         )
 
         if not self.config.is_generic_xarray_dataset:
+            print(group_thresholds.values.shape)
             thresholds_array = xr.DataArray(
                 np.full(
-                    (len(data.location), len(self.quantile_levels_combined)),
+                    (
+                        len(data.location),
+                        len(self.quantile_levels_combined),
+                        # len(data.dt.time.dayofyear),
+                    ),
                     np.nan,
                 ),
                 dims=["location", "quantile"],
                 coords={
                     "location": data.location,
                     "quantile": self.quantile_levels_combined,
+                    # "dayofyear": data.time.dt.dayofyear,
                 },
             )
+
+            # thresholds_array = xr.DataArray(
+            #     np.full(
+            #         (len(data.location), len(self.quantile_levels_combined)),
+            #         np.nan,
+            #     ),
+            #     dims=["location", "quantile"],
+            #     coords={
+            #         "location": data.location,
+            #         "quantile": self.quantile_levels_combined,
+            #     },
+            # )
             thresholds_array.loc[dict(location=results["thresholds"].location)] = (
                 results["thresholds"].values
             )
@@ -329,6 +353,36 @@ class QuantilesBase(ABC):
                 "extremes"
             ].values
             self.saver._save_data(extremes_array, "extremes")
+
+    def _compute_thresholds_per_grp(self, filtered_data, aligned_labels):
+        """
+        Compute thresholds for each group.
+
+        Returns:
+        --------
+        xarray.DataArray
+            Computed thresholds for the group
+        """
+        return filtered_data.groupby(aligned_labels).map(
+            lambda grp: self._compute_thresholds(
+                grp,
+                return_only_thresholds=self.config.is_generic_xarray_dataset,
+            )
+        )
+
+    def _compute_group_thresholds(self, results, aligned_labels):
+        """
+        Compute the group thresholds.
+
+        Args:
+            results (xarray.DataArray): Results of the computation.
+            aligned_labels (xarray.DataArray): Aligned labels for grouping.
+
+        Returns:
+            xarray.DataArray: Group thresholds.
+        """
+        # Compute cluster-level thresholds
+        return results["thresholds"].groupby(aligned_labels).mean()
 
     def _compute_thresholds(
         self,
@@ -370,10 +424,9 @@ class QuantilesBase(ABC):
         Returns:
             xarray.DataArray: Regional quantiles as an xarray.DataArray.
         """
-        data = data.chunk({"time": -1, "location": -1})
+
         data = data.data
         non_nan_count = da.count_nonzero(~da.isnan(data))
-        # print("non_nan_count", non_nan_count)
         flattened_nonan = data.flatten()[~da.isnan(data.flatten())]
         if non_nan_count < 30:
             quantiles = da.full(
@@ -432,11 +485,6 @@ class QuantilesBase(ABC):
             quantile=self.upper_quantiles
         )  # .values
 
-        # except:
-        #    print("mask", data)
-        #    print(quantiles.compute())
-        #    print(quantiles.sel(quantile=self.lower_quantiles).compute())
-
         masks = [
             data < lower_quantiles_thresholds[0],
             *[
@@ -453,68 +501,64 @@ class QuantilesBase(ABC):
         ]
         return masks
 
+    def _group_by(self, groupby, function):
+        return groupby.map(function)
+
 
 class QuantilesPerDoy(QuantilesBase):
-    def _compute_thresholds(
-        self,
-        data: xr.DataArray,
-        return_only_thresholds=False,
-    ):
+    def _compute_thresholds_per_grp(self, filtered_data, aligned_labels):
         """
-        Assign quantile levels to data.
-
-        Args:
-            data (xarray.DataArray): Data used to compute the quantiles.
-            quantile_levels (tuple): Tuple of lower and upper quantile levels.
-            return_only_thresholds (bool): If True, only return quantile thresholds.
+        Compute thresholds for each group.
 
         Returns:
-            xarray.Dataset: Dataset containing extremes and thresholds.
+        --------
+        xarray.DataArray
+            Computed thresholds for the group
         """
-        assert self.config.method == "regional"
-
-        # Unpack quantile levels and prepare data
-        # print(data)
-        # data = data.chunk({"time": -1, "location": -1})
-        # data = data.chunk("auto")
-        # print(data)
-
-        # Compute quantiles based on the method
-        quantiles_xr = data.groupby("time.dayofyear").map(
-            self._compute_quantiles_per_grp
+        return filtered_data.groupby(aligned_labels).map(
+            lambda grp: grp.groupby("time.dayofyear").map(
+                lambda grp: self._compute_thresholds(
+                    grp,
+                    return_only_thresholds=self.config.is_generic_xarray_dataset,
+                )
+            )
         )
 
-        # Return thresholds only if requested
-        if return_only_thresholds:
-            return xr.Dataset({"thresholds": quantiles_xr})
+    def _group_by(self, groupby, function):
+        return groupby.map(lambda grp: grp.groupby("time.dayofyear").map(function))
 
-        extremes = self._apply_thresholds(data, quantiles_xr)
-        results = xr.Dataset({"extremes": extremes, "thresholds": quantiles_xr})
-        return results
+    def _compute_group_thresholds(self, results, aligned_labels):
+        return (
+            results["thresholds"]
+            .groupby(aligned_labels)
+            .map(lambda grp: grp.groupby("time.dayofyear").mean())
+        )
 
-    def _apply_thresholds(
-        self,
-        data: xr.DataArray,
-        thresholds,
-    ):
-        if thresholds is np.nan:
-            return extremes
+    # def _apply_thresholds(
+    #     self,
+    #     data: xr.DataArray,
+    #     thresholds,
+    # ):
+    #     if thresholds is np.nan:
+    #         return extremes
 
-        def compute_doy_mask(grp):
-            # try:
-            thresholds_doy = thresholds.sel(
-                dayofyear=grp.time.dt.dayofyear[0]  # .compute()
-            )  # .compute()
-            extremes = xr.full_like(grp.astype(float), np.nan)
-            if thresholds_doy is np.nan:
-                return extremes
-            masks = self._create_quantile_masks(grp, thresholds_doy)
-            # except:
-            #     print("Error in compute_doy_mask: ")
-            #     print(thresholds.compute())
-            for i, mask in enumerate(masks):
-                extremes = xr.where(mask, self.quantile_levels_combined[i], extremes)
-            return extremes
 
-        extremes = data.groupby("time.dayofyear").map(compute_doy_mask)
-        return extremes
+#
+#     def compute_doy_mask(grp):
+#         # try:
+#         thresholds_doy = thresholds.sel(
+#             dayofyear=grp.time.dt.dayofyear[0]  # .compute()
+#         )  # .compute()
+#         extremes = xr.full_like(grp.astype(float), np.nan)
+#         if thresholds_doy is np.nan:
+#             return extremes
+#         masks = self._create_quantile_masks(grp, thresholds_doy)
+#         # except:
+#         #     print("Error in compute_doy_mask: ")
+#         #     print(thresholds.compute())
+#         for i, mask in enumerate(masks):
+#             extremes = xr.where(mask, self.quantile_levels_combined[i], extremes)
+#         return extremes
+#
+#     extremes = data.groupby("time.dayofyear").map(compute_doy_mask)
+#     return extremes

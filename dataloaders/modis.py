@@ -9,6 +9,7 @@ class ModisDataloader(Sentinel2Dataloader):
         return (ds["250m_16_days_EVI"] + 2000) / 12000
 
     def load_file(self, minicube_path, process_entire_minicube=False):
+        print(minicube_path)
         filepath = Path(minicube_path)
         with xr.open_zarr(filepath) as ds:
 
