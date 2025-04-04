@@ -35,7 +35,7 @@ class Sentinel2Dataloader(Dataloader):
 
         # Determine the number of samples to process (default: 10,000)
         sample_count = self.n_samples or 10_000
-        printt(f"count: {sample_count}")
+        print(f"count: {sample_count}")
         samples_paths = self.sample_locations(sample_count)
 
         printt("Loading dataset...")
@@ -119,6 +119,7 @@ class Sentinel2Dataloader(Dataloader):
         return df.loc[sampled_indices].values  # df.loc[sampled_indices, "path"].values
 
     def load_file(self, minicube_path, process_entire_minicube=False):
+        print(minicube_path)
         filepath = Path(minicube_path)  # EARTHNET_FILEPATH + minicube_path
         ds = xr.open_zarr(filepath).astype(np.float32)
 
@@ -230,7 +231,7 @@ class Sentinel2Dataloader(Dataloader):
             valid_ratio = valid_scl.sum(
                 dim=["latitude", "longitude"]
             ) / valid_scl.count(dim=["latitude", "longitude"])
-            invalid_time_steps = valid_ratio < 0.99
+            invalid_time_steps = valid_ratio < 0.97
             mask = mask.where(~invalid_time_steps, np.nan)
 
         if "cloudmask_en" in ds.data_vars:
@@ -325,7 +326,7 @@ class Sentinel2Dataloader(Dataloader):
         mean = xr.where(count > 1, sum / (count + 1e-10), np.nan)
         return mean
 
-    def compute_mean_per_period(self, data, period_size=10):
+    def compute_max_per_period(self, data, period_size=10):
         # Function to generate valid dates (time bins) for all years at once
         def get_time_periods(bin_size, years):
             periods = []
@@ -361,7 +362,7 @@ class Sentinel2Dataloader(Dataloader):
         data_grouped = data.groupby("period")
 
         # Compute max for each period
-        mean_per_period = data_grouped.mean(dim="time")
+        mean_per_period = data_grouped.max(dim="time")
         # mean_per_period = data_grouped.max(dim="time")
 
         # Apply the transformation to convert periods back to midpoints in time
@@ -420,7 +421,6 @@ class Sentinel2Dataloader(Dataloader):
             Mean seasonal cycle (MSC), and optionally, the processed time series.
         """
         dict_config = self.get_config()
-        # WARNING: maybe bug somewhere on threshold with the following line. Idk why...
         # msc = self.loader._load_data("msc")
         # if msc is not None and not return_time_series:
         #     return msc.msc
@@ -444,7 +444,7 @@ class Sentinel2Dataloader(Dataloader):
             data = self.load_dataset()
 
         printt(f"Processing entire dataset: {data.sizes['location']} locations.")
-        data = self.compute_mean_per_period(data, dict_config["period_size"])
+        data = self.compute_max_per_period(data, dict_config["period_size"])
         data = self.noise_removal.cloudfree_timeseries(
             data, noise_half_windows=dict_config["noise_half_windows"]
         )
