@@ -8,7 +8,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
 from RegionalExtremesPackage.utils.logger import printt
 from RegionalExtremesPackage.utils import Loader, Saver
-from RegionalExtremesPackage.dataloaders import create_handler
+from RegionalExtremesPackage.dataloaders import dataloader
 from RegionalExtremesPackage.utils.config import InitializationConfig
 
 

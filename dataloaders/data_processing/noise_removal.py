@@ -13,23 +13,31 @@ class NoiseRemovalBase(ABC):
 
     def remove_cloud_noise(self, data, half_window=2, gapfill=True):
         """Detect and remove cloud noise using shifted mean values."""
-        before_sum, before_count = _compute_shifted_sums(data, half_window, direction=1)
-        after_sum, after_count = _compute_shifted_sums(data, half_window, direction=-1)
-        mean_before = xr.where(
-            before_count > 0, before_sum / (before_count + 1e-10), np.nan
-        )
-        mean_after = xr.where(
-            after_count > 0, after_sum / (after_count + 1e-10), np.nan
-        )
+        before_max = _compute_shifted_max(data, half_window, direction=1)
+        after_max = _compute_shifted_max(data, half_window, direction=-1)
 
         is_cloud = (
-            (data < mean_before)
-            & (data < mean_after)
-            & ((mean_before - data > 0.05) & (mean_after - data > 0.05))
+            (data < before_max)
+            & (data < after_max)
+            & ((before_max - data > 0.05) & (after_max - data > 0.05))
         )
+        # before_sum, before_count = _compute_shifted_sums(data, half_window, direction=1)
+        # after_sum, after_count = _compute_shifted_sums(data, half_window, direction=-1)
+        # mean_before = xr.where(
+        #     before_count > 0, before_sum / (before_count + 1e-10), np.nan
+        # )
+        # mean_after = xr.where(
+        #     after_count > 0, after_sum / (after_count + 1e-10), np.nan
+        # )
+        #
+        # is_cloud = (
+        #     (data < mean_before)
+        #     & (data < mean_after)
+        #     & ((mean_before - data > 0.05) & (mean_after - data > 0.05))
+        # )
 
         if gapfill:
-            replacement_values = (mean_before + mean_after) / 2
+            replacement_values = (before_max + after_max) / 2
             return xr.where(is_cloud, replacement_values, data)
 
         return xr.where(is_cloud, np.nan, data)

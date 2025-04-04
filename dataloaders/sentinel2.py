@@ -18,7 +18,7 @@ class Sentinel2Dataloader(Dataloader):
         self.variable_name = "evi_earthnet"
 
         # Attempt to load preprocessed training data
-        # training_data = self.loader._load_data("temp_file")
+        training_data = self.loader._load_data("temp_file")
         path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-12-21_13:11:46_30000_locations/EVI_EN/temp_file.zarr"
         training_data = xr.open_zarr(path)
         training_data = cfxr.decode_compress_to_multi_index(training_data, "location")
@@ -35,7 +35,7 @@ class Sentinel2Dataloader(Dataloader):
 
         # Determine the number of samples to process (default: 10,000)
         sample_count = self.n_samples or 10_000
-        print(f"count: {sample_count}")
+        printt(f"count: {sample_count}")
         samples_paths = self.sample_locations(sample_count)
 
         printt("Loading dataset...")
@@ -120,7 +120,7 @@ class Sentinel2Dataloader(Dataloader):
 
     def load_file(self, minicube_path, process_entire_minicube=False):
         filepath = Path(minicube_path)  # EARTHNET_FILEPATH + minicube_path
-        ds = xr.open_zarr(filepath)
+        ds = xr.open_zarr(filepath).astype(np.float32)
 
         ds = self._ensure_coordinates(ds)
         ds = ds.sel(time=slice(date(2017, 3, 1), None))
@@ -386,6 +386,7 @@ class Sentinel2Dataloader(Dataloader):
         config["period_size"] = 16
         config["smoothing_window_msc"] = 7
         config["poly_msc"] = 2
+        config["deseasonalization"] = True
 
         return config
 
@@ -418,12 +419,21 @@ class Sentinel2Dataloader(Dataloader):
         xr.DataArray
             Mean seasonal cycle (MSC), and optionally, the processed time series.
         """
-        msc = self.loader._load_data("msc")
-        if msc is not None and not return_time_series:
-            return msc.msc
-
-        printt("Starting preprocessing...")
         dict_config = self.get_config()
+        # WARNING: maybe bug somewhere on threshold with the following line. Idk why...
+        # msc = self.loader._load_data("msc")
+        # if msc is not None and not return_time_series:
+        #     return msc.msc
+        # if dict_config["deseasonalization"]:
+        #     data = self.loader._load_data("deseasonalized")
+        #     if msc is not None and data is not None:
+        #         return msc.msc, data.deseasonalized
+        # else:
+        #     data = self.loader._load_data("evi")
+        #     if msc is not None and data is not None:
+        #         return msc.msc, data.evi
+        printt("Starting preprocessing...")
+
         # Load data either from a minicube or from the default dataset
         if minicube_path:
             printt(f"Loading minicube from {minicube_path}")
@@ -450,8 +460,9 @@ class Sentinel2Dataloader(Dataloader):
             return msc
 
         # Step 3: Deseasonalization
-        data = self._deseasonalize(data, msc)  # needed?
-        self.saver._save_data(data, "deseasonalized")
+        if dict_config["deseasonalization"]:
+            data = self._deseasonalize(data, msc)  # needed?
+            self.saver._save_data(data, "deseasonalized")
 
         # Step 5: Cumulative EVI computation
         # data = self.cumulative_evi(
@@ -461,4 +472,6 @@ class Sentinel2Dataloader(Dataloader):
 
         data = _ensure_time_chunks(data)
         data = data.transpose("location", "time", ...).compute()
+        # data = data.chunk({"time": -1, "location": 100})
+        # data = _ensure_time_chunks(data)
         return msc, data

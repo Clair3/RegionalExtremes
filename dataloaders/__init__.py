@@ -7,7 +7,7 @@ from .modis import ModisDataloader
 
 
 @staticmethod
-def create_handler(config: InitializationConfig, n_samples: int):
+def dataloader(config: InitializationConfig, n_samples: int):
     if config.is_generic_xarray_dataset:
         return GenericDataloader(config, n_samples=n_samples)
     elif config.index in ECOLOGICAL_INDICES:
