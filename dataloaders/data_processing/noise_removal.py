@@ -16,11 +16,12 @@ class NoiseRemovalBase(ABC):
         before_max = _compute_shifted_max(data, half_window, direction=1)
         after_max = _compute_shifted_max(data, half_window, direction=-1)
 
-        is_cloud = (
-            (data < before_max)
-            & (data < after_max)
-            & ((before_max - data > 0.05) & (after_max - data > 0.05))
-        )
+        # is_cloud = (
+        #     (data < before_max)
+        #     & (data < after_max)
+        #     & ((before_max - data > 0.05) & (after_max - data > 0.05))
+        # )
+        is_cloud = (data + 0.05 < before_max) & (data + 0.05 < after_max)
         # before_sum, before_count = _compute_shifted_sums(data, half_window, direction=1)
         # after_sum, after_count = _compute_shifted_sums(data, half_window, direction=-1)
         # mean_before = xr.where(
@@ -30,11 +31,6 @@ class NoiseRemovalBase(ABC):
         #     after_count > 0, after_sum / (after_count + 1e-10), np.nan
         # )
 
-        is_cloud = (
-            (data < before_max)
-            & (data < after_max)
-            & ((before_max - data > 0.05) | (after_max - data > 0.05))
-        )
         if gapfill:
             replacement_values = (before_max + after_max) / 2
             return xr.where(is_cloud, replacement_values, data)

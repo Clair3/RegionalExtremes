@@ -366,7 +366,6 @@ class Sentinel2Dataloader(Dataloader):
         smoothing_window: int = 7,
         poly_order: int = 2,
     ):
-
         # Step 1: Compute mean seasonal cycle
         mean_seasonal_cycle = clean_data.groupby("time.dayofyear").mean(
             "time", skipna=True
@@ -489,7 +488,7 @@ class Sentinel2Dataloader(Dataloader):
 
     def _remove_low_vegetation_location(self, vegetation_index, threshold=0.1):
         mean_vi = vegetation_index.mean("time", skipna=True)
-        valid_locations = (mean_vi > 0.2) & ~np.isnan(mean_vi)
+        valid_locations = (mean_vi > threshold) & ~np.isnan(mean_vi)
 
         # remove low vegetation locations
         filtered_vegetation_index = vegetation_index.sel(location=valid_locations)
@@ -556,6 +555,7 @@ class Sentinel2Dataloader(Dataloader):
             #    nan_fill_windows=dict_config["nan_fill_windows"],
             noise_half_windows=dict_config["noise_half_windows"],
         )
+        data = self._remove_low_vegetation_location(data, threshold=0.2)
         self.saver._save_data(clean_data, "clean_data")
 
         msc = self.compute_msc(clean_data)
