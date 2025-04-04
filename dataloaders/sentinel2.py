@@ -387,7 +387,7 @@ class Sentinel2Dataloader(Dataloader):
         config["period_size"] = 16
         config["smoothing_window_msc"] = 7
         config["poly_msc"] = 2
-        config["deseasonalization"] = False
+        config["deseasonalization"] = True
 
         return config
 
