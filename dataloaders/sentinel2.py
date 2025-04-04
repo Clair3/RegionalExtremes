@@ -555,7 +555,7 @@ class Sentinel2Dataloader(Dataloader):
             #    nan_fill_windows=dict_config["nan_fill_windows"],
             noise_half_windows=dict_config["noise_half_windows"],
         )
-        data = self._remove_low_vegetation_location(data, threshold=0.2)
+        clean_data = self._remove_low_vegetation_location(clean_data, threshold=0.2)
         self.saver._save_data(clean_data, "clean_data")
 
         msc = self.compute_msc(clean_data)
