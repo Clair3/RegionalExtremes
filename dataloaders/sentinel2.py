@@ -393,7 +393,7 @@ class Sentinel2Dataloader(Dataloader):
 
     def _remove_low_vegetation_location(self, vegetation_index, threshold=0.1):
         mean_vi = vegetation_index.mean("time", skipna=True)
-        valid_locations = (mean_vi > 0.2) & ~np.isnan(mean_vi)
+        valid_locations = (mean_vi > threshold) & ~np.isnan(mean_vi)
 
         # remove low vegetation locations
         filtered_vegetation_index = vegetation_index.sel(location=valid_locations)
