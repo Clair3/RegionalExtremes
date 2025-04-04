@@ -114,7 +114,7 @@ def parser_arguments():
 
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
-    args.name = "full_fluxnet_test_prep"
+    args.name = "full_fluxnet_therightone"
     args.index = "EVI_EN"
     args.k_pca = False
     args.n_samples = 10  # 40000
@@ -127,7 +127,7 @@ if __name__ == "__main__":
     args.lower_quantiles = [0.025, 0.05, 0.10, 0.2, 0.3, 0.4, 0.50]
     args.upper_quantiles = [0.501, 0.6, 0.7, 0.8, 0.9, 0.95, 0.975]
 
-    # args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_10:06:45_full_fluxnet_S2"  #
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_12:13:03_full_fluxnet_therightone"  #
 
     if args.method == "regional":
         # Train the regional extreme method on a subset of locations

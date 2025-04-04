@@ -362,21 +362,21 @@ class Sentinel2Dataloader(Dataloader):
         data_grouped = data.groupby("period")
 
         # Compute max for each period
-        mean_per_period = data_grouped.max(dim="time")
-        # mean_per_period = data_grouped.max(dim="time")
+        max_per_period = data_grouped.max(dim="time")
+        # max_per_period = data_grouped.max(dim="time")
 
         # Apply the transformation to convert periods back to midpoints in time
         start_period_times = [
-            pd.to_datetime(periods[p]) for p in mean_per_period.coords["period"].values
+            pd.to_datetime(periods[p]) for p in max_per_period.coords["period"].values
         ]
 
-        # Update mean_per_period with the transformed 'time' coordinates (midpoints)
-        mean_per_period.coords["time"] = ("period", start_period_times)
-        mean_per_period = mean_per_period.swap_dims({"period": "time"}).drop_vars(
+        # Update max_per_period with the transformed 'time' coordinates (midpoints)
+        max_per_period.coords["time"] = ("period", start_period_times)
+        max_per_period = max_per_period.swap_dims({"period": "time"}).drop_vars(
             "period"
         )
-        mean_per_period = mean_per_period.set_index(location=["longitude", "latitude"])
-        return mean_per_period
+        max_per_period = max_per_period.set_index(location=["longitude", "latitude"])
+        return max_per_period
 
     def get_config(self):
         # Define window sizes for gap-filling and cloud noise removal
