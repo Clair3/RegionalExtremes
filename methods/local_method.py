@@ -169,7 +169,7 @@ def local_extremes_method(args, minicube_path):
     # Initialization of RegionalExtremes, load data if already computed.
     extremes_processor = LocalExtremes(config=config)
 
-    dataset_processor = create_handler(config=config, n_samples=None)  # all the dataset
+    dataset_processor = dataloader(config=config, n_samples=None)  # all the dataset
 
     _, data = dataset_processor.preprocess_data(
         return_time_series=True,

@@ -231,7 +231,7 @@ class Sentinel2Dataloader(Dataloader):
             valid_ratio = valid_scl.sum(
                 dim=["latitude", "longitude"]
             ) / valid_scl.count(dim=["latitude", "longitude"])
-            invalid_time_steps = valid_ratio < 0.97
+            invalid_time_steps = valid_ratio < 0.9
             mask = mask.where(~invalid_time_steps, np.nan)
 
         if "cloudmask_en" in ds.data_vars:
@@ -242,7 +242,7 @@ class Sentinel2Dataloader(Dataloader):
     def _has_excessive_nan(self, data):
         """Checks if the masked data contains excessive NaN values."""
         nan_percentage = data.isnull().mean().values * 100
-        return nan_percentage > 90
+        return nan_percentage > 95
 
     def filter_dataset_specific(self):
         """
