@@ -35,7 +35,7 @@ class Sentinel2Dataloader(Dataloader):
 
         # Determine the number of samples to process (default: 10,000)
         sample_count = self.n_samples or 10_000
-        print(f"count: {sample_count}")
+        printt(f"count: {sample_count}")
         samples_paths = self.sample_locations(sample_count)
 
         printt("Loading dataset...")
@@ -119,7 +119,6 @@ class Sentinel2Dataloader(Dataloader):
         return df.loc[sampled_indices].values  # df.loc[sampled_indices, "path"].values
 
     def load_file(self, minicube_path, process_entire_minicube=False):
-        print(minicube_path)
         filepath = Path(minicube_path)  # EARTHNET_FILEPATH + minicube_path
         ds = xr.open_zarr(filepath).astype(np.float32)
 
@@ -421,6 +420,7 @@ class Sentinel2Dataloader(Dataloader):
             Mean seasonal cycle (MSC), and optionally, the processed time series.
         """
         dict_config = self.get_config()
+        # WARNING: maybe bug somewhere on threshold with the following line. Idk why...
         # msc = self.loader._load_data("msc")
         # if msc is not None and not return_time_series:
         #     return msc.msc

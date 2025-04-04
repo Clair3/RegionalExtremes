@@ -65,7 +65,6 @@ class QuantilesBase(ABC):
             self.thresholds = self.loader._load_data(
                 "thresholds", location=False, cluster=True
             )
-            print(self.thresholds)
 
         else:
             # self.eco_clusters = None
@@ -314,7 +313,7 @@ class QuantilesBase(ABC):
         )
 
         if not self.config.is_generic_xarray_dataset:
-            print(group_thresholds.values.shape)
+            # print(group_thresholds.values.shape)
             thresholds_array = xr.DataArray(
                 np.full(
                     (
