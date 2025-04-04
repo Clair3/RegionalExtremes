@@ -114,11 +114,7 @@ def parser_arguments():
 
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
-<<<<<<< HEAD
-    args.name = "full_fluxnet_S2"
-=======
     args.name = "new_cleaning_longmsc"
->>>>>>> 59a47c8... end cloud removal
     args.index = "EVI_EN"
     args.k_pca = False
     args.n_samples = 10  # 40000
@@ -131,11 +127,7 @@ if __name__ == "__main__":
     args.lower_quantiles = [0.025, 0.05, 0.10, 0.2, 0.3, 0.4, 0.50]
     args.upper_quantiles = [0.501, 0.6, 0.7, 0.8, 0.9, 0.95, 0.975]
 
-<<<<<<< HEAD
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_10:06:45_full_fluxnet_S2"  #
-=======
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-03-21_17:32:34_new_cleaning_longmsc"  #
->>>>>>> 59a47c8... end cloud removal
+    # args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-03-21_17:32:34_new_cleaning_longmsc"  #
 
     if args.method == "regional":
         # Train the regional extreme method on a subset of locations
@@ -158,8 +150,6 @@ if __name__ == "__main__":
         #     # "DE-Bay_50.14_11.87_v0.zarr.zip",
         #     # "DE-Meh_51.28_10.66_v0.zarr.zip",
         # ]
-<<<<<<< HEAD
-=======
         # parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/_test/"
         subfolders = [
             "DE-Hai_51.08_10.45_v0.zarr.zip",
@@ -174,7 +164,6 @@ if __name__ == "__main__":
             #     "DE-Bay_50.14_11.87_v0.zarr.zip",
             #     "DE-Meh_51.28_10.66_v0.zarr.zip",
         ]
->>>>>>> 59a47c8... end cloud removal
 
         # subfolders = [
         #     "custom_cube_44.17_5.24.zarr.zip",

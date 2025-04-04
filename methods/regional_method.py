@@ -3,6 +3,7 @@ from sklearn.decomposition import PCA, KernelPCA
 import sys
 from pathlib import Path
 from scipy.spatial.distance import pdist, squareform
+import xarray as xr
 
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
@@ -60,8 +61,6 @@ class RegionalExtremes:
             self.eco_clusters = None
             self.thresholds = None
 
-<<<<<<< HEAD
-=======
     def compute_pca_and_transform(
         self,
         scaled_data,
@@ -606,7 +605,6 @@ class RegionalExtremes:
         ]
         return masks
 
->>>>>>> 59a47c8... end cloud removal
 
 def regional_extremes_method(args):
     """Fit the PCA with a subset of the data, then project the full dataset,

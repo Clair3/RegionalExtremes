@@ -120,9 +120,6 @@ class Sentinel2Dataloader(Dataloader):
 
     def load_file(self, minicube_path, process_entire_minicube=False):
         filepath = Path(minicube_path)  # EARTHNET_FILEPATH + minicube_path
-<<<<<<< HEAD
-        ds = xr.open_zarr(filepath).astype(np.float32)
-=======
         with xr.open_zarr(filepath) as ds:
             # Transform UTM to lat/lon
             ds = self._transform_utm_to_latlon(ds)
@@ -164,7 +161,6 @@ class Sentinel2Dataloader(Dataloader):
                 return None
             if process_entire_minicube:
                 self.saver.update_saving_path(filepath.stem)
->>>>>>> 59a47c8... end cloud removal
 
         ds = self._ensure_coordinates(ds)
         ds = ds.sel(time=slice(date(2017, 3, 1), None))
@@ -274,11 +270,7 @@ class Sentinel2Dataloader(Dataloader):
             valid_ratio = valid_scl.sum(
                 dim=["latitude", "longitude"]
             ) / valid_scl.count(dim=["latitude", "longitude"])
-<<<<<<< HEAD
-            invalid_time_steps = valid_ratio < 0.97
-=======
             invalid_time_steps = valid_ratio < 0.9
->>>>>>> 59a47c8... end cloud removal
             mask = mask.where(~invalid_time_steps, np.nan)
 
         if "cloudmask_en" in ds.data_vars:
@@ -320,12 +312,6 @@ class Sentinel2Dataloader(Dataloader):
         deseasonalized = deseasonalized.reset_coords("dayofyear", drop=True)
         return deseasonalized
 
-<<<<<<< HEAD
-    def compute_msc(
-        self,
-        clean_data: xr.DataArray,
-        smoothing_window: int = 7,  # 9,
-=======
     # def compute_msc(
     #    self,
     #    clean_data: xr.DataArray,
@@ -378,7 +364,6 @@ class Sentinel2Dataloader(Dataloader):
         self,
         clean_data: xr.DataArray,
         smoothing_window: int = 7,
->>>>>>> 59a47c8... end cloud removal
         poly_order: int = 2,
     ):
 
@@ -437,11 +422,7 @@ class Sentinel2Dataloader(Dataloader):
         mean = xr.where(count > 1, sum / (count + 1e-10), np.nan)
         return mean
 
-<<<<<<< HEAD
-    def compute_mean_per_period(self, data, period_size=10):
-=======
     def compute_max_per_period(self, data, period_size=10):
->>>>>>> 59a47c8... end cloud removal
         # Function to generate valid dates (time bins) for all years at once
         def get_time_periods(bin_size, years):
             periods = []
@@ -477,26 +458,21 @@ class Sentinel2Dataloader(Dataloader):
         data_grouped = data.groupby("period")
 
         # Compute max for each period
-<<<<<<< HEAD
-        mean_per_period = data_grouped.mean(dim="time")
-        # mean_per_period = data_grouped.max(dim="time")
-=======
         max_per_period = data_grouped.max(dim="time")
         # max_per_period = data_grouped.max(dim="time")
->>>>>>> 59a47c8... end cloud removal
 
         # Apply the transformation to convert periods back to midpoints in time
         start_period_times = [
-            pd.to_datetime(periods[p]) for p in mean_per_period.coords["period"].values
+            pd.to_datetime(periods[p]) for p in max_per_period.coords["period"].values
         ]
 
         # Update mean_per_period with the transformed 'time' coordinates (midpoints)
-        mean_per_period.coords["time"] = ("period", start_period_times)
-        mean_per_period = mean_per_period.swap_dims({"period": "time"}).drop_vars(
+        max_per_period.coords["time"] = ("period", start_period_times)
+        max_per_period = max_per_period.swap_dims({"period": "time"}).drop_vars(
             "period"
         )
-        mean_per_period = mean_per_period.set_index(location=["longitude", "latitude"])
-        return mean_per_period
+        max_per_period = max_per_period.set_index(location=["longitude", "latitude"])
+        return max_per_period
 
     def get_config(self):
         # Define window sizes for gap-filling and cloud noise removal
@@ -564,18 +540,6 @@ class Sentinel2Dataloader(Dataloader):
         else:
             data = self.load_dataset()
 
-<<<<<<< HEAD
-        printt(f"Processing entire dataset: {data.sizes['location']} locations.")
-        data = self.compute_mean_per_period(data, dict_config["period_size"])
-        data = self.noise_removal.cloudfree_timeseries(
-            data, noise_half_windows=dict_config["noise_half_windows"]
-        )
-        data = self._remove_low_vegetation_location(data, threshold=0.2)
-        self.saver._save_data(data, "evi")
-
-        # Compute Mean Seasonal Cycle (MSC)
-        msc = self.compute_msc(data)
-=======
         # Compute Mean Seasonal Cycle (MSC)
         # clean_data = self.noise_removal.cloudfree_timeseries(
         #     data,
@@ -595,7 +559,6 @@ class Sentinel2Dataloader(Dataloader):
         self.saver._save_data(clean_data, "clean_data")
 
         msc = self.compute_msc(clean_data)
->>>>>>> 59a47c8... end cloud removal
         msc = msc.transpose("location", "dayofyear", ...)
         self.saver._save_data(msc, "msc")
 
@@ -615,11 +578,6 @@ class Sentinel2Dataloader(Dataloader):
 
         data = _ensure_time_chunks(data)
         data = data.transpose("location", "time", ...).compute()
-<<<<<<< HEAD
-        # data = data.chunk({"time": -1, "location": 100})
-        # data = _ensure_time_chunks(data)
-=======
         print(msc.values.shape)
         print(data.values.shape)
->>>>>>> 59a47c8... end cloud removal
         return msc, data
