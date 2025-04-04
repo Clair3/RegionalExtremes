@@ -89,7 +89,6 @@ class LocalExtremes:
         quantiles_xr = deseasonalized.quantile(
             quantile_levels_combined, dim="time"
         ).assign_coords(quantile=quantile_levels_combined)
-        print(quantiles_xr)
 
         # Return thresholds only if requested
         if return_only_thresholds:

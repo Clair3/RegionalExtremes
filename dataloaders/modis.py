@@ -13,7 +13,7 @@ class ModisDataloader(Sentinel2Dataloader):
         with xr.open_zarr(filepath) as ds:
 
             # Transform UTM to lat/lon
-            ds = self._transform_utm_to_latlon(ds)
+            #ds = self._transform_utm_to_latlon(ds)
 
             if not process_entire_minicube:
                 # Select a random vegetation location
@@ -23,7 +23,7 @@ class ModisDataloader(Sentinel2Dataloader):
 
             self.variable_name = "evi"  # ds.attrs["data_id"]
             # Filter based on vegetation occurrence
-
+            ds = ds.rename({"x": "longitude", "y": "latitude"})
             # Calculate EVI and apply cloud/vegetation mask
             evi = self._calculate_evi(ds)
             evi = self._apply_masks(ds, evi)
@@ -143,7 +143,90 @@ class ModisDataloader(Sentinel2Dataloader):
     def get_config(self):
         # Define window sizes for gap-filling and cloud noise removal
         config = dict()
-        config["nan_fill_windows"] = [5, 7]
-        config["noise_half_windows"] = [3, 1]
-        config["cumulative_evi_window"] = 4
+        config["nan_fill_windows"] = [3, 5]
+        config["noise_half_windows"] = [1, 2]
+        config["smoothing_window_msc"] = 7
+        config["poly_msc"] = 2
+
         return config
+    
+    def preprocess_data(
+        self,
+        return_time_series=False,
+        minicube_path=None,
+    ):
+        """
+        Preprocess dataset by applying noise removal, gap-filling, cloud removal,
+        deseasonalization, and cumulative EVI computation.
+
+        Parameters
+        ----------
+        return_time_series : bool, optional
+            If True, return both the mean seasonal cycle (MSC) and processed time series.
+        minicube_path : str, optional
+            Path to a precomputed minicube dataset for loading.
+
+        Returns
+        -------
+        xr.DataArray
+            Mean seasonal cycle (MSC), and optionally, the processed time series.
+        """
+        msc = self.loader._load_data("msc")
+        if msc is not None and not return_time_series:
+            return msc.msc
+
+        printt("Starting preprocessing...")
+        dict_config = self.get_config()
+        # Load data either from a minicube or from the default dataset
+        if minicube_path:
+            printt(f"Loading minicube from {minicube_path}")
+            data = self.load_minicube(minicube_path=minicube_path)
+            if data is None:
+                return None, None
+        else:
+            data = self.load_dataset()
+
+        printt(f"Processing entire dataset: {data.sizes['location']} locations.")
+        data = self.noise_removal.cloudfree_timeseries(
+            data, noise_half_windows=dict_config["noise_half_windows"]
+        )
+        data = self._remove_low_vegetation_location(data, threshold=0.2)
+        self.saver._save_data(data, "evi")
+
+        # Compute Mean Seasonal Cycle (MSC)
+        msc = self.compute_msc(data)
+        msc = msc.transpose("location", "dayofyear", ...)
+        self.saver._save_data(msc, "msc")
+
+        if not return_time_series:
+            return msc
+
+        # Step 3: Deseasonalization
+        data = self._deseasonalize(data, msc)  # needed?
+        self.saver._save_data(data, "deseasonalized")
+
+        # Step 5: Cumulative EVI computation
+        # data = self.cumulative_evi(
+        #     data, window_size=dict_config["cumulative_evi_window"]
+        # )
+        # self.saver._save_data(data, "cumulative_evi")
+
+        data = _ensure_time_chunks(data)
+        data = data.transpose("location", "time", ...).compute()
+        return msc, data
+
+    # def get_config(self):
+    #     # Define window sizes for gap-filling and cloud noise removal
+    #     config = dict()
+    #     config["nan_fill_windows"] = [3, 5]
+    #     config["noise_half_windows"] = [1, 2]
+    #     config["cumulative_evi_window"] = 4
+# 
+    #     config = dict()
+    #     config["nan_fill_windows"] = [3, 5]
+    #     config["noise_half_windows"] = [1, 2]
+    #     config["cumulative_evi_window"] = 5
+    #     config["period_size"] = 16
+    #     config["smoothing_window_msc"] = 7
+    #     config["poly_msc"] = 2
+    #     return config

@@ -230,7 +230,7 @@ class Sentinel2Dataloader(Dataloader):
             valid_ratio = valid_scl.sum(
                 dim=["latitude", "longitude"]
             ) / valid_scl.count(dim=["latitude", "longitude"])
-            invalid_time_steps = valid_ratio < 0.97
+            invalid_time_steps = valid_ratio < 0.99
             mask = mask.where(~invalid_time_steps, np.nan)
 
         if "cloudmask_en" in ds.data_vars:
