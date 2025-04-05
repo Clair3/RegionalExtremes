@@ -104,19 +104,19 @@ def rmse(sample):
     thresholds_modis, thresholds_s2 = xr.align(
         thresholds_modis, thresholds_s2, join="inner"
     )
+    print(thresholds_s2)
 
     def process_group(value):
         # Mask locations where the threshold == value
         mask = thresholds_modis == value
         masked = thresholds_modis.where(mask.compute(), drop=True)
         patch_locations = masked.location.values
-
+        try:
+            if not thresholds_s2.indexes["location"].is_unique:
+                raise ValueError("thresholds_s2 has duplicate locations")
+        except:
+            print(thresholds_s2)
         available_locs = np.intersect1d(patch_locations, thresholds_s2.location.values)
-        # if not thresholds_s2.indexes["location"].is_unique:
-        #    raise ValueError("thresholds_s2 has duplicate locations")
-
-        patch_s2 = thresholds_s2.sel(location=available_locs)
-        patch_modis = thresholds_modis.sel(location=available_locs)
 
         rmse_array = xr.DataArray(
             np.full(
@@ -130,13 +130,35 @@ def rmse(sample):
             coords={
                 "location": value,
                 # pd.MultiIndex.from_product(
-                #     [[masked.latitude.mean().item()], [masked.longitude.mean().item()]],
-                #     names=["lat", "lon"],
+                #    [[masked.latitude.mean().item()], [masked.longitude.mean().item()]],
+                #    names=["lat", "lon"],
                 # ),
                 "quantile": thresholds_s2["quantile"],
                 # "dayofyear": data.time.dt.dayofyear,
             },
         )
+        if len(available_locs) < 1:
+            return rmse_array
+
+        try:
+            patch_s2 = thresholds_s2.sel(location=available_locs)
+        except:
+            print(
+                (
+                    thresholds_s2.location.values == thresholds_modis.location.values
+                ).all()
+            )
+            print(available_locs.shape)
+            print("Available locations:", available_locs)
+            print(available_locs.shape)
+            print("Available locations:", available_locs)
+            if not thresholds_s2.indexes["location"].is_unique:
+                thresholds_s2 = thresholds_s2.sel(
+                    location=~thresholds_s2.get_index("location").duplicated()
+                )
+
+            patch_s2 = thresholds_s2.sel(location=available_locs)
+        patch_modis = thresholds_modis.sel(location=available_locs)
 
         for quantile in thresholds_modis["quantile"]:
             diff = (
