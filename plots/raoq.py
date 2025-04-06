@@ -6,6 +6,7 @@ from dask import delayed
 import cf_xarray as cfxr
 import os
 import pandas as pd
+import copy
 from dask import delayed, compute
 
 
@@ -86,105 +87,127 @@ def compute_raoq(sample: str) -> xr.DataArray:
 
 
 def rmse(sample):
-    path_thresh = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_13:04:42_full_fluxnet_therightone_modis/EVI_MODIS/{sample}/thresholds.zarr"
-    # Load thresholds and decode multi-index
-    thresholds_modis = xr.open_zarr(path_thresh)
-    thresholds_modis = cfxr.decode_compress_to_multi_index(
-        thresholds_modis, "location"
-    ).thresholds
-    unique_values = np.unique(thresholds_modis.values)
+    # Load datasets
+    def load(path):
+        ds = xr.open_zarr(path)
+        return cfxr.decode_compress_to_multi_index(ds, "location").thresholds
 
-    path_thresh = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_12:13:03_full_fluxnet_therightone/EVI_EN/{sample}/thresholds.zarr"
-    # Load thresholds and decode multi-index
-    thresholds_s2 = xr.open_zarr(path_thresh)
-    thresholds_s2 = cfxr.decode_compress_to_multi_index(
-        thresholds_s2, "location"
-    ).thresholds
+    path_modis = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_13:04:42_full_fluxnet_therightone_modis/EVI_MODIS/{sample}/thresholds.zarr"
+    path_s2 = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_12:13:03_full_fluxnet_therightone/EVI_EN/{sample}/thresholds.zarr"
+
+    thresholds_modis = load(path_modis)
+    thresholds_s2 = load(path_s2)
 
     thresholds_modis, thresholds_s2 = xr.align(
         thresholds_modis, thresholds_s2, join="inner"
     )
-    print(thresholds_s2)
 
-    def process_group(value):
-        # Mask locations where the threshold == value
-        mask = thresholds_modis == value
-        masked = thresholds_modis.where(mask.compute(), drop=True)
-        patch_locations = masked.location.values
-        try:
-            if not thresholds_s2.indexes["location"].is_unique:
-                raise ValueError("thresholds_s2 has duplicate locations")
-        except:
-            print(thresholds_s2)
-        available_locs = np.intersect1d(patch_locations, thresholds_s2.location.values)
+    quantiles = thresholds_modis["quantile"]
+    locations = thresholds_modis["location"]
 
-        rmse_array = xr.DataArray(
-            np.full(
-                (
-                    len(thresholds_s2["quantile"]),
-                    len([value]),
-                ),
-                np.nan,
-            ),
-            dims=["quantile", "location"],
-            coords={
-                "location": value,
-                # pd.MultiIndex.from_product(
-                #    [[masked.latitude.mean().item()], [masked.longitude.mean().item()]],
-                #    names=["lat", "lon"],
-                # ),
-                "quantile": thresholds_s2["quantile"],
-                # "dayofyear": data.time.dt.dayofyear,
-            },
-        )
-        if len(available_locs) < 1:
-            return rmse_array
+    # Create group variable: same shape as (location,)
+    modis_group = thresholds_modis.sel(quantile=quantiles[0])
+    group_labels = modis_group.values
+    unique_values = np.unique(group_labels)
+    print(unique_values)
 
-        try:
-            patch_s2 = thresholds_s2.sel(location=available_locs)
-        except:
-            print(
-                (
-                    thresholds_s2.location.values == thresholds_modis.location.values
-                ).all()
-            )
-            print(available_locs.shape)
-            print("Available locations:", available_locs)
-            print(available_locs.shape)
-            print("Available locations:", available_locs)
-            if not thresholds_s2.indexes["location"].is_unique:
-                thresholds_s2 = thresholds_s2.sel(
-                    location=~thresholds_s2.get_index("location").duplicated()
-                )
+    # Convert group labels to a DataArray for groupby
+    group_da = xr.DataArray(
+        group_labels, coords={"location": locations}, dims="location"
+    )
 
-            patch_s2 = thresholds_s2.sel(location=available_locs)
-        patch_modis = thresholds_modis.sel(location=available_locs)
+    # Prepare output array
+    rmse_array = xr.DataArray(
+        np.full((len(quantiles), len(unique_values)), np.nan),
+        dims=["quantile", "modis_value"],
+        coords={"quantile": quantiles, "modis_value": unique_values},
+    )
 
-        for quantile in thresholds_modis["quantile"]:
-            diff = (
-                patch_modis.sel(quantile=quantile).values
-                - patch_s2.sel(quantile=quantile).values
-            )
-            rmse = np.nanmean(np.sqrt(diff**2))
-            rmse_array.loc[dict(quantile=quantile)] = rmse
-        return rmse_array
+    # Loop over quantiles, apply groupby
+    for q in quantiles.values:
+        diff = thresholds_modis.sel(quantile=q) - thresholds_s2.sel(quantile=q)
 
-    results = [delayed(process_group)(val) for val in unique_values]
-    # results = [process_group(val) for val in unique_values]
-    # Combine results and ensure location is sorted
-    combined_results = delayed(xr.concat)(results, dim="location")
+        # Add group labels to diff
+        diff.coords["group"] = group_da
 
-    # Ensure location is sorted (since it can be unsorted across different results)
-    # combined_results_sorted = combined_results.sortby("location")
+        def rmse_func(x, axis=None):
+            return np.sqrt(np.nanmean(x**2, axis=axis))
 
-    # Compute the full result
-    rmse_array = combined_results.compute()
-    if isinstance(rmse_array, xr.DataArray):
-        rmse_array = rmse_array.to_dataset(name="rmse")
-    rmse_array = cfxr.encode_multi_index_as_compress(rmse_array, "location")
-    saving_path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_12:13:03_full_fluxnet_therightone/EVI_EN/{sample}/rmse.zarr"
-    rmse_array.to_zarr(saving_path, mode="w")
-    print("RMSE computed for sample:", sample)
+        grouped_rmse = diff.groupby("group").reduce(rmse_func, dim="location")
+        rmse_array.loc[dict(quantile=q)] = grouped_rmse.reindex(
+            modis_value=unique_values
+        ).values
+
+    # Convert to dataset and save
+    rmse_ds = rmse_array.to_dataset(name="rmse")
+
+    save_path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_12:13:03_full_fluxnet_therightone/EVI_EN/{sample}/rmse.zarr"
+    rmse_ds.to_zarr(save_path, mode="w", consolidated=True)
+
+    print("RMSE computed for:", sample)
+
+
+def rmse_raoq(sample):
+    # Load datasets
+    def load(path):
+        ds = xr.open_zarr(path, chunks={})
+        return cfxr.decode_compress_to_multi_index(ds, "location")
+
+    path_modis = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_13:04:42_full_fluxnet_therightone_modis/EVI_MODIS/{sample}/thresholds.zarr"
+    path_s2 = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_12:13:03_full_fluxnet_therightone/EVI_EN/{sample}/thresholds.zarr"
+
+    path_raoq = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_12:13:03_full_fluxnet_therightone/EVI_EN/{sample}/raoq.zarr"
+
+    thresholds_modis = load(path_modis).thresholds
+    thresholds_s2 = load(path_s2).thresholds
+    raoq = load(path_raoq).raoq
+
+    thresholds_modis, thresholds_s2 = xr.align(
+        thresholds_modis, thresholds_s2, join="inner"
+    )
+    thresholds_modis, raoq = xr.align(thresholds_modis, raoq, join="inner")
+
+    quantiles = thresholds_modis["quantile"]
+    locations = thresholds_modis["location"]
+
+    # Create group variable: same shape as (location,)
+    group_labels = raoq.values
+    unique_values = np.unique(group_labels)
+
+    # Convert group labels to a DataArray for groupby
+    group_da = xr.DataArray(
+        group_labels, coords={"location": locations}, dims="location"
+    )
+
+    # Prepare output array
+    rmse_array = xr.DataArray(
+        np.full((len(quantiles), len(unique_values)), np.nan),
+        dims=["quantile", "raoq"],
+        coords={"quantile": quantiles, "raoq": unique_values},
+    )
+
+    # Loop over quantiles, apply groupby
+    for q in quantiles.values:
+        diff = thresholds_modis.sel(quantile=q) - thresholds_s2.sel(quantile=q)
+
+        # Add group labels to diff
+        diff.coords["raoq"] = group_da
+
+        def rmse_func(x, axis=None):
+            return np.sqrt(np.nanmean(x**2, axis=axis))
+
+        grouped_rmse = diff.groupby("raoq").reduce(rmse_func, dim="location")
+        rmse_array.loc[dict(quantile=q)] = grouped_rmse.reindex(
+            raoq=unique_values
+        )  # .values
+
+    # Convert to dataset and save
+    rmse_ds = rmse_array.to_dataset(name="rmse")
+
+    save_path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_12:13:03_full_fluxnet_therightone/EVI_EN/{sample}/rmse.zarr"
+    rmse_ds.to_zarr(save_path, mode="w", consolidated=True)
+
+    print("RMSE computed for:", sample)
 
 
 if __name__ == "__main__":
@@ -192,21 +215,19 @@ if __name__ == "__main__":
     parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/"
     subfolders = [folder[:-4] for folder in os.listdir(parent_folder)]
 
-    # sample = subfolders[0]
-    # rmse(sample)
-    @delayed
+    # @delayed
     def process_sample(sample):
         try:
             base_path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_12:13:03_full_fluxnet_therightone/EVI_EN"
             sample_path = os.path.join(base_path, sample)
             # if "rmse.zarr" not in os.listdir(sample_path):
-            rmse(sample)
+            rmse_raoq(sample)
         except Exception as e:
             print(f"Error processing sample: {sample} – {e}")
 
-    rmse(subfolders[0])
     # Create delayed tasks
-    # tasks = [process_sample(sample) for sample in subfolders]
+    # rmse_raoq(subfolders[0])
+    tasks = [process_sample(sample) for sample in subfolders]
 
     # Trigger execution
     # compute(*tasks, scheduler="threads")  # or "processes" depending on workload
