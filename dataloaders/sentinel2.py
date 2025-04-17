@@ -15,11 +15,12 @@ class Sentinel2Dataloader(Dataloader):
         Preprocess data based on the index and load the dataset.
         """
 
-        self.variable_name = "evi_earthnet"
+        self.variable_name = "evi"
 
         # Attempt to load preprocessed training data
-        training_data = self.loader._load_data("temp_file")
-        path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-12-21_13:11:46_30000_locations/EVI_EN/temp_file.zarr"
+        # training_data = self.loader._load_data("temp_file")
+        # path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-12-21_13:11:46_30000_locations/EVI_EN/temp_file.zarr"
+        path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-14_11:57:24_full_fluxnet_therightone_highveg/EVI_EN/temp_file.zarr"
         training_data = xr.open_zarr(path)
         training_data = cfxr.decode_compress_to_multi_index(training_data, "location")
         if training_data is not None:
@@ -29,12 +30,14 @@ class Sentinel2Dataloader(Dataloader):
                     len(self.data.location), size=self.n_samples, replace=False
                 )
                 self.data = self.data.isel(location=random_indices)
+
             self.data = self.data[self.variable_name]
             self.data = _ensure_time_chunks(self.data)
+            print(self.data)
             return self.data
 
         # Determine the number of samples to process (default: 10,000)
-        sample_count = self.n_samples or 10_000
+        sample_count = 32_000  # self.n_samples or 32_000
         print(f"count: {sample_count}")
         samples_paths = self.sample_locations(sample_count)
 
@@ -55,7 +58,7 @@ class Sentinel2Dataloader(Dataloader):
         self.data = self.data.sel(
             location=~self.data.get_index("location").duplicated()
         )
-        self.data = self.data.drop("band")
+        # self.data = self.data.drop("band")
         self.saver._save_data(self.data, "temp_file")
         self.data = self.loader._load_data("temp_file")
         printt("Dataset loaded.")
@@ -75,6 +78,7 @@ class Sentinel2Dataloader(Dataloader):
             )
             self.data = self.data.isel(location=random_indices)
         # self.data = self.data  # .isel(location=slice(0, 100))
+        self.variable_name = "evi"
         self.data = self.data[self.variable_name]
         self.data = _ensure_time_chunks(self.data)
         return self.data
@@ -97,48 +101,66 @@ class Sentinel2Dataloader(Dataloader):
                 DataFrame containing original lat/lon plus random grid coordinates
         """
         metadata_file = (
-            "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/DeepExtremes_enough_vegetation_europe.csv"
-            # "/Net/Groups/BGI/work_2/scratch/DeepExtremes/mc_earthnet_biome.csv"
+            "/Net/Groups/BGI/work_2/scratch/DeepExtremes/mc_earthnet_biome.csv"
         )
-        df = pd.read_csv(metadata_file, delimiter=",", low_memory=False)  # [
-        #    [
-        #        "path",
-        #        "group",
-        #        "check",
-        #        "start_date",
-        #        "lat",
-        #        "lon",
-        #    ]
-        # ]
-        # df = df.loc[
-        #     (df["check"] == 0)
-        #     & df.apply(lambda row: self._is_in_europe(row["lon"], row["lat"]), axis=1)
-        # ]
+        df = pd.read_csv(metadata_file, delimiter=",", low_memory=False)[
+            [
+                "path",
+                "group",
+                "check",
+                "start_date",
+                "lat",
+                "lon",
+            ]
+        ]
+        df = df.loc[
+            (df["check"] == 0)
+            & df.apply(lambda row: self._is_in_europe(row["lon"], row["lat"]), axis=1)
+        ]
+        # /Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/DeepExtremes_enough_vegetation_europe.csv
         # Random sampling with replacement
         sampled_indices = np.random.choice(df.index, size=n_samples, replace=True)
-        return df.loc[sampled_indices].values  # df.loc[sampled_indices, "path"].values
+        return df.loc[
+            sampled_indices
+        ].values  # df.loc[sampled_indices, "path"].values  #
+
+    def _is_in_europe(self, lon, lat):
+        """
+        Check if the given longitude and latitude are within the bounds of Europe.
+        """
+        # Define Europe boundaries (these are approximate)
+        lon_min, lon_max = -31.266, 39.869  # Longitude boundaries
+        lat_min, lat_max = 27.636, 81.008  # Latitude boundaries
+
+        # Check if the point is within the defined boundaries
+        in_europe = (
+            (lon >= lon_min) & (lon <= lon_max) & (lat >= lat_min) & (lat <= lat_max)
+        )
+        return in_europe
 
     def load_file(self, minicube_path, process_entire_minicube=False):
-        print(minicube_path)
-        filepath = Path(minicube_path)  # EARTHNET_FILEPATH + minicube_path
+        filepath = Path(
+            minicube_path
+            # EARTHNET_FILEPATH + minicube_path[0]
+        )  # EARTHNET_FILEPATH + minicube_path
         ds = xr.open_zarr(filepath).astype(np.float32)
 
         ds = self._ensure_coordinates(ds)
         ds = ds.sel(time=slice(date(2017, 3, 1), None))
 
         # Add landcover
-        if "esa_worldcover_2021" not in ds.data_vars:
-            ds = self.loader._load_and_add_landcover(filepath, ds)
+        # if "esa_worldcover_2021" not in ds.data_vars:
+        #     ds = self.loader._load_and_add_landcover(filepath, ds)
 
         if not process_entire_minicube:
             # Select a random vegetation location
             ds = self._get_random_vegetation_pixel_series(ds)
             if ds is None:
-                printt(f"No valid vegetation pixel found in {minicube_path}.")
+                print(f"No valid vegetation pixel found in {minicube_path}.")
                 return None
         else:
+            print("UPDATE FILEPATH:")
             self.saver.update_saving_path(filepath.stem)
-
         data = self.compute_vegetation_index(ds, minicube_path)
         return data
 
@@ -155,13 +177,13 @@ class Sentinel2Dataloader(Dataloader):
                 #    "esa_worldcover_2021"
                 # ],  # Adding 'landcover' as another variable
             },
-            coords={
-                "source_path": filepath,  # Add the path as a coordinate
-            },
+            # coords={
+            #     "source_path": filepath,  # Add the path as a coordinate
+            # },
         )
         # Check for excessive missing data
         if self._has_excessive_nan(masked_evi):
-            printt(f"Excessive NaN values in {filepath}.")
+            print(f"Excessive NaN values in {filepath}.")
             return None
         return data
 
@@ -169,18 +191,40 @@ class Sentinel2Dataloader(Dataloader):
         """Transforms UTM coordinates to latitude and longitude."""
         if "time" not in ds.dims:
             ds = ds.rename({"time_sentinel-2-l2a": "time"})
-        if "longitude" not in ds.dims:
-            ds = ds.rename({"x": "longitude", "y": "latitude"})
 
-        if "x_20" in ds.dims:
-            for band in bands_20m:
-                bands_20m = ["B05", "B06", "B07", "B8A", "SCL"]
-                ds[band] = ds[band].interp(
-                    x=xr.DataArray(ds.x, dims="x"),
-                    y=xr.DataArray(ds.y, dims="y"),
-                    method="linear",
-                )
-        return ds
+        if "x20" in ds.dims:
+            # Coarsen 10m bands to 20m resolution
+            ds_10m = (
+                ds[["B02", "B03", "B04", "B08"]]
+                .coarsen(x=2, y=2, boundary="trim")
+                .mean()
+            )
+
+            # Rename to match 20m grid
+            ds_10m = ds_10m.rename({"x": "x20", "y": "y20"})
+
+            # Select 20m bands
+            ds_20m = ds[["B05", "B06", "B07", "B11", "B12", "B8A", "SCL"]]
+
+            # Merge all bands (still lazy until computed)
+            ds = xr.merge([ds_10m, ds_20m])
+            ds = ds.rename({"x20": "x", "y20": "y"})
+
+        epsg = (
+            ds.attrs.get("spatial_ref") or ds.attrs.get("EPSG") or ds.attrs.get("CRS")
+        )
+
+        if epsg is None:
+
+            raise ValueError("EPSG code not found in dataset attributes.")
+
+        transformer = Transformer.from_crs(epsg, 4326, always_xy=True)
+
+        lon, lat = transformer.transform(ds.x.values, ds.y.values)
+
+        return ds.assign_coords({"x": ("x", lon), "y": ("y", lat)}).rename(
+            {"x": "longitude", "y": "latitude"}
+        )
 
     def _get_random_vegetation_pixel_series(self, ds):
         """Selects a random time serie vegetation pixel location in the minicube based on SCL classification."""
@@ -224,13 +268,15 @@ class Sentinel2Dataloader(Dataloader):
         # Apply vegetation mask if SCL exists
         if "SCL" in ds.data_vars:
             # keep only pixel valid accordingly to the SCL
-            valid_scl = ds.SCL.isin([4, 5, 6])
+            valid_scl = ds.SCL.isin([4, 5, 6, 7])
             mask = mask.where(valid_scl, np.nan)
 
             # keep only time steps with more than 50% of valid pixels
             valid_ratio = valid_scl.sum(
-                dim=["latitude", "longitude"]
-            ) / valid_scl.count(dim=["latitude", "longitude"])
+                dim=["latitude", "longitude"]  # ["location"]  #
+            ) / valid_scl.count(
+                dim=["latitude", "longitude"]  # ["location"]
+            )  # ["latitude", "longitude"])
             invalid_time_steps = valid_ratio < 0.9
             mask = mask.where(~invalid_time_steps, np.nan)
 
@@ -275,6 +321,14 @@ class Sentinel2Dataloader(Dataloader):
         mean_seasonal_cycle = clean_data.groupby("time.dayofyear").mean(
             "time", skipna=True
         )
+        # Step 1: Compute mean seasonal cycle with at least 2 values
+        # mean_seasonal_cycle = clean_data.groupby("time.dayofyear").apply(
+        #    lambda x: (
+        #        x.mean("time")
+        #        if x.count("time") >= 2
+        #        else x.isel(time=0) * float("nan")
+        #    )
+        # )
 
         # Step 2: Apply circular padding along the dayofyear axis before rolling
         # # edge case growing season during the change of year
@@ -288,7 +342,10 @@ class Sentinel2Dataloader(Dataloader):
         )
 
         padded_values = circular_rolling_mean(
-            padded_values, window_size=smoothing_window, min_periods=1
+            padded_values, window_size=2, min_periods=1
+        )
+        padded_values = circular_rolling_mean(
+            padded_values, window_size=4, min_periods=1
         )
 
         padded_values = np.nan_to_num(padded_values, nan=0)
@@ -381,11 +438,11 @@ class Sentinel2Dataloader(Dataloader):
     def get_config(self):
         # Define window sizes for gap-filling and cloud noise removal
         config = dict()
-        config["nan_fill_windows"] = [3, 5]
+        config["nan_fill_windows"] = [3, 4]
         config["noise_half_windows"] = [1, 2]
         config["cumulative_evi_window"] = 5
         config["period_size"] = 16
-        config["smoothing_window_msc"] = 7
+        config["smoothing_window_msc"] = 5
         config["poly_msc"] = 2
         config["deseasonalization"] = True
 
@@ -420,7 +477,7 @@ class Sentinel2Dataloader(Dataloader):
         xr.DataArray
             Mean seasonal cycle (MSC), and optionally, the processed time series.
         """
-        dict_config = self.get_config()
+        self.config_dict = self.get_config()
         # msc = self.loader._load_data("msc")
         # if msc is not None and not return_time_series:
         #     return msc.msc
@@ -444,9 +501,9 @@ class Sentinel2Dataloader(Dataloader):
             data = self.load_dataset()
 
         printt(f"Processing entire dataset: {data.sizes['location']} locations.")
-        data = self.compute_max_per_period(data, dict_config["period_size"])
+        data = self.compute_max_per_period(data, self.config_dict["period_size"])
         data = self.noise_removal.cloudfree_timeseries(
-            data, noise_half_windows=dict_config["noise_half_windows"]
+            data, noise_half_windows=self.config_dict["noise_half_windows"]
         )
         data = self._remove_low_vegetation_location(data, threshold=0.2)
         self.saver._save_data(data, "evi")
@@ -460,7 +517,7 @@ class Sentinel2Dataloader(Dataloader):
             return msc
 
         # Step 3: Deseasonalization
-        if dict_config["deseasonalization"]:
+        if self.config_dict["deseasonalization"]:
             data = self._deseasonalize(data, msc)  # needed?
             self.saver._save_data(data, "deseasonalized")
 
@@ -472,6 +529,4 @@ class Sentinel2Dataloader(Dataloader):
 
         data = _ensure_time_chunks(data)
         data = data.transpose("location", "time", ...).compute()
-        # data = data.chunk({"time": -1, "location": 100})
-        # data = _ensure_time_chunks(data)
         return msc, data

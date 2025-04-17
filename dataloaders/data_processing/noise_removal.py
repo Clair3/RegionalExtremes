@@ -73,6 +73,35 @@ class NoiseRemovalBase(ABC):
 
         return data
 
+    def gapfill_timeseries(
+        self,
+        data: xr.DataArray,
+        nan_fill_windows: list = [5, 7],
+    ) -> xr.DataArray:
+        """
+        Fills NaN values in a time series using rolling mean with specified window sizes.
+
+        Parameters
+        ----------
+        data : xr.DataArray
+            Input time series data.
+        nan_fill_windows : list of int, optional
+            List of window sizes for gap-filling NaN values, applied sequentially.
+
+        Returns
+        -------
+        xr.DataArray
+            Time series with NaN values filled.
+        """
+        # data = _ensure_xarray(data):
+        if not isinstance(data, xr.DataArray):
+            raise TypeError("Input must be an xarray DataArray")
+
+        # Step 1: Fill NaN values using specified window sizes
+        for window in nan_fill_windows:
+            data = self.fill_nans(data, window)
+        return data
+
     def cloudfree_timeseries(self, data, noise_half_windows=[1, 3]):
         data = data.where((data >= 0) & (data <= 1), np.nan)
         for half_window in noise_half_windows:

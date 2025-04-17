@@ -114,7 +114,7 @@ def parser_arguments():
 
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
-    args.name = "full_fluxnet_therightone_modis"
+    args.name = "full_fluxnet_therightone_highveg_modis"
     args.index = "EVI_EN"
     args.k_pca = False
     args.n_samples = 10  # 40000
@@ -127,17 +127,31 @@ if __name__ == "__main__":
     args.lower_quantiles = [0.025, 0.05, 0.10, 0.2, 0.3, 0.4, 0.50]
     args.upper_quantiles = [0.501, 0.6, 0.7, 0.8, 0.9, 0.95, 0.975]
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_12:13:03_full_fluxnet_therightone"  #
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-14_12:48:54_full_fluxnet_therightone_highveg"  #
 
     if args.method == "regional":
         # Train the regional extreme method on a subset of locations
         # regional_extremes_method(args)
         # Apply the regional extremes method on a single minicube
-        parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/"
+        parent_folder = "/Net/Groups/BGI/work_5/scratch/EU_Minicubes/_dev/"  # "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/"
 
-        subfolders = [folder for folder in os.listdir(parent_folder)]
+        subfolders = [
+            folder for folder in os.listdir(parent_folder) if folder[-4:] == ".zip"
+        ]
         # parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/_test/"
-
+        # subfolders = [
+        #     "DE-Hai_51.08_10.45_v0.zarr.zip",
+        #     "FR-LGt_47.32_2.28_v0.zarr.zip",
+        #     "ES-Cnd_37.91_-3.23_v0.zarr.zip",
+        #     "ES-LM1_39.94_-5.78_v0.zarr.zip",
+        #     "ES-LM2_39.93_-5.78_v0.zarr.zip",
+        #     "ES-LMa_39.94_-5.77_v0.zarr.zip",
+        #     "DE-Geb_51.10_10.91_v0.zarr.zip",
+        #     "DE-Wet_50.45_11.46_v0.zarr.zip",
+        #     "DE-Bay_50.14_11.87_v0.zarr.zip",
+        #     "DE-Meh_51.28_10.66_v0.zarr.zip",
+        #     "DE-Lnf_51.33_10.37_v0.zarr.zip",
+        # ]
         # subfolders = [
         #    "DE-Hai_51.08_10.45_v0.zarr.zip",
         #    # "ES-LM1_39.94_-5.78_v0.zarr.zip",
@@ -153,35 +167,54 @@ if __name__ == "__main__":
         # ]
 
         # subfolders = [
+        #     "custom_cube_50.90_11.56.zarr.zip",
         #     "custom_cube_44.17_5.24.zarr.zip",
         #     "custom_cube_44.24_5.14.zarr.zip",
         #     "custom_cube_47.31_0.18.zarr.zip",
-        #     "custom_cube_50.90_11.56.zarr.zip",
         # ]
         # regional_extremes_minicube(
         #     args,
         #     minicube_path="/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/32UNB_Hainich.zarr",
         # )
-        for folder in subfolders:
-            if folder[:-4] not in os.listdir(
-                f"{args.path_load_experiment}/{args.index}/"
-            ):
-                try:
-                    regional_extremes_minicube(
-                        args,
-                        minicube_path=parent_folder + folder,
-                    )
-                except:
-                    print(f"error with {folder}")
+        # cube = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/32UNB_Hainich.zarr"
 
         # regional_extremes_minicube(
-        #     args,
-        #     minicube_path="/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/DE-RuS_50.87_6.45_v0.zarr.zip",  # ES-Cnd_37.91_-3.23_v0.zarr.zip",
+        #    args,
+        #    minicube_path=cube,
         # )
+        for folder in subfolders:
+            # if folder[:-4] not in os.listdir(
+            #    f"{args.path_load_experiment}/{args.index}/"
+            # ):
+            #    # try:
+            regional_extremes_minicube(
+                args,
+                minicube_path=parent_folder + folder,
+            )
+        # except:
+        #       print(f"error with {folder}")
+    #
+    # regional_extremes_minicube(
+    #     args,
+    #     minicube_path="/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/DE-RuS_50.87_6.45_v0.zarr.zip",  # ES-Cnd_37.91_-3.23_v0.zarr.zip",
+    # )
     elif args.method == "local":
         # Apply the uniform threshold method
         parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/"
 
+        subfolders = [
+            "DE-Hai_51.08_10.45_v0.zarr.zip",
+            "FR-LGt_47.32_2.28_v0.zarr.zip",
+            "ES-Cnd_37.91_-3.23_v0.zarr.zip",
+            # "ES-LM1_39.94_-5.78_v0.zarr.zip",
+            # "ES-LM2_39.93_-5.78_v0.zarr.zip",
+            # "ES-LMa_39.94_-5.77_v0.zarr.zip",
+            "DE-Geb_51.10_10.91_v0.zarr.zip",
+            "DE-Wet_50.45_11.46_v0.zarr.zip",
+            "DE-Bay_50.14_11.87_v0.zarr.zip",
+            "DE-Meh_51.28_10.66_v0.zarr.zip",
+            "DE-Lnf_51.33_10.37_v0.zarr.zip",
+        ]
         # subfolders = [
         #     folder
         #     for folder in os.listdir(parent_folder)
@@ -189,39 +222,34 @@ if __name__ == "__main__":
         #     and folder.startswith("mc_")
         # ]
         # subfolders = ["ES-Cnd_37.91_-3.23_v0.zarr", "DE-RuS_50.87_6.45_v0.zarr"]
-        # subfolders = [
-        #     # "DE-Hai_51.08_10.45_v0.zarr.zip",
-        #     "FR-LGt_47.32_2.28_v0.zarr.zip",
-        #     # "ES-Cnd_37.91_-3.23_v0.zarr.zip",
-        #     # "ES-LM1_39.94_-5.78_v0.zarr.zip",
-        #     # "ES-LM2_39.93_-5.78_v0.zarr.zip",
-        #     # "ES-LMa_39.94_-5.77_v0.zarr.zip",
-        #     # "DE-Geb_51.10_10.91_v0.zarr.zip",
-        #     # "DE-Wet_50.45_11.46_v0.zarr.zip",
-        #     # "DE-Bay_50.14_11.87_v0.zarr.zip",
-        #     # "DE-Meh_51.28_10.66_v0.zarr.zip",
-        #     # "DE-Lnf_51.33_10.37_v0.zarr.zip",
-        # ]
+
         # parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/_test/"
         # subfolders = [
         #     "custom_cube_50.90_11.56.zarr.zip",
         #     "custom_cube_44.17_5.24.zarr.zip",
         #     "custom_cube_44.24_5.14.zarr.zip",
         #     "custom_cube_47.31_0.18.zarr.zip",
-        #     "custom_cube_50.90_11.56.zarr.zip",
         # ]
-        parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/"
+        # parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/"
+        #
+        # subfolders = [folder for folder in os.listdir(parent_folder)]
 
-        subfolders = [folder for folder in os.listdir(parent_folder)]
+        parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/_test/"
+        subfolders = [
+            "custom_cube_44.17_5.24.zarr.zip",
+            "custom_cube_44.24_5.14.zarr.zip",
+            "custom_cube_47.31_0.18.zarr.zip",
+            "custom_cube_50.90_11.56.zarr.zip",
+        ]
 
         for folder in subfolders:
-            if folder[:-4] not in os.listdir(
-                f"{args.path_load_experiment}/{args.index}/"
-            ):
-                try:
-                    local_extremes_method(args, minicube_path=parent_folder + folder)
-                except:
-                    printt(f"error with {folder}")
+            # if folder[:-4] not in os.listdir(
+            #    f"{args.path_load_experiment}/{args.index}/"
+            # ):
+            #    # try:
+            local_extremes_method(args, minicube_path=parent_folder + folder)
+            # except:
+            #    printt(f"error with {folder}")
 
     elif args.method == "global":
         raise NotImplementedError("the global method is not yet implemented.")

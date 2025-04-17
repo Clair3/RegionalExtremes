@@ -1,6 +1,7 @@
 from .common_imports import *
 from .sentinel2 import Sentinel2Dataloader
 from .data_processing.helpers import _ensure_time_chunks, circular_rolling_mean
+from pyproj import Transformer
 
 
 class ModisDataloader(Sentinel2Dataloader):
@@ -14,7 +15,7 @@ class ModisDataloader(Sentinel2Dataloader):
         with xr.open_zarr(filepath) as ds:
 
             # Transform UTM to lat/lon
-            #ds = self._transform_utm_to_latlon(ds)
+            # ds = self._transform_utm_to_latlon(ds)
 
             if not process_entire_minicube:
                 # Select a random vegetation location
@@ -24,7 +25,24 @@ class ModisDataloader(Sentinel2Dataloader):
 
             self.variable_name = "evi"  # ds.attrs["data_id"]
             # Filter based on vegetation occurrence
-            ds = ds.rename({"x": "longitude", "y": "latitude"})
+            epsg = (
+                ds.attrs.get("spatial_ref")
+                or ds.attrs.get("EPSG")
+                or ds.attrs.get("CRS")
+            )
+
+            if epsg is None:
+
+                raise ValueError("EPSG code not found in dataset attributes.")
+
+            transformer = Transformer.from_crs(epsg, 4326, always_xy=True)
+
+            lon, lat = transformer.transform(ds.x.values, ds.y.values)
+
+            ds = ds.assign_coords({"x": ("x", lon), "y": ("y", lat)}).rename(
+                {"x": "longitude", "y": "latitude"}
+            )
+            # ds = ds.rename({"x": "longitude", "y": "latitude"})
             # Calculate EVI and apply cloud/vegetation mask
             evi = self._calculate_evi(ds)
             evi = self._apply_masks(ds, evi)
@@ -85,6 +103,9 @@ class ModisDataloader(Sentinel2Dataloader):
 
     def _apply_masks(self, ds, evi):
         """Applies cloud and vegetation masks to the EVI data."""
+        if "250m_16_days_pixel_reliability" not in ds:
+            return self._apply_mask_VI_Quality(ds, evi)
+
         mask = xr.ones_like(evi)  # Default mask (all ones, meaning no masking)
 
         # Apply cloud mask if available
@@ -97,6 +118,32 @@ class ModisDataloader(Sentinel2Dataloader):
         )  # Convert to binary mask (1 = valid, NaN = masked)
 
         return evi * mask
+
+    def _apply_mask_VI_Quality(self, ds, evi):
+        """Applies cloud and vegetation masks to the EVI data using VI_Quality."""
+        vi_quality = ds["250m_16_days_VI_Quality"].astype(np.uint16)
+
+        # Define bitwise extract function
+        def extract_bit(arr, bit):
+            return (arr >> bit) & 1
+
+        # Use apply_ufunc to apply across xarray
+        bit_10 = xr.apply_ufunc(extract_bit, vi_quality.load(), 10, vectorize=True)
+        bit_12 = xr.apply_ufunc(extract_bit, vi_quality.load(), 12, vectorize=True)
+        modland_qa = xr.apply_ufunc(
+            lambda x: x & 0b11, vi_quality.load(), vectorize=True
+        )
+
+        # Create masks
+        cloud_mask = (bit_10 == 0) & (bit_12 == 0)
+        valid_qa_mask = (modland_qa == 0) | (modland_qa == 1)
+
+        final_mask = cloud_mask & valid_qa_mask
+
+        # Mask EVI with NaNs where data is invalid
+        final_mask = final_mask.where(final_mask, np.nan)
+
+        return evi * final_mask
 
     def _deseasonalize(self, data, msc):
         # Align subset_msc with subset_data
@@ -150,7 +197,7 @@ class ModisDataloader(Sentinel2Dataloader):
         config["poly_msc"] = 2
 
         return config
-    
+
     def preprocess_data(
         self,
         return_time_series=False,
@@ -191,7 +238,7 @@ class ModisDataloader(Sentinel2Dataloader):
         data = self.noise_removal.cloudfree_timeseries(
             data, noise_half_windows=dict_config["noise_half_windows"]
         )
-        data = self._remove_low_vegetation_location(data, threshold=0.2)
+        data = self._remove_low_vegetation_location(data, threshold=0.3)
         self.saver._save_data(data, "evi")
 
         # Compute Mean Seasonal Cycle (MSC)
@@ -215,19 +262,3 @@ class ModisDataloader(Sentinel2Dataloader):
         data = _ensure_time_chunks(data)
         data = data.transpose("location", "time", ...).compute()
         return msc, data
-
-    # def get_config(self):
-    #     # Define window sizes for gap-filling and cloud noise removal
-    #     config = dict()
-    #     config["nan_fill_windows"] = [3, 5]
-    #     config["noise_half_windows"] = [1, 2]
-    #     config["cumulative_evi_window"] = 4
-# 
-    #     config = dict()
-    #     config["nan_fill_windows"] = [3, 5]
-    #     config["noise_half_windows"] = [1, 2]
-    #     config["cumulative_evi_window"] = 5
-    #     config["period_size"] = 16
-    #     config["smoothing_window_msc"] = 7
-    #     config["poly_msc"] = 2
-    #     return config

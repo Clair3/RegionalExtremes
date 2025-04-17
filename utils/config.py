@@ -64,6 +64,7 @@ class InitializationConfig:
 
         self._set_saving_path(args)
         initialize_logger(self.saving_path)
+        print(self.saving_path)
         printt("Initialisation of a new model, no path provided for an existing model.")
         printt(f"The saving path is: {self.saving_path}")
         self._save_args(args)

@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
+import cf_xarray as cfxr
 
 
 plt.rcParams.update({"font.size": 20})
@@ -17,7 +18,7 @@ plt.rcParams.update({"font.size": 20})
 
 class PlotsSentinel2(Plots):
 
-    def normalize(self, data):
+    def normalize(self, data, rgb=[1, 0, 2]):
         # Normalize the explained variance
         def _normalization(index):
             band = data.isel(component=index).values
@@ -26,9 +27,9 @@ class PlotsSentinel2(Plots):
             # return np.clip((band - band_min) / (band_max - band_min), 0, 1)
             return (band - np.nanmin(band)) / (np.nanmax(band) - np.nanmin(band))
 
-        normalized_red = _normalization(1)  # Red is the first component
-        normalized_green = _normalization(0)  # Green is the second component
-        normalized_blue = _normalization(2)  # blue is the third component
+        normalized_red = _normalization(rgb[0])  # Red is the first component
+        normalized_green = _normalization(rgb[1])  # Green is the second component
+        normalized_blue = _normalization(rgb[2])  # blue is the third component
 
         # Stack the components into a 3D array
         return np.stack((normalized_red, normalized_green, normalized_blue), axis=-1)
@@ -58,6 +59,7 @@ class PlotsSentinel2(Plots):
         fig, ax = plt.subplots(
             figsize=(10, 8), subplot_kw={"projection": ccrs.PlateCarree()}
         )
+        ax.set_facecolor("black")
 
         ax.scatter(
             longitudes,
@@ -73,8 +75,10 @@ class PlotsSentinel2(Plots):
         # Add geographical features
         ax.coastlines()
         ax.add_feature(cfeature.BORDERS, linestyle=":")
-        ax.add_feature(cfeature.LAND, edgecolor="black")
-        ax.add_feature(cfeature.OCEAN)
+        ax.add_feature(cfeature.LAND, edgecolor="white")
+        ax.add_feature(
+            cfeature.OCEAN,
+        )
 
         # Adjust the layout
         plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05)
@@ -228,6 +232,9 @@ class PlotsSentinel2(Plots):
 
         # Plot the time series with corresponding colors
         fig, ax = plt.subplots(figsize=(15, 10))
+        fig.patch.set_facecolor("black")
+        ax.set_facecolor("black")
+
         for i, loc in enumerate(subset.location):
             ax.plot(
                 subset.dayofyear,
@@ -255,16 +262,60 @@ class PlotsSentinel2(Plots):
         else:
             plt.title("MSC Time Series Colored by PCA Components")
             saving_path = self.saving_path / "msc_pca.png"
+        # Optional: Set tick and label colors to white for visibility
+        ax.tick_params(colors="white")
+        ax.spines["bottom"].set_color("white")
+        ax.spines["top"].set_color("white")
+        ax.spines["left"].set_color("white")
+        ax.spines["right"].set_color("white")
+        ax.yaxis.label.set_color("white")
+        ax.xaxis.label.set_color("white")
+        ax.title.set_color("white")
 
-        plt.xlabel("Day of Year")
-        plt.ylabel("MSC Value")
-        plt.legend()
+        ax.set_xlabel("Day Of Year")
+        ax.set_ylabel("EVI")
         plt.savefig(saving_path)
         plt.show()
 
     def plot_minicube_eco_clusters(self):
         data = self.loader._load_data("eco_clusters")
         data = data.eco_clusters.transpose("location", "component", ...)
+        bins = data.unstack("location")
+
+        # Normalize the explained variance
+        rgb_normalized = self.normalize(bins)
+
+        # Create the figure and axis
+        fig, ax = plt.subplots(figsize=(10, 10))
+        fig.patch.set_facecolor("black")
+        ax.set_facecolor("black")
+        # adjust the plot
+        plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05)
+
+        ax.pcolormesh(
+            bins.longitude.values,
+            bins.latitude.values,
+            rgb_normalized.transpose(1, 0, 2),
+            # transform=projection,
+        )
+        ax.axis("off")
+        ax.tick_params(colors="white")
+        ax.spines["bottom"].set_color("white")
+        ax.spines["top"].set_color("white")
+        ax.spines["left"].set_color("white")
+        ax.spines["right"].set_color("white")
+        ax.yaxis.label.set_color("white")
+        ax.xaxis.label.set_color("white")
+        ax.title.set_color("white")
+        # Add a title
+        plt.title("Eco-clusters")
+        saving_path = self.saving_path / "eco_clusters_2.png"
+        plt.savefig(saving_path)
+        plt.show()
+
+    def plot_minicube_pca_projection(self):
+        data = self.loader._load_pca_projection(explained_variance=False)
+        data = data.transpose("location", "component", ...)
         bins = data.unstack("location")
 
         # Normalize the explained variance
@@ -281,10 +332,11 @@ class PlotsSentinel2(Plots):
             rgb_normalized.transpose(1, 0, 2),
             # transform=projection,
         )
+        ax.axis("off")
 
         # Add a title
-        plt.title("Eco-clusters")
-        saving_path = self.saving_path / "eco_clusters_2.png"
+        plt.title("PCA Projection")
+        saving_path = self.saving_path / "pca_projection.png"
         plt.savefig(saving_path)
         plt.show()
 
@@ -303,9 +355,9 @@ class PlotsSentinel2(Plots):
 
         # The rgb channel need to be normalise and enlightened.
         def normalize(band):
-            # band_min, band_max = (band.min(), band.max())
-            band_min = np.quantile(band, 0.02)
-            band_max = np.quantile(band, 0.98)
+            band_min, band_max = (band.min(), band.max())
+            # band_min = np.quantile(band, 0.02)
+            # band_max = np.quantile(band, 0.98)
             return (band - band_min) / (band_max - band_min)
 
         def brighten(band):
@@ -331,7 +383,7 @@ class PlotsSentinel2(Plots):
                 axes[i, j].set_title(str(current_date), fontsize=30)
                 # Remove the cloud masking
                 red = ds.isel(time=t).B04
-                green = ds.isel(time=t).B8A
+                green = ds.isel(time=t).B03
                 blue = ds.isel(time=t).B02
 
                 # red = red * mask.isel(time=t)
@@ -452,7 +504,7 @@ class PlotsSentinel2(Plots):
         plt.savefig(saving_path)
         plt.show()
 
-    def plot_thresholds(self):
+    def plot_thresholds(self, quantile):
         data = self.loader._load_data("thresholds").thresholds
         data = data.unstack("location")
 
@@ -464,27 +516,135 @@ class PlotsSentinel2(Plots):
         pcm = ax.pcolormesh(
             data.longitude.values.T,
             data.latitude.values.T,
-            data.sel(quantile=0.05).values.T,
+            data.sel(quantile=quantile).values.T,
             cmap="inferno",  # viridis",  # Choose a colormap, e.g., 'viridis', 'plasma', 'coolwarm'
         )
 
         # Add a title
-        plt.title("Quantile 5%")
+        plt.title(f"Quantile {quantile*100}%")
+        ax.axis("off")  # Hide axes if the focus is on the raster
 
         # Add a colorbar
-        pcm.set_clim(-0.15, -0.05)
+        pcm.set_clim()  # -0.15, -0.05)
 
         cbar = plt.colorbar(pcm, ax=ax, orientation="vertical", pad=0.02)
         cbar.set_label("Value")  # Set the label for the colorbar
-        saving_path = self.saving_path / "thresholds.png"
+        saving_path = self.saving_path / f"quantile_{quantile}.png"
         plt.savefig(saving_path)
         plt.show()
+
+    def plot_thresholds_rmse(self, quantile):
+        data = self.loader._load_data("rmse_loc").rmse
+        data = data.unstack("location")
+
+        fig, ax = plt.subplots(figsize=(12, 10))
+        # Adjust the plot
+        plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05)
+
+        # Plot the data with a colormap
+        pcm = ax.pcolormesh(
+            data.longitude.values.T,
+            data.latitude.values.T,
+            data.sel(quantile=quantile).values.T,
+            cmap="Reds",  # viridis",  # Choose a colormap, e.g., 'viridis', 'plasma', 'coolwarm'
+        )
+
+        # Add a title
+        plt.title(f"RMSE between Modis and S2 - Quantile {quantile*100}%")
+        ax.axis("off")  # Hide axes if the focus is on the raster
+
+        # Add a colorbar
+        pcm.set_clim()  # -0.15, -0.05)
+
+        cbar = plt.colorbar(pcm, ax=ax, orientation="vertical", pad=0.02)
+        cbar.set_label("Value")  # Set the label for the colorbar
+        saving_path = self.saving_path / f"rmse_modisres_{quantile}.png"
+        plt.savefig(saving_path)
+        plt.show()
+
+    def plot_thresholds_error(self, sample, quantile):
+        data = self.loader._load_data("thresholds").thresholds
+        data = data.unstack("location")
+
+        path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_13:04:42_full_fluxnet_therightone_modis/EVI_MODIS/{sample}/thresholds.zarr"
+        data_modis = xr.open_zarr(path)
+        data_modis = cfxr.decode_compress_to_multi_index(
+            data_modis, "location"
+        ).thresholds
+        data_modis = data_modis.unstack("location")
+
+        rmse = np.sqrt(
+            (
+                data.sel(quantile=quantile).values.T
+                - data_modis.sel(quantile=quantile).values.T
+            )
+            ** 2
+        )
+
+        fig, ax = plt.subplots(figsize=(12, 10))
+        # Adjust the plot
+        plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05)
+
+        # Plot the data with a colormap
+        pcm = ax.pcolormesh(
+            data.longitude.values.T,
+            data.latitude.values.T,
+            rmse,
+            cmap="YlOrRd",  # viridis",  # Choose a colormap, e.g., 'viridis', 'plasma', 'coolwarm'
+        )
+
+        # Add a title
+        plt.title(f"Rmse between Modis and Sentinel for the Quantile {quantile*100}%")
+        ax.axis("off")  # Hide axes if the focus is on the raster
+
+        # Add a colorbar
+        pcm.set_clim(0, 0.1)
+
+        cbar = plt.colorbar(pcm, ax=ax, orientation="vertical", pad=0.02)
+        cbar.set_label("Value")  # Set the label for the colorbar
+        saving_path = self.saving_path / f"quantile_rmse{quantile}.png"
+        plt.savefig(saving_path)
+        plt.show()
+
+    def plot_raoq(self):
+        data = self.loader._load_data("raoq").raoq
+        data = data.unstack("location")
+
+        fig, ax = plt.subplots(figsize=(12, 10))
+        # Adjust the plot
+        plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05)
+
+        # Plot the data with a colormap
+        pcm = ax.pcolormesh(
+            data.longitude.values.T,
+            data.latitude.values.T,
+            data.values.T,
+            cmap="Reds",  # viridis",  # Choose a colormap, e.g., 'viridis', 'plasma', 'coolwarm'
+        )
+
+        # Add a title
+        plt.title(f"Raoq")
+
+        # Add a colorbar
+        pcm.set_clim(0, 0.8)
+        ax.axis("off")  # Hide axes if the focus is on the raster
+
+        cbar = plt.colorbar(pcm, ax=ax, orientation="vertical", pad=0.02)
+        cbar.set_label("RaoQ")  # Set the label for the colorbar
+        saving_path = self.saving_path / "raoq.png"
+        plt.savefig(saving_path)
+        plt.show()
+
+    # path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_12:13:03_full_fluxnet_therightone/EVI_EN/UK-ESa_55.91_-2.86_v0.zarr/raoq.zarr"
+    # data = xr.open_zarr(path)
+    # data = cfxr.decode_compress_to_multi_index(data, "location").raoq
+    # data = data.unstack("location")
 
     def plot_extremes(self):
         extremes = self.loader._load_data("extremes").extremes
         # extremes = extremes.unstack("location")
 
-        extremes = extremes.sel(time=slice("2016-01-01", None))
+        extremes = extremes.sel(time=slice("2017-01-01", None))
 
         # Get all unique quantile values present in extremes, ignoring NaN values
         unique_quantiles = np.sort(
@@ -593,23 +753,42 @@ class PlotsSentinel2(Plots):
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-03-31_16:21:43_new_cleaning"
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-14_12:48:54_full_fluxnet_therightone_highveg"
 
     subfolders = [
-        # "DE-Hai_51.08_10.45_v0.zarr",
-        "ES-LM1_39.94_-5.78_v0.zarr",
-        # "ES-LM2_39.93_-5.78_v0.zarr",
-        # # "ES-LMa_39.94_-5.77_v0.zarr",
-        # "ES-Cnd_37.91_-3.23_v0.zarr",
-        # "FR-LGt_47.32_2.28_v0.zarr",
-        # "DE-Lnf_51.33_10.37_v0.zarr",
-        # "DE-Geb_51.10_10.91_v0.zarr",
-        # # "DE-Wet_50.45_11.46_v0.zarr",
-        # "DE-Bay_50.14_11.87_v0.zarr",
-        # "DE-Meh_51.28_10.66_v0.zarr",
+        # "30TVK_157southwest1260_combine.zarr",
+        # "32SME_345southwest1260_combine.zarr",
+        # "33SVB_095southwest1260_combine.zarr",
+        # "37TDL_255southwest1260_combine.zarr",
+        "37UDB_063southwest1260_combine.zarr",
     ]
+
     # subfolders = [
-    #    "ES-LM1_39.94_-5.78_v0.zarr",
+    #    # "DE-Tha_50.96_13.57_v0.zarr",
+    #    # "DE-HoH_52.09_11.22_v0.zarr",
+    #    # "DE-Obe_50.79_13.72_v0.zarr",
+    #    # "DE-Hzd_50.96_13.49_v0.zarr",
+    #    "custom_cube_50.90_11.56.zarr",
+    #    "DE-Hai_51.08_10.45_v0.zarr",
+    #    # "DE-RuS_50.87_6.45_v0.zarr",
+    #    ##    "ES-LM1_39.94_-5.78_v0.zarr",
+    #    ##    # "ES-LM2_39.93_-5.78_v0.zarr",
+    #    ##    # # "ES-LMa_39.94_-5.77_v0.zarr",
+    #    "ES-Cnd_37.91_-3.23_v0.zarr",
+    #    "FR-LGt_47.32_2.28_v0.zarr",
+    #    "DE-Lnf_51.33_10.37_v0.zarr",
+    #    "DE-Geb_51.10_10.91_v0.zarr",
+    #    "DE-Wet_50.45_11.46_v0.zarr",
+    #    "DE-Bay_50.14_11.87_v0.zarr",
+    #    "DE-Meh_51.28_10.66_v0.zarr",
+    #    "custom_cube_44.17_5.24.zarr",
+    #    "custom_cube_44.24_5.14.zarr",
+    #    "custom_cube_47.31_0.18.zarr",
+    #    # "UK-ESa_55.91_-2.86_v0.zarr",
+    #    # "AT-Neu_47.12_11.32_v0.zarr",
+    # ]  #
+    ## subfolders = [
+    ##    "ES-LM1_39.94_-5.78_v0.zarr",
     #    "ES-LM2_39.93_-5.78_v0.zarr",
     #    "ES-LMa_39.94_-5.77_v0.zarr",
     #    "DE-Hai_51.08_10.45_v0.zarr",
@@ -633,23 +812,47 @@ if __name__ == "__main__":
     #      "ES-Cnd_37.91_-3.23_v0.zarr",
     #      "DE-RuS_50.87_6.45_v0.zarr",
     #  ]
+    quantiles = [
+        #    0.025,
+        #    0.05,
+        0.10,
+        #    0.2,
+        #    0.3,
+        #    0.4,
+        #    0.50,
+        #    0.501,
+        #    0.6,
+        0.7,
+        #    0.8,
+        #    0.9,
+        #    0.95,
+        #    0.975,
+    ]
     for minicube_name in subfolders:
         config = InitializationConfig(args)
         plot = PlotsSentinel2(config=config, minicube_name=minicube_name)
+        # try:
+        #    plot.plot_raoq()
+        # except:
+        #    print(f"error with {minicube_name}")
+
         # plot.plot_location_in_europe()
-        plot.plot_thresholds()
-        plot.plot_minicube_eco_clusters()
-        plot.plot_extremes()
+        # for quantile in quantiles:
+        #     # plot.plot_thresholds_rmse(quantile)
+        #     plot.plot_thresholds(quantile)
+        # plot.plot_minicube_eco_clusters()
+        # plot.plot_minicube_pca_projection()
+        # plot.plot_extremes()
         # plot.plot_rgb()
         plot.plot_msc(colored_by_eco_cluster=True)
 
-    # for minicube_name in subfolders:
-    #     config = InitializationConfig(args)
-    #     plot = PlotsSentinel2(config=config, minicube_name=minicube_name)
-    #     # plot.plot_msc(colored_by_eco_cluster=True)
-    #     plot.plot_rgb()
-    #     # plot.plot_3D_pca()
-    # plot.map_component()
+# for minicube_name in subfolders:
+#     config = InitializationConfig(args)
+#     plot = PlotsSentinel2(config=config, minicube_name=minicube_name)
+#     # plot.plot_msc(colored_by_eco_cluster=True)
+#     plot.plot_rgb()
+#     # plot.plot_3D_pca()
+# plot.map_component()
 #
 # plot.map_component(colored_by_eco_cluster=False)
 # plot.plot_3D_pca_landcover()

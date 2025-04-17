@@ -65,9 +65,7 @@ def regional_extremes_method(args):
     """Fit the PCA with a subset of the data, then project the full dataset,
     then define the eco_clusters on the full dataset projected."""
     # Initialization of the configs, load and save paths, log.txt.
-    # minicube_path = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/_test/customcube_CO-MEL_1.95_-72.60_S2_v0.zarr.zip"
     config = InitializationConfig(args)
-
     assert config.method == "regional"
     # Initialization of EcoCluster, load data if already computed.
     eco_cluster_processor = EcoCluster(
