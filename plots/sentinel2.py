@@ -760,7 +760,9 @@ if __name__ == "__main__":
         # "32SME_345southwest1260_combine.zarr",
         # "33SVB_095southwest1260_combine.zarr",
         # "37TDL_255southwest1260_combine.zarr",
-        "37UDB_063southwest1260_combine.zarr",
+        # "37UDB_063southwest1260_combine.zarr",
+        "S2_38.3598_22.1618_34SEH_390.zarr",
+        "S2_55.0510_-1.8846_30UWG_261.zarr",
     ]
 
     # subfolders = [
@@ -836,13 +838,13 @@ if __name__ == "__main__":
         # except:
         #    print(f"error with {minicube_name}")
 
-        # plot.plot_location_in_europe()
+        plot.plot_location_in_europe()
         # for quantile in quantiles:
         #     # plot.plot_thresholds_rmse(quantile)
         #     plot.plot_thresholds(quantile)
-        # plot.plot_minicube_eco_clusters()
-        # plot.plot_minicube_pca_projection()
-        # plot.plot_extremes()
+        plot.plot_minicube_eco_clusters()
+        plot.plot_minicube_pca_projection()
+        plot.plot_extremes()
         # plot.plot_rgb()
         plot.plot_msc(colored_by_eco_cluster=True)
 
