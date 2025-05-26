@@ -606,8 +606,8 @@ class PlotsSentinel2(Plots):
         plt.savefig(saving_path)
         plt.show()
 
-    def plot_raoq(self):
-        data = self.loader._load_data("raoq").raoq
+    def plot_robin(self):
+        data = self.loader._load_data("robin").robin
         data = data.unstack("location")
 
         fig, ax = plt.subplots(figsize=(12, 10))
@@ -623,17 +623,44 @@ class PlotsSentinel2(Plots):
         )
 
         # Add a title
-        plt.title(f"Raoq")
+        plt.title(f"Diluted Index")
 
         # Add a colorbar
-        pcm.set_clim(0, 0.8)
+        pcm.set_clim(0, 1)
         ax.axis("off")  # Hide axes if the focus is on the raster
 
         cbar = plt.colorbar(pcm, ax=ax, orientation="vertical", pad=0.02)
-        cbar.set_label("RaoQ")  # Set the label for the colorbar
-        saving_path = self.saving_path / "raoq.png"
+        cbar.set_label("Diluted Index")  # Set the label for the colorbar
+        saving_path = self.saving_path / "robin.png"
         plt.savefig(saving_path)
-        plt.show()
+
+    def plot_kl_div(self):
+        data = self.loader._load_data("kl_divergence").kl_div
+        data = data.unstack("location")
+
+        fig, ax = plt.subplots(figsize=(12, 10))
+        # Adjust the plot
+        plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05)
+
+        # Plot the data with a colormap
+        pcm = ax.pcolormesh(
+            data.longitude.values.T,
+            data.latitude.values.T,
+            data.values.T,
+            cmap="Reds",  # viridis",  # Choose a colormap, e.g., 'viridis', 'plasma', 'coolwarm'
+        )
+
+        # Add a title
+        plt.title(f"KL-Divergence")
+
+        # Add a colorbar
+        pcm.set_clim(0, 1)
+        ax.axis("off")  # Hide axes if the focus is on the raster
+
+        cbar = plt.colorbar(pcm, ax=ax, orientation="vertical", pad=0.02)
+        cbar.set_label("KL-Divergence")  # Set the label for the colorbar
+        saving_path = self.saving_path / "kl_div.png"
+        plt.savefig(saving_path)
 
     # path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_12:13:03_full_fluxnet_therightone/EVI_EN/UK-ESa_55.91_-2.86_v0.zarr/raoq.zarr"
     # data = xr.open_zarr(path)
@@ -753,42 +780,43 @@ class PlotsSentinel2(Plots):
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-14_12:48:54_full_fluxnet_therightone_highveg"
-
-    subfolders = [
-        # "30TVK_157southwest1260_combine.zarr",
-        # "32SME_345southwest1260_combine.zarr",
-        # "33SVB_095southwest1260_combine.zarr",
-        # "37TDL_255southwest1260_combine.zarr",
-        # "37UDB_063southwest1260_combine.zarr",
-        "S2_38.3598_22.1618_34SEH_390.zarr",
-        "S2_55.0510_-1.8846_30UWG_261.zarr",
-    ]
+    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_12:13:03_full_fluxnet_therightone"
 
     # subfolders = [
-    #    # "DE-Tha_50.96_13.57_v0.zarr",
-    #    # "DE-HoH_52.09_11.22_v0.zarr",
-    #    # "DE-Obe_50.79_13.72_v0.zarr",
-    #    # "DE-Hzd_50.96_13.49_v0.zarr",
-    #    "custom_cube_50.90_11.56.zarr",
-    #    "DE-Hai_51.08_10.45_v0.zarr",
-    #    # "DE-RuS_50.87_6.45_v0.zarr",
-    #    ##    "ES-LM1_39.94_-5.78_v0.zarr",
-    #    ##    # "ES-LM2_39.93_-5.78_v0.zarr",
-    #    ##    # # "ES-LMa_39.94_-5.77_v0.zarr",
-    #    "ES-Cnd_37.91_-3.23_v0.zarr",
-    #    "FR-LGt_47.32_2.28_v0.zarr",
-    #    "DE-Lnf_51.33_10.37_v0.zarr",
-    #    "DE-Geb_51.10_10.91_v0.zarr",
-    #    "DE-Wet_50.45_11.46_v0.zarr",
-    #    "DE-Bay_50.14_11.87_v0.zarr",
-    #    "DE-Meh_51.28_10.66_v0.zarr",
-    #    "custom_cube_44.17_5.24.zarr",
-    #    "custom_cube_44.24_5.14.zarr",
-    #    "custom_cube_47.31_0.18.zarr",
-    #    # "UK-ESa_55.91_-2.86_v0.zarr",
-    #    # "AT-Neu_47.12_11.32_v0.zarr",
-    # ]  #
+    #     # "30TVK_157southwest1260_combine.zarr",
+    #     # "32SME_345southwest1260_combine.zarr",
+    #     # "33SVB_095southwest1260_combine.zarr",
+    #     # "37TDL_255southwest1260_combine.zarr",
+    #     # "37UDB_063southwest1260_combine.zarr",
+    #     "S2_38.3598_22.1618_34SEH_390.zarr",
+    #     "S2_55.0510_-1.8846_30UWG_261.zarr",
+    # ]
+
+    subfolders = [
+        # "DE-Tha_50.96_13.57_v0.zarr",
+        # "DE-HoH_52.09_11.22_v0.zarr",
+        # "DE-Obe_50.79_13.72_v0.zarr",
+        # "DE-Hzd_50.96_13.49_v0.zarr",
+        # "custom_cube_50.90_11.56.zarr",
+        # "DE-Hai_51.08_10.45_v0.zarr",
+        # "DE-RuS_50.87_6.45_v0.zarr",
+        "BE-Bra_51.31_4.52_v0.zarr",
+        # "ES-LM1_39.94_-5.78_v0.zarr",
+        # "ES-LM2_39.93_-5.78_v0.zarr",
+        # "ES-LMa_39.94_-5.77_v0.zarr",
+        # "ES-Cnd_37.91_-3.23_v0.zarr",
+        # "FR-LGt_47.32_2.28_v0.zarr",
+        # "DE-Lnf_51.33_10.37_v0.zarr",
+        # "DE-Geb_51.10_10.91_v0.zarr",
+        # "DE-Wet_50.45_11.46_v0.zarr",
+        # "DE-Bay_50.14_11.87_v0.zarr",
+        # "DE-Meh_51.28_10.66_v0.zarr",
+        # "custom_cube_44.17_5.24.zarr",
+        # "custom_cube_44.24_5.14.zarr",
+        # "custom_cube_47.31_0.18.zarr",
+        # "UK-ESa_55.91_-2.86_v0.zarr",
+        # "AT-Neu_47.12_11.32_v0.zarr",
+    ]  #
     ## subfolders = [
     ##    "ES-LM1_39.94_-5.78_v0.zarr",
     #    "ES-LM2_39.93_-5.78_v0.zarr",
@@ -814,39 +842,29 @@ if __name__ == "__main__":
     #      "ES-Cnd_37.91_-3.23_v0.zarr",
     #      "DE-RuS_50.87_6.45_v0.zarr",
     #  ]
-    quantiles = [
-        #    0.025,
-        #    0.05,
-        0.10,
-        #    0.2,
-        #    0.3,
-        #    0.4,
-        #    0.50,
-        #    0.501,
-        #    0.6,
-        0.7,
-        #    0.8,
-        #    0.9,
-        #    0.95,
-        #    0.975,
+    subfolders = [
+        folder
+        for folder in os.listdir(args.path_load_experiment + "/EVI_EN")
+        if folder[-7:] == "v0.zarr"
     ]
+
     for minicube_name in subfolders:
         config = InitializationConfig(args)
         plot = PlotsSentinel2(config=config, minicube_name=minicube_name)
-        # try:
-        #    plot.plot_raoq()
-        # except:
-        #    print(f"error with {minicube_name}")
-
-        plot.plot_location_in_europe()
-        # for quantile in quantiles:
-        #     # plot.plot_thresholds_rmse(quantile)
-        #     plot.plot_thresholds(quantile)
-        plot.plot_minicube_eco_clusters()
-        plot.plot_minicube_pca_projection()
-        plot.plot_extremes()
-        # plot.plot_rgb()
-        plot.plot_msc(colored_by_eco_cluster=True)
+        try:
+            plot.plot_location_in_europe()
+            # for quantile in quantiles:
+            #     # plot.plot_thresholds_rmse(quantile)
+            #     plot.plot_thresholds(quantile)
+            plot.plot_minicube_eco_clusters()
+            plot.plot_minicube_pca_projection()
+            plot.plot_extremes()
+            plot.plot_kl_div()
+            plot.plot_robin()
+            plot.plot_rgb()
+            plot.plot_msc(colored_by_eco_cluster=True)
+        except:
+            print(f"error with {minicube_name}")
 
 # for minicube_name in subfolders:
 #     config = InitializationConfig(args)

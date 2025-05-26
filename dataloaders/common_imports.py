@@ -36,3 +36,4 @@ ECOLOGICAL_FILEPATH = (
 )
 VARIABLE_NAME = lambda index: f"{index}gapfilled_QCdyn"
 EARTHNET_FILEPATH = "/Net/Groups/BGI/work_2/scratch/DeepExtremes/dx-minicubes"
+# EARTHNET_FILEPATH = "/Net/Groups/BGI/work_5/scratch/EU_Minicubes/_final"

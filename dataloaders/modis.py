@@ -195,6 +195,7 @@ class ModisDataloader(Sentinel2Dataloader):
         config["noise_half_windows"] = [1, 2]
         config["smoothing_window_msc"] = 7
         config["poly_msc"] = 2
+        config["period_size"] = 16
 
         return config
 
@@ -224,7 +225,7 @@ class ModisDataloader(Sentinel2Dataloader):
             return msc.msc
 
         printt("Starting preprocessing...")
-        dict_config = self.get_config()
+        self.config_dict = self.get_config()
         # Load data either from a minicube or from the default dataset
         if minicube_path:
             printt(f"Loading minicube from {minicube_path}")
@@ -235,10 +236,11 @@ class ModisDataloader(Sentinel2Dataloader):
             data = self.load_dataset()
 
         printt(f"Processing entire dataset: {data.sizes['location']} locations.")
+        data = self.compute_max_per_period(data, self.config_dict["period_size"])
         data = self.noise_removal.cloudfree_timeseries(
-            data, noise_half_windows=dict_config["noise_half_windows"]
+            data, noise_half_windows=self.config_dict["noise_half_windows"]
         )
-        data = self._remove_low_vegetation_location(data, threshold=0.3)
+        data = self._remove_low_vegetation_location(data, threshold=0.2)
         self.saver._save_data(data, "evi")
 
         # Compute Mean Seasonal Cycle (MSC)

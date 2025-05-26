@@ -20,8 +20,8 @@ class Sentinel2Dataloader(Dataloader):
         # Attempt to load preprocessed training data
         # training_data = self.loader._load_data("temp_file")
         # path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2024-12-21_13:11:46_30000_locations/EVI_EN/temp_file.zarr"
-        path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-14_11:57:24_full_fluxnet_therightone_highveg/EVI_EN/temp_file.zarr"
-        training_data = xr.open_zarr(path)
+        # path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-14_11:57:24_full_fluxnet_therightone_highveg/EVI_EN/temp_file.zarr"
+        training_data = None  # xr.open_zarr(path)
         training_data = cfxr.decode_compress_to_multi_index(training_data, "location")
         if training_data is not None:
             self.data = training_data
@@ -37,8 +37,8 @@ class Sentinel2Dataloader(Dataloader):
             return self.data
 
         # Determine the number of samples to process (default: 10,000)
-        sample_count = 32_000  # self.n_samples or 32_000
-        print(f"count: {sample_count}")
+        sample_count = self.n_samples or 32_000
+        print(f"Number of samples for the training set: {sample_count}")
         samples_paths = self.sample_locations(sample_count)
 
         printt("Loading dataset...")
@@ -206,7 +206,7 @@ class Sentinel2Dataloader(Dataloader):
             # Select 20m bands
             ds_20m = ds[["B05", "B06", "B07", "B11", "B12", "B8A", "SCL"]]
 
-            # Merge all bands (still lazy until computed)
+            # Merge all bands
             ds = xr.merge([ds_10m, ds_20m])
             ds = ds.rename({"x20": "x", "y20": "y"})
 
@@ -215,7 +215,6 @@ class Sentinel2Dataloader(Dataloader):
         )
 
         if epsg is None:
-
             raise ValueError("EPSG code not found in dataset attributes.")
 
         transformer = Transformer.from_crs(epsg, 4326, always_xy=True)
