@@ -11,7 +11,6 @@ from tqdm import tqdm
 
 
 class Sentinel2Dataloader(Dataloader):
-
     def load_dataset(self):
         """
         Load and preprocess the dataset. If a cached version exists, use it.
@@ -154,18 +153,16 @@ class Sentinel2Dataloader(Dataloader):
         ds["time"] = ds["time"].dt.floor("D")
         ds = ds.sel(time=slice(date(2017, 3, 1), None))
 
-        if self.config.modis_resolution:
-            ds = ds.coarsen(latitude=12, longitude=12, boundary="trim").mean()
-
         if not process_entire_minicube:
             # Select a random vegetation location
             ds = self._get_random_vegetation_pixel_series(ds)
             if ds is None:
-                # printt(f"No valid vegetation pixel found in {minicube_path}.")
+                printt(f"No valid vegetation pixel found in {filepath}.")
                 return None
         else:
             ds = ds.stack(location=("longitude", "latitude"))
             self.saver.update_saving_path(filepath.stem)
+
         data = self.compute_vegetation_index(ds)
         return data
 
@@ -174,7 +171,23 @@ class Sentinel2Dataloader(Dataloader):
 
         # Calculate EVI and apply cloud/vegetation mask
         evi = self._calculate_evi(ds)
-        masked_evi = self._apply_masks(ds, evi)
+        mask = self._compute_masks(ds, evi)
+
+        if self.config.modis_resolution:
+            evi = evi.unstack("location")
+            mask = mask.unstack("location")
+            evi = evi.coarsen(latitude=12, longitude=12, boundary="trim").mean(
+                skipna=True
+            )
+            mask_coarse_frac = mask.coarsen(
+                latitude=12, longitude=12, boundary="trim"
+            ).mean(skipna=True)
+            mask = mask_coarse_frac > 0.5
+
+            evi = evi.stack(location=("latitude", "longitude"))
+            mask = mask.stack(location=("latitude", "longitude"))
+
+        masked_evi = evi * mask
         data = xr.Dataset(
             data_vars={
                 f"{self.variable_name}": masked_evi,
@@ -182,6 +195,7 @@ class Sentinel2Dataloader(Dataloader):
         )
         # Check for excessive missing data
         if self._has_excessive_nan(masked_evi):
+            printt(f"Excessive NaN values for the selected location.")
             return None
         return data
 
@@ -226,7 +240,18 @@ class Sentinel2Dataloader(Dataloader):
 
     def _get_random_vegetation_pixel_series(self, ds):
         """Selects a random time serie vegetation pixel location in the minicube based on SCL classification."""
-        eligible_indices = self._has_sufficient_vegetation(ds)
+
+        def _has_sufficient_vegetation(self, ds):
+            """Checks if sufficient vegetation exists across the dataset."""
+            count_of_4 = (ds.SCL == 4).sum(dim="time")
+            mask = count_of_4 > 1 / 4 * (366 / self.config_dict["period_size"]) * len(
+                np.unique(ds.time.dt.year)
+            )
+
+            eligible_indices = np.argwhere(mask.values)
+            return eligible_indices
+
+        eligible_indices = _has_sufficient_vegetation(ds)
 
         if eligible_indices.size > 0:
             random_index = eligible_indices[np.random.choice(eligible_indices.shape[0])]
@@ -240,16 +265,6 @@ class Sentinel2Dataloader(Dataloader):
             return selected_data.stack(location=("longitude", "latitude"))
         return None
 
-    def _has_sufficient_vegetation(self, ds):
-        """Checks if sufficient vegetation exists across the dataset."""
-        count_of_4 = (ds.SCL == 4).sum(dim="time")
-        mask = count_of_4 > 1 / 4 * (366 / self.config_dict["period_size"]) * len(
-            np.unique(ds.time.dt.year)
-        )
-
-        eligible_indices = np.argwhere(mask.values)
-        return eligible_indices
-
     def _calculate_evi(self, ds):
         """Calculates the Enhanced Vegetation Index (EVI)."""
         # return (2.5 * (ds.B08 - ds.B04)) / (
@@ -259,7 +274,7 @@ class Sentinel2Dataloader(Dataloader):
             ds.B8A + 6 * ds.B04 - 7.5 * ds.B02 + 1 + 10e-8
         )
 
-    def _apply_masks(self, ds, evi):
+    def _compute_masks(self, ds, evi):
         """Applies cloud and vegetation masks to the EVI data."""
         mask = xr.ones_like(evi)  # Default mask (all ones, meaning no masking)
 
@@ -267,6 +282,7 @@ class Sentinel2Dataloader(Dataloader):
         if "SCL" in ds.data_vars:
             # keep only pixel valid accordingly to the SCL
             valid_scl = ds.SCL.isin([4, 5, 6, 7])
+
             mask = mask.where(valid_scl, np.nan)
 
             # keep only time steps with more than 50% of valid pixels
@@ -281,23 +297,12 @@ class Sentinel2Dataloader(Dataloader):
         if "cloudmask_en" in ds.data_vars:
             mask = mask.where(ds.cloudmask_en == 0, np.nan)
 
-        return evi * mask
+        return mask
 
     def _has_excessive_nan(self, data):
         """Checks if the masked data contains excessive NaN values."""
         nan_percentage = data.isnull().mean().values * 100
         return nan_percentage > 95
-
-    def filter_dataset_specific(self):
-        """
-        Standarize the ecological xarray. Remove irrelevant area, and reshape for the PCA.
-        """
-        assert self.data is not None, "Data not loaded."
-
-        # Assert dimensions are as expected after loading and transformation
-        assert all(
-            dim in self.data.sizes for dim in ("time", "location")
-        ), f"Dimension missing. dimension are: {self.data.size}"
 
     def _deseasonalize(self, data, msc):
         # Align subset_msc with subset_data
