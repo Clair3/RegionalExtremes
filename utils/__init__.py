@@ -1,3 +1,3 @@
 from .loader import Loader
 from .saver import Saver
-from .logger import Logger, printt
+from .logging_config import Logger, printt

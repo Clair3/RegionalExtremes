@@ -21,7 +21,7 @@ from RegionalExtremesPackage.utils.config import (
 )
 from RegionalExtremesPackage.utils import Loader, Saver
 from RegionalExtremesPackage.dataloaders.data_processing import NoiseRemovalBase
-from RegionalExtremesPackage.utils.logger import printt
+from RegionalExtremesPackage.utils.logging_config import printt
 
 
 np.random.seed(2024)
@@ -35,5 +35,5 @@ ECOLOGICAL_FILEPATH = (
     lambda index: f"/Net/Groups/BGI/work_1/scratch/fluxcom/upscaling_inputs/MODIS_VI_perRegion061/{index}/Groups_{index}gapfilled_QCdyn.zarr"
 )
 VARIABLE_NAME = lambda index: f"{index}gapfilled_QCdyn"
-EARTHNET_FILEPATH = "/Net/Groups/BGI/work_2/scratch/DeepExtremes/dx-minicubes"
-# EARTHNET_FILEPATH = "/Net/Groups/BGI/work_5/scratch/EU_Minicubes/_final"
+# EARTHNET_FILEPATH = "/Net/Groups/BGI/work_2/scratch/DeepExtremes/dx-minicubes"
+EARTHNET_FILEPATH = "/Net/Groups/BGI/work_5/scratch/EU_Minicubes/_final/"

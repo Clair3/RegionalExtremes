@@ -1,4 +1,5 @@
 from .common_imports import *
+from dask import delayed, compute
 
 
 class Saver:
@@ -102,6 +103,7 @@ class Saver:
 
     def _save_data(self, data, name, basepath=None, location=True, eco_cluster=False):
         """Saves the data to a file."""
+        printt(f"Saving data with dims: {data.dims} and shape: {data.sizes}")
         if basepath is None:
             basepath = self.config.saving_path
         path = basepath / f"{name}.zarr"
@@ -131,12 +133,16 @@ class Saver:
 
                 data.to_zarr(path, mode="w", encoding=encoding)
                 return
-        # if name == "deseazonalized" or name == "clean_data":
         if "time" in data.dims and "location" in data.dims:
-            data = data.chunk({"time": 50, "location": -1})
-        if "dayofyear" in data.dims:
+            data = data.chunk({"time": 50, "location": 100})
+        elif "dayofyear" in data.dims:
             data = data.chunk({"location": 50, "dayofyear": -1})
-        data.to_zarr(path, mode="w")
+
+        printt("Writing to Zarr...")
+        # delayed_store = data.to_zarr(path, mode="w")#, compute=False)
+        # compute(delayed_store)  # triggers parallel write
+
+        data.to_zarr(path, mode="w", consolidated=True)
         printt(f"{name} computed and saved.")
 
     def _save_spatial_masking(self, mask):

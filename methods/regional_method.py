@@ -8,7 +8,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
 from RegionalExtremesPackage.methods.eco_cluster import EcoCluster
 from RegionalExtremesPackage.methods.quantiles import quantiles
-from RegionalExtremesPackage.utils.logger import printt
+from RegionalExtremesPackage.utils.logging_config import printt
 from RegionalExtremesPackage.utils import Loader, Saver
 from RegionalExtremesPackage.dataloaders import dataloader
 from RegionalExtremesPackage.utils.config import InitializationConfig
@@ -72,38 +72,42 @@ def regional_extremes_method(args):
         config=config,
     )
     quantiles_processor = quantiles(config=config)
+
+    # Initialization of the climatic or ecological DatasetHandler
+    dataset_processor = dataloader(
+        config=config,
+        n_samples=args.n_samples,  # 10000,  # config.n_samples,  # all the dataset
+    )
+    # Load and preprocess the dataset
+    msc = dataset_processor.preprocess_data()  # minicube_path=minicube_path)
+
     # Load a subset of the dataset and fit the PCA
     if not hasattr(eco_cluster_processor.pca, "explained_variance_"):
-        # Initialization of the climatic or ecological DatasetHandler
-        dataset_processor = dataloader(
-            config=config,
-            n_samples=None,  # 10000,  # config.n_samples,  # all the dataset
-        )
-        # Load and preprocess the dataset
-        data = dataset_processor.preprocess_data()  # minicube_path=minicube_path)
         # Fit the PCA on the data
-        eco_cluster_processor.compute_pca_and_transform(scaled_data=data)
+        eco_cluster_processor.compute_pca_and_transform(scaled_data=msc)
 
     # Apply the PCA to the entire dataset
     # if eco_cluster.projected_data is None:
+    dataset_processor = dataloader(config=config, n_samples=None)  # all the dataset
+    msc, data = dataset_processor.preprocess_data(
+        return_time_series=True
+    )  # minicube_path=minicube_path)
 
     # Define the boundaries of the eco_clusters
     if eco_cluster_processor.limits_eco_clusters is None:
-        dataset_processor = dataloader(config=config, n_samples=None)  # all the dataset
-        data = dataset_processor.preprocess_data()  # minicube_path=minicube_path)
-        eco_cluster_processor.apply_pca(scaled_data=data)
+        eco_cluster_processor.apply_pca(scaled_data=msc)
         eco_cluster_processor.define_limits_eco_clusters()
 
     # Apply the regional threshold and compute the extremes
     # Load the data
-    dataset_processor = dataloader(
-        config=config,
-        n_samples=None,
-    )
-    msc, data = dataset_processor.preprocess_data(
-        return_time_series=True,
-    )
-    eco_cluster_processor.apply_pca(scaled_data=msc)
+    # dataset_processor = dataloader(
+    #     config=config,
+    #     n_samples=None,
+    # )
+    # msc, data = dataset_processor.preprocess_data(
+    #     return_time_series=True,
+    # )
+    # eco_cluster_processor.apply_pca(scaled_data=msc)
     eco_clusters = eco_cluster_processor.find_eco_clusters()
     # Compute the quantiles per eco_clusters
 

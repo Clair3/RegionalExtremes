@@ -28,6 +28,6 @@ from matplotlib.colors import Normalize
 from RegionalExtremesPackage.utils.config import InitializationConfig
 from RegionalExtremesPackage.utils import Loader, Saver
 from main import parser_arguments
-from RegionalExtremesPackage.utils.logger import printt
+from RegionalExtremesPackage.utils.logging_config import printt
 from RegionalExtremesPackage.dataloaders import dataloader
 from abc import ABC, abstractmethod

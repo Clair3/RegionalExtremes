@@ -5,7 +5,7 @@ import os
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from RegionalExtremesPackage.utils.logger import int_or_none, printt
+from RegionalExtremesPackage.utils.logging_config import int_or_none, printt
 
 import argparse
 from RegionalExtremesPackage.methods import (
@@ -115,9 +115,9 @@ def parser_arguments():
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
     args.name = "new"
-    args.index = "EVI_MODIS"
+    args.index = "EVI_EN"
     args.k_pca = False
-    args.n_samples = 10  # 40000
+    args.n_samples = 20000  # 40000
     args.n_components = 3
     args.n_eco_clusters = 20
     args.compute_variance = False
@@ -127,7 +127,7 @@ if __name__ == "__main__":
     args.lower_quantiles = [0.025, 0.05, 0.10, 0.2, 0.3, 0.4, 0.50]
     args.upper_quantiles = [0.501, 0.6, 0.7, 0.8, 0.9, 0.95, 0.975]
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-05-12_11:36:04_new"  #
+    # args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-06-02_13:34:34_new"  #
 
     if args.method == "regional":
         # Train the regional extreme method on a subset of locations
@@ -234,22 +234,22 @@ if __name__ == "__main__":
         #
         subfolders = [folder for folder in os.listdir(parent_folder)]
 
-        parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/_test/"
-        subfolders = [
-            "custom_cube_44.17_5.24.zarr.zip",
-            "custom_cube_44.24_5.14.zarr.zip",
-            "custom_cube_47.31_0.18.zarr.zip",
-            "custom_cube_50.90_11.56.zarr.zip",
-        ]
+        # parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/_test/"
+        # subfolders = [
+        #     "custom_cube_44.17_5.24.zarr.zip",
+        #     "custom_cube_44.24_5.14.zarr.zip",
+        #     "custom_cube_47.31_0.18.zarr.zip",
+        #     "custom_cube_50.90_11.56.zarr.zip",
+        # ]
 
         for folder in subfolders:
             # if folder[:-4] not in os.listdir(
             #     f"{args.path_load_experiment}/{args.index}/"
             # ):
-            try:
-                local_extremes_method(args, minicube_path=parent_folder + folder)
-            except:
-                printt(f"error with {folder}")
-
+            # try:
+            local_extremes_method(args, minicube_path=parent_folder + folder)
+            # except:
+            #    printt(f"error with {folder}")
+    #
     elif args.method == "global":
         raise NotImplementedError("the global method is not yet implemented.")

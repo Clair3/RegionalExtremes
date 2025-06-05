@@ -14,7 +14,7 @@ import sys
 import os
 from pathlib import Path
 
-from RegionalExtremesPackage.utils.logger import initialize_logger, printt
+from RegionalExtremesPackage.utils.logging_config import initialize_logger, printt
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
@@ -64,7 +64,6 @@ class InitializationConfig:
 
         self._set_saving_path(args)
         initialize_logger(self.saving_path)
-        print(self.saving_path)
         printt("Initialisation of a new model, no path provided for an existing model.")
         printt(f"The saving path is: {self.saving_path}")
         self._save_args(args)

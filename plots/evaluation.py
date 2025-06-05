@@ -957,7 +957,7 @@ def compute_extremes(
     # Parallel compute across unique threshold values
     results = [delayed(process_group)(val) for val in unique_values]
     # Combine results and ensure location is sorted
-    combined_results = delayed(xr.concat)(results, dim="location")
+    combined_results = delayed(xr.concat)(results, dim="location", coords="minimal")
     # Ensure location is sorted (since it can be unsorted across different results)
     combined_results_sorted = combined_results.sortby("location")
     missed_fraction = combined_results_sorted.compute()
@@ -1085,7 +1085,7 @@ if __name__ == "__main__":
             base_path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-14_12:48:54_full_fluxnet_therightone_highveg/EVI_EN"
             sample_path = os.path.join(base_path, sample)
             # if "common_fraction_avg_v3.zarr" not in os.listdir(sample_path):
-            compute_extremes(sample, type="common", dim="time", threshold=0.2)
+            compute_extremes(sample, type="missed", dim="time", threshold=0.2)
             #    # remove the file
             #    shutil.rmtree(os.path.join(sample_path, "kl_div_raoq.zarr"))
             ## compute_variance(sample)
