@@ -154,6 +154,9 @@ class Sentinel2Dataloader(Dataloader):
         ds["time"] = ds["time"].dt.floor("D")
         ds = ds.sel(time=slice(date(2017, 3, 1), None))
 
+        if self.config.modis_resolution:
+            ds = ds.coarsen(latitude=12, longitude=12, boundary="trim").mean()
+
         if not process_entire_minicube:
             # Select a random vegetation location
             ds = self._get_random_vegetation_pixel_series(ds)

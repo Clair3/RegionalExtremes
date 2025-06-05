@@ -30,7 +30,6 @@ class InitializationConfig:
         Args:
             args (argparse.Namespace): Parsed arguments from argparse.ArgumentParser().parse_args()
         """
-        print(args)
         if args.saving_path is None:
             # self.saving_path = None
             self._initialize_new_experiment(args)

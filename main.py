@@ -114,7 +114,8 @@ def parser_arguments():
 
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
-    args.name = "new"
+    args.name = "local_s2_modisres"
+    args.modis_resolution = True
     args.index = "EVI_EN"
     args.k_pca = False
     args.n_samples = 20000  # 40000
@@ -245,10 +246,10 @@ if __name__ == "__main__":
             # if folder[:-4] not in os.listdir(
             #     f"{args.path_load_experiment}/{args.index}/"
             # ):
-            # try:
-            local_extremes_method(args, minicube_path=parent_folder + folder)
-            # except:
-            #    printt(f"error with {folder}")
+            try:
+                local_extremes_method(args, minicube_path=parent_folder + folder)
+            except:
+                printt(f"error with {folder}")
     #
     elif args.method == "global":
         raise NotImplementedError("the global method is not yet implemented.")
