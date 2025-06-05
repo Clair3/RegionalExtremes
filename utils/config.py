@@ -3,16 +3,11 @@ import dask.array as da
 from argparse import Namespace
 import numpy as np
 import json
-import random
 import datetime
-from sklearn.decomposition import PCA
-import pandas as pd
-import pickle as pk
-from typing import Union
-import time
 import sys
 import os
 from pathlib import Path
+
 
 from RegionalExtremesPackage.utils.logging_config import initialize_logger, printt
 
@@ -35,12 +30,13 @@ class InitializationConfig:
         Args:
             args (argparse.Namespace): Parsed arguments from argparse.ArgumentParser().parse_args()
         """
-        if args.path_load_experiment is None:
-            self.path_load_experiment = None
+        print(args)
+        if args.saving_path is None:
+            # self.saving_path = None
             self._initialize_new_experiment(args)
         else:
-            self.path_load_experiment = Path(args.path_load_experiment)
-            self._load_existing_experiment()
+
+            self._load_existing_experiment(args)
 
     def _initialize_new_experiment(self, args: Namespace):
         """
@@ -51,16 +47,6 @@ class InitializationConfig:
         """
         for key, value in vars(args).items():
             setattr(self, key, value)
-        # self.time_resolution = args.time_resolution
-        # self.index = args.index
-        # self.compute_variance = args.compute_variance
-        # self.k_pca = args.k_pca
-        # self.start_year = args.start_year
-        # self.method = args.method
-        self.is_generic_xarray_dataset = args.is_generic_xarray_dataset is True
-
-        if self.is_generic_xarray_dataset:
-            return
 
         self._set_saving_path(args)
         initialize_logger(self.saving_path)
@@ -106,14 +92,14 @@ class InitializationConfig:
         Args:
             args (argparse.Namespace): Parsed arguments from argparse.ArgumentParser().parse_args()
         """
-        assert self.path_load_experiment is None
+        # assert self.saving_path is None
 
         # Saving path
         args_path = self.saving_path / "args.json"
 
         # Convert to a dictionnary
         args_dict = vars(args)
-        del args_dict["path_load_experiment"]
+        # del args_dict["saving_path"]
 
         if not args_path.exists():
             with open(args_path, "w") as f:
@@ -121,21 +107,15 @@ class InitializationConfig:
         else:
             raise f"{args_path} already exist."
 
-    def _load_existing_experiment(self):
+    def _load_existing_experiment(self, args):
         """
         Load an existing model's PCA matrix and min-max data from files.
         """
-        # Filter out 'slurm_files' in the path to load experiment to find the index used.
-        self.index = [
-            folder
-            for folder in os.listdir(self.path_load_experiment)
-            if folder != "slurm_files"
-        ][0]
-        self.saving_path = self.path_load_experiment / self.index
+        self.saving_path = Path(args.saving_path)
+        print(f"loading existing experiment from {self.saving_path}")
 
         # Initialise the logger
         initialize_logger(self.saving_path)
-        printt(f"Loading of the model path: {self.path_load_experiment}")
         self._load_args()
 
     def _load_args(self):

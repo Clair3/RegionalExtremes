@@ -8,9 +8,7 @@ from .modis import ModisDataloader
 
 @staticmethod
 def dataloader(config: InitializationConfig, n_samples: int):
-    if config.is_generic_xarray_dataset:
-        return GenericDataloader(config, n_samples=n_samples)
-    elif config.index in ECOLOGICAL_INDICES:
+    if config.index in ECOLOGICAL_INDICES:
         return ModisGapfilledDataloader(config, n_samples=n_samples)
     elif config.index in CLIMATIC_INDICES:
         return Era5Dataloader(config, n_samples=n_samples)
@@ -19,4 +17,5 @@ def dataloader(config: InitializationConfig, n_samples: int):
     elif config.index in MODIS_INDICES:
         return ModisDataloader(config, n_samples=n_samples)
     else:
-        raise ValueError("Invalid index")
+        return GenericDataloader(config, n_samples=n_samples)
+        # raise ValueError("Invalid index")

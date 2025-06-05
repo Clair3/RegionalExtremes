@@ -60,7 +60,7 @@ class Sentinel2Dataloader(Dataloader):
         ds = xr.combine_by_coords(data, combine_attrs="override").compute()
         print("Dataset loaded and concatenated.")
         ds = ds.sel(location=~ds.get_index("location").duplicated())
-        ds = self.compute_max_per_period(ds, self.config_dict["period_size"])
+        # ds = self.compute_max_per_period(ds, self.config_dict["period_size"])
 
         # ds = _ensure_time_chunks(ds)
         #
@@ -77,17 +77,16 @@ class Sentinel2Dataloader(Dataloader):
         data = self.load_file(filepath, process_entire_minicube=True)
         if data is None:
             return None
-        self.data = data.stack(location=("longitude", "latitude"))
         if self.n_samples:
             random_indices = np.random.choice(
-                len(self.data.location), size=self.n_samples, replace=False
+                len(data.location), size=self.n_samples, replace=False
             )
-            self.data = self.data.isel(location=random_indices)
+            data = data.isel(location=random_indices)
         # self.data = self.data  # .isel(location=slice(0, 100))
         self.variable_name = "evi"
-        self.data = self.data[self.variable_name]
-        self.data = _ensure_time_chunks(self.data)
-        return self.data
+        data = data[self.variable_name]
+        data = _ensure_time_chunks(data)
+        return data
 
     def sample_locations(self, n_samples):
         """
@@ -106,6 +105,24 @@ class Sentinel2Dataloader(Dataloader):
             pandas.DataFrame
                 DataFrame containing original lat/lon plus random grid coordinates
         """
+
+        def _is_in_europe(self, lon, lat):
+            """
+            Check if the given longitude and latitude are within the bounds of Europe.
+            """
+            # Define Europe boundaries (these are approximate)
+            lon_min, lon_max = -31.266, 39.869  # Longitude boundaries
+            lat_min, lat_max = 27.636, 81.008  # Latitude boundaries
+
+            # Check if the point is within the defined boundaries
+            in_europe = (
+                (lon >= lon_min)
+                & (lon <= lon_max)
+                & (lat >= lat_min)
+                & (lat <= lat_max)
+            )
+            return in_europe
+
         metadata_file = (
             "/Net/Groups/BGI/work_2/scratch/DeepExtremes/mc_earthnet_biome.csv"
         )
@@ -121,7 +138,7 @@ class Sentinel2Dataloader(Dataloader):
         ]
         df = df.loc[
             (df["check"] == 0)
-            & df.apply(lambda row: self._is_in_europe(row["lon"], row["lat"]), axis=1)
+            & df.apply(lambda row: _is_in_europe(row["lon"], row["lat"]), axis=1)
         ]
         # /Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/DeepExtremes_enough_vegetation_europe.csv
         # Random sampling with replacement
@@ -130,30 +147,12 @@ class Sentinel2Dataloader(Dataloader):
             sampled_indices
         ].values  # df.loc[sampled_indices, "path"].values  #
 
-    def _is_in_europe(self, lon, lat):
-        """
-        Check if the given longitude and latitude are within the bounds of Europe.
-        """
-        # Define Europe boundaries (these are approximate)
-        lon_min, lon_max = -31.266, 39.869  # Longitude boundaries
-        lat_min, lat_max = 27.636, 81.008  # Latitude boundaries
-
-        # Check if the point is within the defined boundaries
-        in_europe = (
-            (lon >= lon_min) & (lon <= lon_max) & (lat >= lat_min) & (lat <= lat_max)
-        )
-        return in_europe
-
     def load_file(self, filepath, process_entire_minicube=False):
         ds = xr.open_zarr(filepath).astype(np.float32)
 
         ds = self._ensure_coordinates(ds)
         ds["time"] = ds["time"].dt.floor("D")
         ds = ds.sel(time=slice(date(2017, 3, 1), None))
-
-        # Add landcover
-        # if "esa_worldcover_2021" not in ds.data_vars:
-        #     ds = self.loader._load_and_add_landcover(filepath, ds)
 
         if not process_entire_minicube:
             # Select a random vegetation location
@@ -162,6 +161,7 @@ class Sentinel2Dataloader(Dataloader):
                 # printt(f"No valid vegetation pixel found in {minicube_path}.")
                 return None
         else:
+            ds = ds.stack(location=("longitude", "latitude"))
             self.saver.update_saving_path(filepath.stem)
         data = self.compute_vegetation_index(ds)
         return data
@@ -179,7 +179,6 @@ class Sentinel2Dataloader(Dataloader):
         )
         # Check for excessive missing data
         if self._has_excessive_nan(masked_evi):
-            # printt(f"Excessive NaN values in {filepath}.")
             return None
         return data
 
@@ -246,7 +245,7 @@ class Sentinel2Dataloader(Dataloader):
         )
 
         eligible_indices = np.argwhere(mask.values)
-        return eligible_indices  # .size > 0
+        return eligible_indices
 
     def _calculate_evi(self, ds):
         """Calculates the Enhanced Vegetation Index (EVI)."""

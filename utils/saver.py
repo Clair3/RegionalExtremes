@@ -11,19 +11,10 @@ class Saver:
 
     def update_saving_path(self, name):
         self.config.saving_path = self.config.saving_path / name
-        # index_position = self.config.saving_path.parts.index(self.config.index)
-        # self.config.saving_path = (
-        #     self.config.saving_path.parents[
-        #         len(self.config.saving_path) - index_position - 1
-        #     ]
-        #     / self.config.index
-        #     / name
-        # )
 
     def _generate_unique_save_path(self, base_name):
         # Initial path setup
         extension = ".zarr"
-
         # Start with index 0 and increment if the file already exists
         index = 0
         while True:

@@ -97,10 +97,10 @@ def parser_arguments():
     )
 
     parser.add_argument(
-        "--path_load_experiment",
-        type=str,
-        default=None,
-        help="Path of the trained model folder.",
+        "--compute_only_thresholds",
+        type=bool,
+        default=False,
+        help="If True, only compute the thresholds and not the extremes.",
     )
 
     parser.add_argument(
@@ -123,11 +123,10 @@ if __name__ == "__main__":
     args.compute_variance = False
     args.method = "local"
     args.start_year = 2000
-    args.is_generic_xarray_dataset = False
     args.lower_quantiles = [0.025, 0.05, 0.10, 0.2, 0.3, 0.4, 0.50]
     args.upper_quantiles = [0.501, 0.6, 0.7, 0.8, 0.9, 0.95, 0.975]
 
-    # args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-06-02_13:34:34_new"  #
+    # args.saving_path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-06-02_13:34:34_new"  #
 
     if args.method == "regional":
         # Train the regional extreme method on a subset of locations
