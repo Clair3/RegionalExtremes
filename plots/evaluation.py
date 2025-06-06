@@ -1044,6 +1044,44 @@ def compute_extremes_s2(
     print(f"{type}_fraction_{dim}_{threshold} index computed for:", sample)
 
 
+def compute_extremes_s2_coarse_res(
+    sample: str, type="missed", dim="time", threshold=0.2
+) -> xr.DataArray:
+    path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-06-05_10:44:21_local_s2/EVI_EN/{sample}/extremes.zarr"
+    ds = xr.open_zarr(path)
+    s2 = cfxr.decode_compress_to_multi_index(ds, "location").extremes
+    s2 = s2.unstack("location")
+    path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-06-05_15:27:16_local_s2_modisres/EVI_EN/{sample}/extremes.zarr"
+    ds = xr.open_zarr(path)
+    modis = cfxr.decode_compress_to_multi_index(ds, "location").extremes
+    modis = modis.unstack("location")
+    if threshold < 0.501:
+        s2_extreme = s2 <= threshold
+        modis_extreme = modis <= threshold
+    else:
+        s2_extreme = s2 >= threshold
+        modis_extreme = modis >= threshold
+
+    s2_frac = s2_extreme.coarsen(latitude=12, longitude=12, boundary="trim").mean(
+        skipna=True
+    )
+
+    if type == "missed":
+        missed_fraction = s2_frac.where(~modis_extreme.values)
+    elif type == "common":
+        missed_fraction = s2_frac.where(modis_extreme.values)
+    # Per-day missed count
+    elif type == "all":
+        missed_fraction = s2_frac > 0
+
+    ds = missed_fraction.to_dataset(name=f"{type}_fraction_{dim}")
+    # ds = cfxr.encode_multi_index_as_compress(ds, "location")
+    save_path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-06-05_15:27:16_local_s2_modisres/{sample}/{type}_fraction_{threshold}.zarr"
+    ds = ds.chunk("auto")
+    ds.to_zarr(save_path, mode="w", consolidated=True)
+    print(f"{type}_fraction_{dim}_{threshold} index computed for:", sample)
+
+
 if __name__ == "__main__":
     # Example usage
     parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/"
@@ -1085,19 +1123,20 @@ if __name__ == "__main__":
             base_path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-14_12:48:54_full_fluxnet_therightone_highveg/EVI_EN"
             sample_path = os.path.join(base_path, sample)
             # if "common_fraction_avg_v3.zarr" not in os.listdir(sample_path):
-            compute_extremes(sample, type="missed", dim="time", threshold=0.2)
-            #    # remove the file
-            #    shutil.rmtree(os.path.join(sample_path, "kl_div_raoq.zarr"))
-            ## compute_variance(sample)
-            # compute_raoq(sample)
-            ## compute_diversity(sample, metric="raoq")
-            # compute_diversity(sample, metric="relative_abundance")
-            # compute_kl_div(sample)
+            compute_extremes_s2_coarse_res(sample, type="missed", threshold=0.2)
+        # compute_extremes(sample, type="missed", dim="time", threshold=0.2)
+        #    # remove the file
+        #    shutil.rmtree(os.path.join(sample_path, "kl_div_raoq.zarr"))
+        ## compute_variance(sample)
+        # compute_raoq(sample)
+        ## compute_diversity(sample, metric="raoq")
+        # compute_diversity(sample, metric="relative_abundance")
+        # compute_kl_div(sample)
 
-            # compute_kl_div_loc2(sampbfolders[0]le, metric="raoq")
+        # compute_kl_div_loc2(sampbfolders[0]le, metric="raoq")
 
-            # compute_diff_sigma(sample, metric="raoq")
-            # compute_robin(sample)
+        # compute_diff_sigma(sample, metric="raoq")
+        # compute_robin(sample)
 
         except Exception as e:
             print(f"Error processing sample: {sample} – {e}")

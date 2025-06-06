@@ -182,7 +182,10 @@ class Sentinel2Dataloader(Dataloader):
             mask_coarse_frac = mask.coarsen(
                 latitude=12, longitude=12, boundary="trim"
             ).mean(skipna=True)
-            mask = mask_coarse_frac > 0.5
+
+            mask = xr.where(mask_coarse_frac > 0.5, 1, np.nan)
+
+            # mask = mask.where(mask, np.nan)
 
             evi = evi.stack(location=("latitude", "longitude"))
             mask = mask.stack(location=("latitude", "longitude"))
