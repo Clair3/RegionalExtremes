@@ -54,7 +54,6 @@ class Sentinel2Dataloader(Dataloader):
 
         # Filter valid datasets
         ds = [d for d in data if isinstance(d, xr.Dataset)]
-        printt("Concat...")
         ds = xr.concat(ds, dim="location")
         ds = cfxr.encode_multi_index_as_compress(ds, "location")
         printt("Chunking dataset...")
@@ -74,87 +73,6 @@ class Sentinel2Dataloader(Dataloader):
         printt("Dataset loaded.")
         return ds
 
-        
-        
-        batch_size = 1000
-        num_workers = 20
-        first_write = True
-        output_path = self.config.saving_path / "temp_file.zarr"
-        for i in range(0, len(sample_paths), batch_size):
-            batch = sample_paths[i : i + batch_size]
-
-            # Load files in parallel
-            data = [delayed(self.load_file)(Path(EARTHNET_FILEPATH + path)) for path in batch]
-
-            with ProgressBar():
-                data = compute(*data, scheduler="processes", num_workers=num_workers)
-
-            # Filter valid datasets
-            data = [d for d in data if isinstance(d, xr.Dataset)]
-            if not data:
-                continue
-
-            ds = xr.concat(data, dim="location")
-            ds = ds.chunk({"time": 50, "location": 100})
-            if first_write:
-            # First time: create new Zarr
-                print(f"Writing initial batch to {output_path} (mode='w')...")
-                ds.to_zarr(output_path, mode="w")
-                first_write = False
-            else:
-                # Next batches: append along location
-                print(f"Appending batch {i//batch_size + 1} to {output_path}...")
-                ds.to_zarr(output_path, mode="a", append_dim="location")
-
-            del ds, data  # free memory
-
-        # # Load and process each sample in parallel
-        # data = [
-        #     delayed(self.load_file)(Path(EARTHNET_FILEPATH + path))
-        #     for path in sample_paths
-        # ]
-        # with set(num_workers=10):
-        #     with ProgressBar():
-        #         data = compute(
-        #             *data, scheduler="processes"
-        #         )  
-# 
-        # # Filter valid datasets
-        # data = [d for d in data if isinstance(d, xr.Dataset)]
-        # ds = xr.concat(data, dim="location")
-        # ds = ds.chunk({"time": 50, "location": 1})
-        # path = self.config.saving_path / "temp_file.zarr"
-        # printt("Saving dataset to cache...")
-        # ds.to_zarr(path, mode="w")
-        ds = self.loader._load_data("temp_file")[self.variable_name]
-        ds = _ensure_time_chunks(ds)
-        printt("Dataset loaded.")
-        return ds
-        #ds = xr.concat(data, dim="location")
-        if not data:
-            raise ValueError("Dataset is empty")
-        
-        first, *rest = data  # data is your list of Datasets
-        path = self.config.saving_path / "temp_file.zarr"
-        first.to_zarr(path, mode="w")
-
-        for d in rest:
-            d.to_zarr(path, mode="a", append_dim="location")
-        printt(f"Data saved to {path}")
-        # return None
-        # # Combine datasets
-        # # ds = xr.combine_by_coords(data, combine_attrs="override").compute()
-        ds = xr.concat(data, dim="location")
-        # print("Dataset loaded and concatenated.")
-        # ds = ds.sel(location=~ds.get_index("location").duplicated())
-        # ds = self.compute_max_per_period(ds, self.config_dict["period_size"])
-        # ds = _ensure_time_chunks(ds)
-        # #
-        # # # Cache the dataset
-        # print("Saving dataset to cache...")
-        # self.saver._save_data(ds, "temp_file")
-        
-        return ds  # .to_dataarray()
 
     def load_minicube(self, minicube_path):
         filepath = Path(minicube_path)
@@ -592,13 +510,12 @@ class Sentinel2Dataloader(Dataloader):
             data = self.load_dataset()
 
         printt(f"Processing entire dataset: {data.sizes['location']} locations.")
-        # data = self.compute_max_per_period(data, self.config_dict["period_size"])
+        data = self.compute_max_per_period(data, self.config_dict["period_size"])
         data = self.noise_removal.cloudfree_timeseries(
             data, noise_half_windows=self.config_dict["noise_half_windows"]
         )
         data = self._remove_low_vegetation_location(data, threshold=0.2)
         # data = data.compute()
-        printt("compute is not the issue")
         self.saver._save_data(data, "evi")
 
         # Compute Mean Seasonal Cycle (MSC)
