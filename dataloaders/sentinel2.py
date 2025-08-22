@@ -8,6 +8,7 @@ from .data_processing.helpers import _ensure_time_chunks, circular_rolling_mean
 from datetime import datetime, timedelta, date
 import os
 from tqdm import tqdm
+from dask.config import set
 
 
 class Sentinel2Dataloader(Dataloader):
@@ -41,35 +42,119 @@ class Sentinel2Dataloader(Dataloader):
 
         # Randomly sample paths for processing
         sample_paths = np.random.choice(sample_paths, size=sample_count, replace=True)
-
-        # Load and process each sample in parallel
         data = [
             delayed(self.load_file)(Path(EARTHNET_FILEPATH + path))
             for path in sample_paths
         ]
-        with ProgressBar():
-            data = compute(*data, scheduler="threads")
+        with set(num_workers=10):
+            with ProgressBar():
+                data = compute(
+                    *data, scheduler="processes"
+                )  
 
         # Filter valid datasets
-        data = [d for d in data if isinstance(d, xr.Dataset)]
-        if not data:
-            raise ValueError("Dataset is empty")
-
-        # Combine datasets
-        ds = xr.combine_by_coords(data, combine_attrs="override").compute()
-        print("Dataset loaded and concatenated.")
-        ds = ds.sel(location=~ds.get_index("location").duplicated())
-        # ds = self.compute_max_per_period(ds, self.config_dict["period_size"])
-
-        # ds = _ensure_time_chunks(ds)
-        #
-        # # Cache the dataset
-        self.saver._save_data(ds, "temp_file")
+        ds = [d for d in data if isinstance(d, xr.Dataset)]
+        printt("Concat...")
+        ds = xr.concat(ds, dim="location")
+        ds = cfxr.encode_multi_index_as_compress(ds, "location")
+        printt("Chunking dataset...")
+        ds = ds.chunk("auto")
+        path = self.config.saving_path / "temp_file.zarr"
+        printt("Saving dataset to cache...")
+        ds.to_zarr(path, mode="w")
+        printt(f"Data saved to {path}")
+        # Explicitly close dataset to release memory and file handles
+        ds.close()
+        del ds, data
+        # Force garbage collection (optional but helpful for huge datasets)
+        gc.collect()
+        printt(f"Data saved to {path}")
         ds = self.loader._load_data("temp_file")[self.variable_name]
         ds = _ensure_time_chunks(ds)
-        #
-        # printt("Dataset loaded.")
+        printt("Dataset loaded.")
         return ds
+
+        
+        
+        batch_size = 1000
+        num_workers = 20
+        first_write = True
+        output_path = self.config.saving_path / "temp_file.zarr"
+        for i in range(0, len(sample_paths), batch_size):
+            batch = sample_paths[i : i + batch_size]
+
+            # Load files in parallel
+            data = [delayed(self.load_file)(Path(EARTHNET_FILEPATH + path)) for path in batch]
+
+            with ProgressBar():
+                data = compute(*data, scheduler="processes", num_workers=num_workers)
+
+            # Filter valid datasets
+            data = [d for d in data if isinstance(d, xr.Dataset)]
+            if not data:
+                continue
+
+            ds = xr.concat(data, dim="location")
+            ds = ds.chunk({"time": 50, "location": 100})
+            if first_write:
+            # First time: create new Zarr
+                print(f"Writing initial batch to {output_path} (mode='w')...")
+                ds.to_zarr(output_path, mode="w")
+                first_write = False
+            else:
+                # Next batches: append along location
+                print(f"Appending batch {i//batch_size + 1} to {output_path}...")
+                ds.to_zarr(output_path, mode="a", append_dim="location")
+
+            del ds, data  # free memory
+
+        # # Load and process each sample in parallel
+        # data = [
+        #     delayed(self.load_file)(Path(EARTHNET_FILEPATH + path))
+        #     for path in sample_paths
+        # ]
+        # with set(num_workers=10):
+        #     with ProgressBar():
+        #         data = compute(
+        #             *data, scheduler="processes"
+        #         )  
+# 
+        # # Filter valid datasets
+        # data = [d for d in data if isinstance(d, xr.Dataset)]
+        # ds = xr.concat(data, dim="location")
+        # ds = ds.chunk({"time": 50, "location": 1})
+        # path = self.config.saving_path / "temp_file.zarr"
+        # printt("Saving dataset to cache...")
+        # ds.to_zarr(path, mode="w")
+        ds = self.loader._load_data("temp_file")[self.variable_name]
+        ds = _ensure_time_chunks(ds)
+        printt("Dataset loaded.")
+        return ds
+        #ds = xr.concat(data, dim="location")
+        if not data:
+            raise ValueError("Dataset is empty")
+        
+        first, *rest = data  # data is your list of Datasets
+        path = self.config.saving_path / "temp_file.zarr"
+        first.to_zarr(path, mode="w")
+
+        for d in rest:
+            d.to_zarr(path, mode="a", append_dim="location")
+        printt(f"Data saved to {path}")
+        # return None
+        # # Combine datasets
+        # # ds = xr.combine_by_coords(data, combine_attrs="override").compute()
+        ds = xr.concat(data, dim="location")
+        # print("Dataset loaded and concatenated.")
+        # ds = ds.sel(location=~ds.get_index("location").duplicated())
+        # ds = self.compute_max_per_period(ds, self.config_dict["period_size"])
+        # ds = _ensure_time_chunks(ds)
+        # #
+        # # # Cache the dataset
+        # print("Saving dataset to cache...")
+        # self.saver._save_data(ds, "temp_file")
+        
+        return ds  # .to_dataarray()
 
     def load_minicube(self, minicube_path):
         filepath = Path(minicube_path)
@@ -150,21 +235,21 @@ class Sentinel2Dataloader(Dataloader):
         ds = xr.open_zarr(filepath).astype(np.float32)
 
         ds = self._ensure_coordinates(ds)
-        ds["time"] = ds["time"].dt.floor("D")
-        ds = ds.sel(time=slice(date(2017, 3, 1), None))
 
         if not process_entire_minicube:
             # Select a random vegetation location
             ds = self._get_random_vegetation_pixel_series(ds)
             if ds is None:
-                printt(f"No valid vegetation pixel found in {filepath}.")
+                # printt(f"No valid vegetation pixel found in {filepath}.")
                 return None
         else:
             ds = ds.stack(location=("longitude", "latitude"))
             self.saver.update_saving_path(filepath.stem)
 
-        data = self.compute_vegetation_index(ds)
-        return data
+        ds = self.compute_vegetation_index(ds)
+        if ds is None:
+            return None
+        return ds
 
     def compute_vegetation_index(self, ds):
         self.variable_name = "evi"
@@ -173,22 +258,22 @@ class Sentinel2Dataloader(Dataloader):
         evi = self._calculate_evi(ds)
         mask = self._compute_masks(ds, evi)
 
-        if self.config.modis_resolution:
-            evi = evi.unstack("location")
-            mask = mask.unstack("location")
-            evi = evi.coarsen(latitude=12, longitude=12, boundary="trim").mean(
-                skipna=True
-            )
-            mask_coarse_frac = mask.coarsen(
-                latitude=12, longitude=12, boundary="trim"
-            ).mean(skipna=True)
-
-            mask = xr.where(mask_coarse_frac > 0.5, 1, np.nan)
-
-            # mask = mask.where(mask, np.nan)
-
-            evi = evi.stack(location=("latitude", "longitude"))
-            mask = mask.stack(location=("latitude", "longitude"))
+        # if getattr(self.config, "modis_resolution", False):
+        #    evi = evi.unstack("location")
+        #    mask = mask.unstack("location")
+        #    evi = evi.coarsen(latitude=12, longitude=12, boundary="trim").mean(
+        #        skipna=True
+        #    )
+        #    mask_coarse_frac = mask.coarsen(
+        #        latitude=12, longitude=12, boundary="trim"
+        #    ).mean(skipna=True)
+        #
+        #    mask = xr.where(mask_coarse_frac > 0.5, 1, np.nan)
+        #
+        #    # mask = mask.where(mask, np.nan)
+        #
+        #    evi = evi.stack(location=("latitude", "longitude"))
+        #    mask = mask.stack(location=("latitude", "longitude"))
 
         masked_evi = evi * mask
         data = xr.Dataset(
@@ -198,7 +283,7 @@ class Sentinel2Dataloader(Dataloader):
         )
         # Check for excessive missing data
         if self._has_excessive_nan(masked_evi):
-            printt(f"Excessive NaN values for the selected location.")
+            # printt(f"Excessive NaN values for the selected location.")
             return None
         return data
 
@@ -229,22 +314,22 @@ class Sentinel2Dataloader(Dataloader):
             ds.attrs.get("spatial_ref") or ds.attrs.get("EPSG") or ds.attrs.get("CRS")
         )
 
-        if epsg is None:
-            raise ValueError("EPSG code not found in dataset attributes.")
+        # Transform UTM coordinates to latitude and longitude if EPSG is provided
+        if epsg is not None:
+            transformer = Transformer.from_crs(epsg, 4326, always_xy=True)
+            lon, lat = transformer.transform(ds.x.values, ds.y.values)
+            ds = ds.drop_vars("spatial_ref")
+            ds.assign_coords({"x": ("x", lon), "y": ("y", lat)})
 
-        transformer = Transformer.from_crs(epsg, 4326, always_xy=True)
+        ds["time"] = ds["time"].dt.floor("D")
+        ds = ds.sel(time=slice(date(2017, 3, 1), None))
 
-        lon, lat = transformer.transform(ds.x.values, ds.y.values)
-
-        # ds = ds.drop_vars("spatial_ref")
-        return ds.assign_coords({"x": ("x", lon), "y": ("y", lat)}).rename(
-            {"x": "longitude", "y": "latitude"}
-        )
+        return ds.rename({"x": "longitude", "y": "latitude"})
 
     def _get_random_vegetation_pixel_series(self, ds):
         """Selects a random time serie vegetation pixel location in the minicube based on SCL classification."""
 
-        def _has_sufficient_vegetation(self, ds):
+        def _has_sufficient_vegetation(ds):
             """Checks if sufficient vegetation exists across the dataset."""
             count_of_4 = (ds.SCL == 4).sum(dim="time")
             mask = count_of_4 > 1 / 4 * (366 / self.config_dict["period_size"]) * len(
@@ -507,7 +592,7 @@ class Sentinel2Dataloader(Dataloader):
             data = self.load_dataset()
 
         printt(f"Processing entire dataset: {data.sizes['location']} locations.")
-        data = self.compute_max_per_period(data, self.config_dict["period_size"])
+        # data = self.compute_max_per_period(data, self.config_dict["period_size"])
         data = self.noise_removal.cloudfree_timeseries(
             data, noise_half_windows=self.config_dict["noise_half_windows"]
         )

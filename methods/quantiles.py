@@ -59,7 +59,7 @@ class QuantilesBase(ABC):
         self.loader = Loader(config)
         # Saver class to save intermediate steps.
         self.saver = Saver(config)
-        if self.config.path_load_experiment:
+        if self.config.load_existing_experiment:
             # Load every variable if already available, otherwise return None.
             # self.eco_clusters = self.loader._load_data("eco_clusters")
             self.thresholds = self.loader._load_data(

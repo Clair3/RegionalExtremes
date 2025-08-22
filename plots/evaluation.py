@@ -355,7 +355,7 @@ def compute_kl_div(sample: str, metric="raoq") -> xr.DataArray:
     kl_div_ds = kl_div.to_dataset(name="wasserstein")
     kl_div_ds = cfxr.encode_multi_index_as_compress(kl_div_ds, "location")
     kl_div_ds = kl_div_ds.chunk("auto")
-    save_path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_12:13:03_full_fluxnet_therightone/EVI_EN/{sample}/wasserstein.zarr"
+    save_path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_12:13:03_full_fluxnet_therightone/EVI_EN/{sample}/wasserstein_deseasonalized.zarr"
     kl_div_ds.to_zarr(save_path, mode="w", consolidated=True)
 
     # # Create group variable: same shape as (location,)
@@ -870,15 +870,15 @@ def compute_diff_sigma(sample: str, metric="raoq") -> xr.DataArray:
 def compute_extremes(
     sample: str, type="missed", dim="time", threshold=0.2
 ) -> xr.DataArray:
-    path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-14_12:48:54_full_fluxnet_therightone_highveg/EVI_EN/{sample}/extremes.zarr"
+    path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_12:13:03_full_fluxnet_therightone/EVI_EN/{sample}/extremes.zarr"
     ds = xr.open_zarr(path)
     s2 = cfxr.decode_compress_to_multi_index(ds, "location").extremes
 
-    path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-05-12_11:36:04_new/EVI_MODIS/{sample}/extremes.zarr"
+    path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_13:04:42_full_fluxnet_therightone_modis/EVI_MODIS/{sample}/extremes.zarr"
     ds = xr.open_zarr(path)
     modis = cfxr.decode_compress_to_multi_index(ds, "location").extremes
 
-    path_thresh = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-05-12_11:36:04_new/EVI_MODIS/{sample}/thresholds.zarr"
+    path_thresh = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_13:04:42_full_fluxnet_therightone_modis/EVI_MODIS/{sample}/thresholds.zarr"
     # Load thresholds and decode multi-index
     thresholds_modis = xr.open_zarr(path_thresh)
     thresholds_modis = cfxr.decode_compress_to_multi_index(
@@ -963,25 +963,81 @@ def compute_extremes(
     missed_fraction = combined_results_sorted.compute()
 
     ds = missed_fraction.to_dataset(name=f"{type}_fraction_{dim}")
-    # ds = cfxr.encode_multi_index_as_compress(ds, "location")
-    save_path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-14_12:48:54_full_fluxnet_therightone_highveg/EVI_EN/{sample}/{type}_fraction_{dim}_{threshold}_v6.zarr"
+    ds = cfxr.encode_multi_index_as_compress(ds, "location")
+    save_path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-14_12:48:54_full_fluxnet_therightone_highveg/EVI_EN/{sample}/missed_modis_extremes_fraction_{dim}_{threshold}_v6.zarr"
     ds = ds.chunk("auto")
     ds.to_zarr(save_path, mode="w", consolidated=True)
     print(f"{type}_fraction_{dim}_{threshold} index computed for:", sample)
 
 
+def compute_agreement_extremes(
+    sample: str, dim="time", threshold=0.1
+) -> xr.DataArray:
+    path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_12:13:03_full_fluxnet_therightone/EVI_EN/{sample}/extremes.zarr"
+    ds = xr.open_zarr(path)
+    s2 = cfxr.decode_compress_to_multi_index(ds, "location").extremes
+
+    path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_13:04:42_full_fluxnet_therightone_modis/EVI_MODIS/{sample}/extremes.zarr"
+    ds = xr.open_zarr(path)
+    modis = cfxr.decode_compress_to_multi_index(ds, "location").extremes
+
+    modis = modis.drop_duplicates("location")  # .unstack("location")
+    
+    s2 = s2.drop_duplicates("location")  # .unstack("location")
+    # s2, modis = xr.align(s2, modis, join="inner")
+
+    common_locations = xr.align(s2.location, modis.location, join="inner")[0]
+    common_time = xr.align(s2.time, modis.time, join="inner")[0]
+
+
+    # Align datasets in time and location
+    s2 = s2.sel(location=common_locations, time=common_time)
+    modis = modis.sel(location=common_locations, time=common_time)
+
+    valid_mask = (~np.isnan(modis)) & (~np.isnan(s2))
+    s2 = s2.where(valid_mask)
+    modis = modis.where(valid_mask)
+
+    # Define extremes
+    if threshold < 0.501:
+        s2_extreme = s2 <= threshold
+        modis_extreme = modis <= threshold
+    else:
+        s2_extreme = s2 >= threshold
+        modis_extreme = modis >= threshold
+
+    # Identify common extremes (both are extreme on the same date)
+    common_extreme = s2_extreme & modis_extreme
+
+    # Count percentage of common extremes for each S2 pixel
+    n_common = common_extreme.sum(dim="time")
+    n_s2_extremes = s2_extreme.sum(dim="time") 
+    common_fraction = xr.where(n_s2_extremes > 0, n_common / n_s2_extremes, np.nan)
+
+    # Optionally take average over time if needed
+    if dim == "avg":
+        common_fraction = common_fraction.mean(dim="time", skipna=True)
+
+    # Save
+    ds = common_fraction.to_dataset(name="agreement_extremes")
+    ds = cfxr.encode_multi_index_as_compress(ds, "location")
+    save_path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_12:13:03_full_fluxnet_therightone/EVI_EN/{sample}/agreement_extremes_{threshold}.zarr"
+    ds = ds.chunk("auto")
+    ds.to_zarr(save_path, mode="w", consolidated=True)
+    print(f"Common fraction per S2 pixel computed for: {sample}")
+
 def compute_extremes_s2(
-    sample: str, type="missed", dim="time", threshold=0.2
+    sample: str, type="missed", dim="time", threshold=0.1
 ) -> xr.DataArray:
     path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-14_12:48:54_full_fluxnet_therightone_highveg/EVI_EN/{sample}/extremes.zarr"
     ds = xr.open_zarr(path)
     s2 = cfxr.decode_compress_to_multi_index(ds, "location").extremes
 
-    path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-05-12_11:36:04_new/EVI_MODIS/{sample}/extremes.zarr"
+    path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_13:04:42_full_fluxnet_therightone_modis/EVI_MODIS/{sample}/extremes.zarr"
     ds = xr.open_zarr(path)
     modis = cfxr.decode_compress_to_multi_index(ds, "location").extremes
 
-    path_thresh = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-05-12_11:36:04_new/EVI_MODIS/{sample}/thresholds.zarr"
+    path_thresh = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_13:04:42_full_fluxnet_therightone_modis/EVI_MODIS/{sample}/thresholds.zarr"
     # Load thresholds and decode multi-index
     thresholds_modis = xr.open_zarr(path_thresh)
     thresholds_modis = cfxr.decode_compress_to_multi_index(
@@ -1037,7 +1093,6 @@ def compute_extremes_s2(
         missed_fraction = missed_fraction.mean(dim="time", skipna=True)  # dim="time")
 
     ds = missed_fraction.to_dataset(name=f"{type}_fraction_{dim}")
-    # ds = cfxr.encode_multi_index_as_compress(ds, "location")
     save_path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-14_12:48:54_full_fluxnet_therightone_highveg/EVI_EN/{sample}/s2_{type}_fraction_{dim}_{threshold}_v5.zarr"
     ds = ds.chunk("auto")
     ds.to_zarr(save_path, mode="w", consolidated=True)
@@ -1045,7 +1100,7 @@ def compute_extremes_s2(
 
 
 def compute_extremes_s2_coarse_res(
-    sample: str, type="missed", dim="time", threshold=0.2
+    sample: str, type="missed", dim="time", threshold=0.1
 ) -> xr.DataArray:
     path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-06-05_10:44:21_local_s2/EVI_EN/{sample}/extremes.zarr"
     ds = xr.open_zarr(path)
@@ -1082,6 +1137,7 @@ def compute_extremes_s2_coarse_res(
     print(f"{type}_fraction_{dim}_{threshold} index computed for:", sample)
 
 
+
 if __name__ == "__main__":
     # Example usage
     parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/"
@@ -1089,8 +1145,10 @@ if __name__ == "__main__":
 
     # # parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/_test/"
     # subfolders = [
-    #     # "custom_cube_50.90_11.56.zarr",
+    #     #"custom_cube_50.90_11.56.zarr",
     #     "DE-Hai_51.08_10.45_v0.zarr",
+    #     "ES-Cnd_37.91_-3.23_v0.zarr"
+    #     #"ES-LMa_39.94_-5.77_v0.zarr"
     # ]
     #     #   "DE-RuS_50.87_6.45_v0.zarr",
     #     "ES-Cnd_37.91_-3.23_v0.zarr",
@@ -1122,9 +1180,11 @@ if __name__ == "__main__":
         try:
             base_path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-14_12:48:54_full_fluxnet_therightone_highveg/EVI_EN"
             sample_path = os.path.join(base_path, sample)
+            #compute_agreement_extremes(sample)
+            # compute_kl_div(sample)
             # if "common_fraction_avg_v3.zarr" not in os.listdir(sample_path):
-            compute_extremes_s2_coarse_res(sample, type="missed", threshold=0.2)
-        # compute_extremes(sample, type="missed", dim="time", threshold=0.2)
+            #compute_extremes_s2_coarse_res(sample, type="missed", threshold=0.2)
+            compute_extremes(sample, type="common", dim="time", threshold=0.1)
         #    # remove the file
         #    shutil.rmtree(os.path.join(sample_path, "kl_div_raoq.zarr"))
         ## compute_variance(sample)

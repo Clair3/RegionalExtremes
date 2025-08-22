@@ -44,6 +44,7 @@ class InitializationConfig:
         Args:
             args (argparse.Namespace): Parsed arguments from argparse.ArgumentParser().parse_args()
         """
+        self.load_existing_experiment = True
         for key, value in vars(args).items():
             setattr(self, key, value)
 
@@ -123,10 +124,12 @@ class InitializationConfig:
         """
         args_path = self.saving_path / "args.json"
         if args_path.exists():
+            self.load_existing_experiment = True
             with open(args_path, "r") as f:
                 args = json.load(f)
                 for key, value in args.items():
                     setattr(self, key, value)
             self.saving_path = Path(self.saving_path)
+
         else:
             raise FileNotFoundError(f"{args_path} does not exist.")

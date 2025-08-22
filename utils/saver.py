@@ -99,14 +99,18 @@ class Saver:
             basepath = self.config.saving_path
         path = basepath / f"{name}.zarr"
         # Unstack location for longitude and latitude as dimensions
+        print("if 1")
         if isinstance(data, xr.DataArray):
             data.name = name
             data = data.to_dataset()
+        print("if 2")
         if location:
             data = cfxr.encode_multi_index_as_compress(data, "location")
 
+        print("if 3")
         if eco_cluster:
             data = cfxr.encode_multi_index_as_compress(data, "eco_cluster")
+        print("if 4")
         if name == "thresholds" and self.config.method == "regional":  # in data.dims:
             # data = data.chunk({"location": 1000, "quantile": -1})
             try:
@@ -124,16 +128,15 @@ class Saver:
 
                 data.to_zarr(path, mode="w", encoding=encoding)
                 return
+        print("if 5")
         if "time" in data.dims and "location" in data.dims:
             data = data.chunk({"time": 50, "location": 100})
         elif "dayofyear" in data.dims:
             data = data.chunk({"location": 50, "dayofyear": -1})
-
+        print("IS ALL GOOD UNTIL HERE")
         printt("Writing to Zarr...")
-        # delayed_store = data.to_zarr(path, mode="w")#, compute=False)
-        # compute(delayed_store)  # triggers parallel write
 
-        data.to_zarr(path, mode="w", consolidated=True)
+        data.to_zarr(path, mode="w") #, consolidated=True)
         printt(f"{name} computed and saved.")
 
     def _save_spatial_masking(self, mask):

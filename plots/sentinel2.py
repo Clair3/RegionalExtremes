@@ -11,6 +11,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import cf_xarray as cfxr
+from pyproj import Transformer
 
 
 plt.rcParams.update({"font.size": 20})
@@ -18,12 +19,13 @@ plt.rcParams.update({"font.size": 20})
 
 class PlotsSentinel2(Plots):
 
-    def normalize(self, data, rgb=[1, 0, 2]):
+    def normalize(self, data, rgb=[0, 1, 2]):
         # Normalize the explained variance
         def _normalization(index):
             band = data.isel(component=index).values
-            band_min = np.quantile(band, 0.1)
-            band_max = np.quantile(band, 0.90)
+            if (np.nanmax(band) - np.nanmin(band)) == 0:
+                # If the band has no variation, return a constant value
+                return np.zeros_like(band)
             # return np.clip((band - band_min) / (band_max - band_min), 0, 1)
             return (band - np.nanmin(band)) / (np.nanmax(band) - np.nanmin(band))
 
@@ -214,63 +216,128 @@ class PlotsSentinel2(Plots):
     def plot_msc(self, colored_by_eco_cluster=False):
         # Load and preprocess the time series dataset
         data = self.loader._load_data("msc")
-        data = data.chunk({"location": 50, "dayofyear": -1})
 
-        # Randomly select n indices from the location dimension
-        # random_indices = np.random.choice(len(data.location), size=10000, replace=False)
-
-        # Use isel to select the subset of data based on the random indices
-        subset = data  # .isel(location=random_indices)
         if colored_by_eco_cluster:
             cluster = self.loader._load_data("eco_clusters")
             cluster = cluster.eco_clusters
         else:
             cluster = self.loader._load_pca_projection()
 
+        lat_coord = cluster.get_index("location").get_level_values("latitude")
+        unique_lats = np.sort(np.unique(lat_coord))
+
+        # Get the latitude values you want
+        selected_lats = unique_lats[0:20]  #:85]  # same as isel(latitude=slice(0, 85))
+        lon_coord = cluster.get_index("location").get_level_values("longitude")
+        unique_lons = np.sort(np.unique(lon_coord))
+
+        # Get the latitude values you want
+        selected_lons = unique_lons[0:20]
+        print(selected_lats, selected_lons)
+        # Now build a mask to select locations with those latitudes
+        mask_lats = cluster.latitude.isin(selected_lats)
+        mask_lons = cluster.longitude.isin(selected_lons)
+        mask = mask_lats & mask_lons
+        cluster = cluster.sel(location=mask)
+        subset = data.sel(location=mask)
+        # subset = data.unstack("location").isel(
+        #     latitude=slice(0, 20), longitude=slice(0, 20)
+        # )
+        print(selected_lats)
+        print(selected_lons)
+        subset = subset.chunk({"location": 50, "dayofyear": -1})
+        print("After chunking:", cluster.chunk)
+
         # Normalize the explained variance
         rgb_colors = self.normalize(cluster)
 
         # Plot the time series with corresponding colors
         fig, ax = plt.subplots(figsize=(15, 10))
-        fig.patch.set_facecolor("black")
-        ax.set_facecolor("black")
+        # fig.patch.set_facecolor("black")
+        # ax.set_facecolor("black")
 
-        for i, loc in enumerate(subset.location):
+        pca_component = cluster.sel(component=1).values  # shape: (num_locations,)
+        sort_idx = np.argsort(pca_component)[::-1]
+
+        # Get unique colors
+        unique_colors = np.unique(rgb_colors, axis=0)
+
+        # Prepare time axis
+        x = subset.dayofyear.values
+
+        for color in unique_colors:
+            # Find locations sharing this color
+            loc_indices = np.where((rgb_colors == color).all(axis=1))[0]
+
+            # Extract their time series data
+            data = subset.msc.isel(
+                location=loc_indices
+            ).values  # shape: (num_locs, num_days)
+
+            # Compute mean and std across locations
+            mean_series = np.mean(data, axis=0)
+            std_series = np.std(data, axis=0)
+
+            # Plot mean line
             ax.plot(
-                subset.dayofyear,
-                subset.msc.isel(location=i),
-                color=tuple(rgb_colors[i]),
-                # label=f"Loc: {loc}",
-                alpha=0.8,
+                x,
+                mean_series,
+                color=tuple(color),
+                alpha=0.9,
+                linewidth=2.5,
             )
 
-        # Calculate and plot the mean MSC across all locations
-        mean_msc = subset.msc.mean(dim="location")
-        ax.plot(
-            subset.dayofyear,
-            mean_msc,
-            color="black",
-            linestyle="--",
-            linewidth=2,
-            label="Mean MSC",
-        )
+            # Plot shaded area for ±1 std
+            ax.fill_between(
+                x,
+                mean_series - std_series,
+                mean_series + std_series,
+                color=tuple(color),
+                alpha=0.3,
+            )
+
+        # unique_colors, unique_indices = np.unique(rgb_colors, axis=0, return_index=True)
+
+        # Sort by brightness if desired (optional)
+        # brightness = unique_colors.mean(axis=1)  # or use a perceptual brightness formula
+        # sort_idx = np.argsort(brightness)
+        # unique_colors = unique_colors[sort_idx]
+        # unique_indices = unique_indices[sort_idx]
+
+        # Now plot one line per unique color
+        # for loc in unique_indices:
+        #    ax.plot(
+        #        subset.dayofyear,
+        #        subset.msc.isel(location=loc),
+        #        color=tuple(rgb_colors[loc]),
+        #        alpha=1,
+        #    )
+
+        # Now plot in order of increasing color brightness
+        # for loc in sort_idx:
+        #     ax.plot(
+        #         subset.dayofyear,
+        #         subset.msc.isel(location=loc),
+        #         color=tuple(rgb_colors[loc]),
+        #         alpha=0.8,
+        #     )
 
         # Add labels and optional legend
         if colored_by_eco_cluster:
             plt.title("MSC Time Series Colored by eco-clusters")
-            saving_path = self.saving_path / "msc_eco_cluster_quantile_norm.png"
+            saving_path = self.saving_path / "msc_eco_cluster_sorted.png"
         else:
             plt.title("MSC Time Series Colored by PCA Components")
-            saving_path = self.saving_path / "msc_pca.png"
+            saving_path = self.saving_path / "msc_pca_sorted.png"
         # Optional: Set tick and label colors to white for visibility
-        ax.tick_params(colors="white")
-        ax.spines["bottom"].set_color("white")
-        ax.spines["top"].set_color("white")
-        ax.spines["left"].set_color("white")
-        ax.spines["right"].set_color("white")
-        ax.yaxis.label.set_color("white")
-        ax.xaxis.label.set_color("white")
-        ax.title.set_color("white")
+        # ax.tick_params(colors="white")
+        # ax.spines["bottom"].set_color("white")
+        # ax.spines["top"].set_color("white")
+        # ax.spines["left"].set_color("white")
+        # ax.spines["right"].set_color("white")
+        # ax.yaxis.label.set_color("white")
+        # ax.xaxis.label.set_color("white")
+        # ax.title.set_color("white")
 
         ax.set_xlabel("Day Of Year")
         ax.set_ylabel("EVI")
@@ -280,15 +347,18 @@ class PlotsSentinel2(Plots):
     def plot_minicube_eco_clusters(self):
         data = self.loader._load_data("eco_clusters")
         data = data.eco_clusters.transpose("location", "component", ...)
-        bins = data.unstack("location")
+        # bins = data.unstack("location")
+        bins = data.unstack("location").isel(
+            latitude=slice(0, 20), longitude=slice(0, 20)
+        )
 
         # Normalize the explained variance
         rgb_normalized = self.normalize(bins)
 
         # Create the figure and axis
         fig, ax = plt.subplots(figsize=(10, 10))
-        fig.patch.set_facecolor("black")
-        ax.set_facecolor("black")
+        # fig.patch.set_facecolor("black")
+        # ax.set_facecolor("black")
         # adjust the plot
         plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05)
 
@@ -299,24 +369,24 @@ class PlotsSentinel2(Plots):
             # transform=projection,
         )
         ax.axis("off")
-        ax.tick_params(colors="white")
-        ax.spines["bottom"].set_color("white")
-        ax.spines["top"].set_color("white")
-        ax.spines["left"].set_color("white")
-        ax.spines["right"].set_color("white")
-        ax.yaxis.label.set_color("white")
-        ax.xaxis.label.set_color("white")
-        ax.title.set_color("white")
+        # ax.tick_params(colors="white")
+        # ax.spines["bottom"].set_color("white")
+        # ax.spines["top"].set_color("white")
+        # ax.spines["left"].set_color("white")
+        # ax.spines["right"].set_color("white")
+        # ax.yaxis.label.set_color("white")
+        # ax.xaxis.label.set_color("white")
+        # ax.title.set_color("white")
         # Add a title
         plt.title("Eco-clusters")
-        saving_path = self.saving_path / "eco_clusters_2.png"
+        saving_path = self.saving_path / "eco_clusters_small.png"
         plt.savefig(saving_path)
         plt.show()
 
     def plot_minicube_pca_projection(self):
         data = self.loader._load_pca_projection(explained_variance=False)
         data = data.transpose("location", "component", ...)
-        bins = data.unstack("location")
+        bins = data.unstack("location").isel(latitude=slice(0, 85))
 
         # Normalize the explained variance
         rgb_normalized = self.normalize(bins)
@@ -325,18 +395,29 @@ class PlotsSentinel2(Plots):
         fig, ax = plt.subplots(figsize=(10, 10))
         # adjust the plot
         plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05)
-
-        ax.pcolormesh(
-            bins.longitude.values,
-            bins.latitude.values,
-            rgb_normalized.transpose(1, 0, 2),
-            # transform=projection,
+        # Plot RGB image
+        ax.imshow(
+            rgb_normalized,
+            origin="lower",
+            extent=[
+                bins.longitude.min(),
+                bins.longitude.max(),
+                bins.latitude.min(),
+                bins.latitude.max(),
+            ],
+            aspect="auto",
         )
+        # ax.pcolormesh(
+        #     bins.longitude.values,
+        #     bins.latitude.values,
+        #     rgb_normalized.transpose(1, 0, 2),
+        #     # transform=projection,
+        # )
         ax.axis("off")
 
         # Add a title
         plt.title("PCA Projection")
-        saving_path = self.saving_path / "pca_projection.png"
+        saving_path = self.saving_path / "pca_projection_small.png"
         plt.savefig(saving_path)
         plt.show()
 
@@ -350,6 +431,63 @@ class PlotsSentinel2(Plots):
         path = paths[0]
 
         ds = xr.open_zarr(path)
+
+        x_values = [
+            4425010,
+            4425030,
+            4425050,
+            4425070,
+            4425090,
+            4425110,
+            4425130,
+            4425150,
+            4425170,
+            4425190,
+            4425210,
+            4425230,
+            4425250,
+            4425270,
+            4425290,
+            4425310,
+            4425330,
+            4425350,
+            4425370,
+            4425390,
+        ]
+        y_values = [
+            774430,
+            774450,
+            774470,
+            774490,
+            774510,
+            774530,
+            774550,
+            774570,
+            774590,
+            774610,
+            774630,
+            774650,
+            774670,
+            774690,
+            774710,
+            774730,
+            774750,
+            774770,
+            774790,
+            774810,
+        ]
+
+        ds = ds.sel(x=y_values, y=x_values, method="nearest")
+
+        epsg = ds.attrs.get("EPSG")
+
+        # Transform UTM coordinates to latitude and longitude if EPSG is provided
+        # if epsg is not None:
+        transformer = Transformer.from_crs(epsg, 4326, always_xy=True)
+        lon, lat = transformer.transform(y_values, x_values)
+        print(lon, lat)
+        ds = ds.assign_coords({"x": ("x", lon), "y": ("y", lat)})
+
         if "time" not in ds.dims:
             ds = ds.rename({"time_sentinel-2-l2a": "time"})
 
@@ -382,9 +520,9 @@ class PlotsSentinel2(Plots):
                 current_date = ds.isel(time=t).time.dt.date.values
                 axes[i, j].set_title(str(current_date), fontsize=30)
                 # Remove the cloud masking
-                red = ds.isel(time=t).B04
-                green = ds.isel(time=t).B03
-                blue = ds.isel(time=t).B02
+                red = ds.isel(time=t).B04.transpose()
+                green = ds.isel(time=t).B03.transpose()
+                blue = ds.isel(time=t).B02.transpose()
 
                 # red = red * mask.isel(time=t)
                 # green = green * mask.isel(time=t)
@@ -773,14 +911,14 @@ class PlotsSentinel2(Plots):
         plt.gca().add_artist(high_legend)
         plt.gca().add_artist(low_legend)
 
-        plt.savefig(self.saving_path / "combined_quantiles_percentages.png")
+        plt.savefig(self.saving_path / "extremes_small.png")
         plt.show()
 
 
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
 
-    args.path_load_experiment = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_12:13:03_full_fluxnet_therightone"
+    args.saving_path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_12:13:03_full_fluxnet_therightone/EVI_EN"
 
     # subfolders = [
     #     # "30TVK_157southwest1260_combine.zarr",
@@ -800,10 +938,10 @@ if __name__ == "__main__":
         # "custom_cube_50.90_11.56.zarr",
         # "DE-Hai_51.08_10.45_v0.zarr",
         # "DE-RuS_50.87_6.45_v0.zarr",
-        "BE-Bra_51.31_4.52_v0.zarr",
+        # "BE-Bra_51.31_4.52_v0.zarr",
         # "ES-LM1_39.94_-5.78_v0.zarr",
         # "ES-LM2_39.93_-5.78_v0.zarr",
-        # "ES-LMa_39.94_-5.77_v0.zarr",
+        "ES-LMa_39.94_-5.77_v0.zarr",
         # "ES-Cnd_37.91_-3.23_v0.zarr",
         # "FR-LGt_47.32_2.28_v0.zarr",
         # "DE-Lnf_51.33_10.37_v0.zarr",
@@ -842,29 +980,35 @@ if __name__ == "__main__":
     #      "ES-Cnd_37.91_-3.23_v0.zarr",
     #      "DE-RuS_50.87_6.45_v0.zarr",
     #  ]
-    subfolders = [
-        folder
-        for folder in os.listdir(args.path_load_experiment + "/EVI_EN")
-        if folder[-7:] == "v0.zarr"
-    ]
+    # subfolders = [
+    #     folder
+    #     for folder in os.listdir(args.path_load_experiment + "/EVI_EN")
+    #     if folder[-7:] == "v0.zarr"
+    # ]
 
     for minicube_name in subfolders:
         config = InitializationConfig(args)
         plot = PlotsSentinel2(config=config, minicube_name=minicube_name)
-        try:
-            plot.plot_location_in_europe()
-            # for quantile in quantiles:
-            #     # plot.plot_thresholds_rmse(quantile)
-            #     plot.plot_thresholds(quantile)
-            plot.plot_minicube_eco_clusters()
-            plot.plot_minicube_pca_projection()
-            plot.plot_extremes()
-            plot.plot_kl_div()
-            plot.plot_robin()
-            plot.plot_rgb()
-            plot.plot_msc(colored_by_eco_cluster=True)
-        except:
-            print(f"error with {minicube_name}")
+        # plot.plot_minicube_pca_projection()
+        # plot.plot_rgb()
+        # plot.plot_minicube_eco_clusters()
+        # plot.plot_msc(colored_by_eco_cluster=True)
+        plot.plot_extremes()
+        # try:
+        #     plot.plot_location_in_europe()
+        #     # for quantile in quantiles:
+        #     #     # plot.plot_thresholds_rmse(quantile)
+        #     #     plot.plot_thresholds(quantile)
+        #     # plot.plot_minicube_eco_clusters()
+        #     # plot.plot_minicube_pca_projection(False)
+        #
+        #     # plot.plot_extremes()
+        #     # plot.plot_kl_div()
+        #     # plot.plot_robin()
+        #     plot.plot_rgb()
+#
+# except:
+#     print(f"error with {minicube_name}")
 
 # for minicube_name in subfolders:
 #     config = InitializationConfig(args)

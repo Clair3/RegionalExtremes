@@ -9,62 +9,83 @@ class ModisDataloader(Sentinel2Dataloader):
         """Calculates the Enhanced Vegetation Index (EVI)."""
         return (ds["250m_16_days_EVI"] + 2000) / 12000
 
-    def load_file(self, minicube_path, process_entire_minicube=False):
-        print(minicube_path)
-        filepath = Path(minicube_path)
-        with xr.open_zarr(filepath) as ds:
+    def _ensure_coordinates(self, ds):
+        """Transforms UTM coordinates to latitude and longitude."""
 
-            # Transform UTM to lat/lon
-            # ds = self._transform_utm_to_latlon(ds)
+        epsg = (
+            ds.attrs.get("spatial_ref") or ds.attrs.get("EPSG") or ds.attrs.get("CRS")
+        )
 
-            if not process_entire_minicube:
-                # Select a random vegetation location
-                ds = self._get_random_vegetation_pixel_series(ds)
-                if ds is None:
-                    return None
-
-            self.variable_name = "evi"  # ds.attrs["data_id"]
-            # Filter based on vegetation occurrence
-            epsg = (
-                ds.attrs.get("spatial_ref")
-                or ds.attrs.get("EPSG")
-                or ds.attrs.get("CRS")
-            )
-
-            if epsg is None:
-
-                raise ValueError("EPSG code not found in dataset attributes.")
-
+        # Transform UTM coordinates to latitude and longitude if EPSG is provided
+        if epsg is not None:
             transformer = Transformer.from_crs(epsg, 4326, always_xy=True)
-
             lon, lat = transformer.transform(ds.x.values, ds.y.values)
+            ds = ds.drop_vars("spatial_ref")
+            ds.assign_coords({"x": ("x", lon), "y": ("y", lat)})
 
-            ds = ds.assign_coords({"x": ("x", lon), "y": ("y", lat)}).rename(
-                {"x": "longitude", "y": "latitude"}
-            )
-            # ds = ds.rename({"x": "longitude", "y": "latitude"})
-            # Calculate EVI and apply cloud/vegetation mask
-            evi = self._calculate_evi(ds)
-            evi = self._apply_masks(ds, evi)
-            if "start_range" in evi.coords:
-                evi = evi.rename({"start_range": "time"})
-            elif "time_modis-13Q1-061" in evi.coords:
-                evi = evi.rename({"time_modis-13Q1-061": "time"})
-            elif "time" not in evi.coords:
-                raise IndexError(f"No time coordinates available in {filepath}")
+        ds["time"] = ds["time"].dt.floor("D")
 
-            data = xr.Dataset(
-                data_vars={
-                    f"{self.variable_name}": evi,
-                },
-                coords={
-                    "source_path": minicube_path,  # Add the path as a coordinate
-                },
-            )
-            if process_entire_minicube:
-                self.saver.update_saving_path(filepath.stem)
+        if "start_range" in ds.coords:
+            ds = ds.rename({"start_range": "time"})
+        elif "time_modis-13Q1-061" in ds.coords:
+            ds = ds.rename({"time_modis-13Q1-061": "time"})
+        elif "y231" in ds.coords:
+            ds = ds.rename({"x231": "x", "y231": "y"})
 
-            return data
+        return ds.rename({"x": "longitude", "y": "latitude"})
+
+    # def load_file(self, minicube_path, process_entire_minicube=False):
+    #     with xr.open_zarr(filepath) as ds:
+    #
+    #         # Transform UTM to lat/lon
+    #         # ds = self._transform_utm_to_latlon(ds)
+    #
+    #         if not process_entire_minicube:
+    #             # Select a random vegetation location
+    #             ds = self._get_random_vegetation_pixel_series(ds)
+    #             if ds is None:
+    #                 return None
+    #
+    #         self.variable_name = "evi"  # ds.attrs["data_id"]
+    #         # Filter based on vegetation occurrence
+    #         epsg = (
+    #             ds.attrs.get("spatial_ref")
+    #             or ds.attrs.get("EPSG")
+    #             or ds.attrs.get("CRS")
+    #         )
+    #
+    #         # Transform UTM coordinates to latitude and longitude if EPSG is provided
+    #         if epsg is not None:
+    #             transformer = Transformer.from_crs(epsg, 4326, always_xy=True)
+    #             lon, lat = transformer.transform(ds.x.values, ds.y.values)
+    #             ds = ds.drop_vars("spatial_ref")
+    #             ds.assign_coords({"x": ("x", lon), "y": ("y", lat)})
+    #
+    #         ds = ds.rename({"x231": "longitude", "y231": "latitude"})
+    #         # ds = ds.stack(location=("longitude", "latitude"))
+    #
+    #         # Calculate EVI and apply cloud/vegetation mask
+    #         evi = self._calculate_evi(ds)
+    #         # evi = self._apply_masks(ds, evi)
+    #         if "start_range" in evi.coords:
+    #             evi = evi.rename({"start_range": "time"})
+    #         elif "time_modis-13Q1-061" in evi.coords:
+    #             evi = evi.rename({"time_modis-13Q1-061": "time"})
+    #         elif "time" not in evi.coords:
+    #             raise IndexError(f"No time coordinates available in {filepath}")
+    #
+    #         data = xr.Dataset(
+    #             data_vars={
+    #                 f"{self.variable_name}": evi,
+    #             },
+    #             coords={
+    #                 "source_path": minicube_path,  # Add the path as a coordinate
+    #             },
+    #         )
+    #         if process_entire_minicube:
+    #             self.saver.update_saving_path(filepath.stem)
+    #
+    #         return data
 
     def compute_msc(
         self,
@@ -97,14 +118,14 @@ class ModisDataloader(Sentinel2Dataloader):
         mean_seasonal_cycle = mean_seasonal_cycle.copy(
             data=smoothed_values[smoothing_window:-smoothing_window]
         )
-        # Step 6: Ensure all values are non-negative
         mean_seasonal_cycle = mean_seasonal_cycle.where(mean_seasonal_cycle > 0, 0)
         return mean_seasonal_cycle
 
-    def _apply_masks(self, ds, evi):
+    def _compute_masks(self, ds, evi):
         """Applies cloud and vegetation masks to the EVI data."""
+        printt("Applying cloud and vegetation masks to EVI data.")
         if "250m_16_days_pixel_reliability" not in ds:
-            return self._apply_mask_VI_Quality(ds, evi)
+            return self._compute_mask_VI_Quality(ds, evi)
 
         mask = xr.ones_like(evi)  # Default mask (all ones, meaning no masking)
 
@@ -119,7 +140,7 @@ class ModisDataloader(Sentinel2Dataloader):
 
         return evi * mask
 
-    def _apply_mask_VI_Quality(self, ds, evi):
+    def _compute_mask_VI_Quality(self, ds, evi):
         """Applies cloud and vegetation masks to the EVI data using VI_Quality."""
         vi_quality = ds["250m_16_days_VI_Quality"].astype(np.uint16)
 
@@ -240,7 +261,7 @@ class ModisDataloader(Sentinel2Dataloader):
         data = self.noise_removal.cloudfree_timeseries(
             data, noise_half_windows=self.config_dict["noise_half_windows"]
         )
-        data = self._remove_low_vegetation_location(data, threshold=0.2)
+        # data = self._remove_low_vegetation_location(data, threshold=0.2)
         self.saver._save_data(data, "evi")
 
         # Compute Mean Seasonal Cycle (MSC)

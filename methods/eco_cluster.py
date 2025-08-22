@@ -43,8 +43,9 @@ class EcoCluster:
         self.loader = Loader(config)
         # Saver class to save intermediate steps.
         self.saver = Saver(config)
+        print(self.config)
 
-        if self.config.path_load_experiment:
+        if self.config.load_existing_experiment:
             # Load every variable if already available, otherwise return None.
             self.pca = self.loader._load_pca_matrix()
             self.projected_data = self.loader._load_pca_projection()
