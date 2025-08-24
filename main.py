@@ -114,11 +114,11 @@ def parser_arguments():
 
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
-    args.name = "big_dataset_20"
+    args.name = "try_again"
     # args.modis_resolution = True
     args.index = "EVI_EN"
     args.k_pca = False
-    args.n_samples = 50000  # 40000
+    args.n_samples = 1000  # 40000
     args.n_components = 3
     args.n_eco_clusters = 20
     args.compute_variance = False
@@ -127,7 +127,7 @@ if __name__ == "__main__":
     args.lower_quantiles = [0.025, 0.05, 0.10, 0.2, 0.3, 0.4, 0.50]
     args.upper_quantiles = [0.501, 0.6, 0.7, 0.8, 0.9, 0.95, 0.975]
 
-    # args.saving_path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_13:04:42_full_fluxnet_therightone_modis/EVI_MODIS"  #
+    args.saving_path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-22_14:35:49_local_sentinel2/EVI_EN/"  #
 
     if args.method == "regional":
         # Train the regional extreme method on a subset of locations
@@ -228,15 +228,15 @@ if __name__ == "__main__":
         # ]
 
         for folder in subfolders:
-            #   if folder[:-4] not in os.listdir(
-            #       f"{args.path_load_experiment}/{args.index}/"
-            #   ):
-            try:
-                local_extremes_method(
-                    args,
-                    minicube_path=parent_folder + folder)
-            except Exception as e:
-                printt(f"Error with {folder}: {e}")
+            if folder[:-4] not in os.listdir(
+                f"{args.saving_path}" #/{args.index}/"
+            ):
+                try:
+                    local_extremes_method(
+                        args,
+                        minicube_path=parent_folder + folder)
+                except Exception as e:
+                    printt(f"Error with {folder}: {e}")
 
     elif args.method == "global":
         raise NotImplementedError("the global method is not yet implemented.")

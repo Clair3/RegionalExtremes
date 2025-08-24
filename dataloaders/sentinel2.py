@@ -42,22 +42,23 @@ class Sentinel2Dataloader(Dataloader):
 
         # Randomly sample paths for processing
         sample_paths = np.random.choice(sample_paths, size=sample_count, replace=True)
+        # data = [
+        #     delayed(self.load_file)(Path(EARTHNET_FILEPATH + path))
+        #     for path in sample_paths
+        # ]
         data = [
             delayed(self.load_file)(Path(EARTHNET_FILEPATH + path))
             for path in sample_paths
         ]
-        with set(num_workers=10):
-            with ProgressBar():
-                data = compute(
-                    *data, scheduler="processes"
-                )  
+        with ProgressBar():
+            data = compute(*data, scheduler="processes")
 
-        # Filter valid datasets
         ds = [d for d in data if isinstance(d, xr.Dataset)]
-        ds = xr.concat(ds, dim="location")
+        # ds = xr.concat(ds, dim="location")
+        ds = xr.combine_by_coords(ds, combine_attrs="override", join="outer")
         ds = cfxr.encode_multi_index_as_compress(ds, "location")
         printt("Chunking dataset...")
-        ds = ds.chunk("auto")
+        ds = ds.chunk({"time": -1, "location": 500})
         path = self.config.saving_path / "temp_file.zarr"
         printt("Saving dataset to cache...")
         ds.to_zarr(path, mode="w")
@@ -66,7 +67,6 @@ class Sentinel2Dataloader(Dataloader):
         ds.close()
         del ds, data
         # Force garbage collection (optional but helpful for huge datasets)
-        gc.collect()
         printt(f"Data saved to {path}")
         ds = self.loader._load_data("temp_file")[self.variable_name]
         ds = _ensure_time_chunks(ds)
@@ -509,12 +509,12 @@ class Sentinel2Dataloader(Dataloader):
         else:
             data = self.load_dataset()
 
-        printt(f"Processing entire dataset: {data.sizes['location']} locations.")
         data = self.compute_max_per_period(data, self.config_dict["period_size"])
         data = self.noise_removal.cloudfree_timeseries(
             data, noise_half_windows=self.config_dict["noise_half_windows"]
         )
         data = self._remove_low_vegetation_location(data, threshold=0.2)
+        printt(f"Processing entire dataset: {data.sizes['location']} locations.")
         # data = data.compute()
         self.saver._save_data(data, "evi")
 
