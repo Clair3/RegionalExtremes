@@ -43,23 +43,22 @@ class EcoCluster:
         self.loader = Loader(config)
         # Saver class to save intermediate steps.
         self.saver = Saver(config)
-        print(self.config)
 
-        if self.config.load_existing_experiment:
-            # Load every variable if already available, otherwise return None.
-            self.pca = self.loader._load_pca_matrix()
-            self.projected_data = self.loader._load_pca_projection()
-            self.limits_eco_clusters = self.loader._load_limits_eco_clusters()
-            self.eco_clusters = self.loader._load_data("eco_clusters")
-        else:
-            # Initialize a new PCA.
-            if self.config.k_pca:
-                self.pca = KernelPCA(n_components=self.n_components, kernel="rbf")
-            else:
-                self.pca = PCA(n_components=self.n_components)
-            self.projected_data = None
-            self.limits_eco_clusters = None
-            self.eco_clusters = None
+        #if self.config.load_existing_experiment:
+        # Load every variable if already available, otherwise return None.
+        self.pca = self.loader._load_pca_matrix()
+        self.projected_data = self.loader._load_pca_projection()
+        self.limits_eco_clusters = self.loader._load_limits_eco_clusters()
+        self.eco_clusters = self.loader._load_data("eco_clusters")
+        # else:
+        #     # Initialize a new PCA.
+        #     if self.config.k_pca:
+        #         self.pca = KernelPCA(n_components=self.n_components, kernel="rbf")
+        #     else:
+        #         self.pca = PCA(n_components=self.n_components)
+        #     self.projected_data = None
+        #     self.limits_eco_clusters = None
+        #     self.eco_clusters = None
 
     def compute_pca_and_transform(
         self,
@@ -77,6 +76,11 @@ class EcoCluster:
             self.n_components <= 366
         ), "n_components have to be in the range of days of a years"
         # Fit the PCA. Each colomns give us the projection through 1 component.
+        if self.config.k_pca:
+                self.pca = KernelPCA(n_components=self.n_components, kernel="rbf")
+        else:
+            self.pca = PCA(n_components=self.n_components)
+        #self.pca = PCA(n_components=self.n_components)
         pca_components = self.pca.fit_transform(scaled_data)
 
         if isinstance(self.pca, PCA):

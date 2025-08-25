@@ -91,7 +91,7 @@ class QuantilesBase(ABC):
         assert self.config.method == "regional", "Method must be regional"
 
         # Initialize parameters
-        compute_only_thresholds = self.config.is_generic_xarray_dataset
+        #compute_only_thresholds = self.config.is_generic_xarray_dataset
 
         def create_eco_cluster_labels(eco_clusters_load):
             """Create standardized eco-cluster labels."""
@@ -169,18 +169,15 @@ class QuantilesBase(ABC):
         self.saver._save_data(thresholds, "thresholds")
 
         # Calculate and save extremes if needed
-        if not compute_only_thresholds:
-            extremes = grouped.map(
-                lambda grp: self._apply_thresholds(
-                    grp,
-                    map_thresholds_to_clusters(grp),
-                )
+        extremes = grouped.map(
+            lambda grp: self._apply_thresholds(
+                grp,
+                map_thresholds_to_clusters(grp),
             )
-            extremes_array.values = extremes.values
-            self.saver._save_data(extremes_array, "extremes")
-            return thresholds, extremes_array
-
-        return thresholds
+        )
+        extremes_array.values = extremes.values
+        self.saver._save_data(extremes_array, "extremes")
+        return thresholds, extremes_array
 
     def compute_regional_threshold(self, data, eco_clusters_load):
         """
@@ -268,7 +265,7 @@ class QuantilesBase(ABC):
         filtered_data = data.where(data.valid_group, drop=True)
         if filtered_data.sizes == 0:
             raise ValueError("No valid groups found.")
-
+        
         aligned_labels = eco_cluster_labels.sel(location=filtered_data.location)
 
         results = self._compute_thresholds_per_grp(filtered_data, aligned_labels)
@@ -312,46 +309,43 @@ class QuantilesBase(ABC):
             thresholds_by_cluster, "thresholds", location=False, eco_cluster=True
         )
 
-        if not self.config.is_generic_xarray_dataset:
-            # print(group_thresholds.values.shape)
-            thresholds_array = xr.DataArray(
-                np.full(
-                    (
-                        len(data.location),
-                        len(self.quantile_levels_combined),
-                        # len(data.dt.time.dayofyear),
-                    ),
-                    np.nan,
+        
+        thresholds_array = xr.DataArray(
+            np.full(
+                (
+                    len(data.location),
+                    len(self.quantile_levels_combined),
+                    # len(data.dt.time.dayofyear),
                 ),
-                dims=["location", "quantile"],
-                coords={
-                    "location": data.location,
-                    "quantile": self.quantile_levels_combined,
-                    # "dayofyear": data.time.dt.dayofyear,
-                },
-            )
-
-            # thresholds_array = xr.DataArray(
-            #     np.full(
-            #         (len(data.location), len(self.quantile_levels_combined)),
-            #         np.nan,
-            #     ),
-            #     dims=["location", "quantile"],
-            #     coords={
-            #         "location": data.location,
-            #         "quantile": self.quantile_levels_combined,
-            #     },
-            # )
-            thresholds_array.loc[dict(location=results["thresholds"].location)] = (
-                results["thresholds"].values
-            )
-            self.saver._save_data(thresholds_array, "thresholds_locations")
-
-            extremes_array = xr.full_like(data, np.nan, dtype=float)
-            extremes_array.loc[dict(location=results["extremes"].location)] = results[
-                "extremes"
-            ].values
-            self.saver._save_data(extremes_array, "extremes")
+                np.nan,
+            ),
+            dims=["location", "quantile"],
+            coords={
+                "location": data.location,
+                "quantile": self.quantile_levels_combined,
+                # "dayofyear": data.time.dt.dayofyear,
+            },
+        )
+        # thresholds_array = xr.DataArray(
+        #     np.full(
+        #         (len(data.location), len(self.quantile_levels_combined)),
+        #         np.nan,
+        #     ),
+        #     dims=["location", "quantile"],
+        #     coords={
+        #         "location": data.location,
+        #         "quantile": self.quantile_levels_combined,
+        #     },
+        # )
+        thresholds_array.loc[dict(location=results["thresholds"].location)] = (
+            results["thresholds"].values
+        )
+        self.saver._save_data(thresholds_array, "thresholds_locations")
+        extremes_array = xr.full_like(data, np.nan, dtype=float)
+        extremes_array.loc[dict(location=results["extremes"].location)] = results[
+            "extremes"
+        ].values
+        self.saver._save_data(extremes_array, "extremes")
 
     def _compute_thresholds_per_grp(self, filtered_data, aligned_labels):
         """
@@ -365,7 +359,6 @@ class QuantilesBase(ABC):
         return filtered_data.groupby(aligned_labels).map(
             lambda grp: self._compute_thresholds(
                 grp,
-                return_only_thresholds=self.config.is_generic_xarray_dataset,
             )
         )
 
@@ -386,7 +379,7 @@ class QuantilesBase(ABC):
     def _compute_thresholds(
         self,
         data: xr.DataArray,
-        return_only_thresholds=False,
+        #return_only_thresholds=False,
     ):
         """
         Assign quantile levels to data data.
@@ -400,15 +393,10 @@ class QuantilesBase(ABC):
         """
         assert self.config.method == "regional"
 
-        # Unpack quantile levels and prepare data
         data = data.chunk("auto")
 
         # Compute quantiles based on the method
         quantiles_xr = self._compute_quantiles_per_grp(data)
-
-        # Return thresholds only if requested
-        if return_only_thresholds:
-            return xr.Dataset({"thresholds": quantiles_xr})
 
         extremes = self._apply_thresholds(data, quantiles_xr)
         results = xr.Dataset({"extremes": extremes, "thresholds": quantiles_xr})

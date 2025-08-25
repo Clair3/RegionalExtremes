@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, date
 import os
 from tqdm import tqdm
 from dask.config import set
+import more_itertools
 
 
 class Sentinel2Dataloader(Dataloader):
@@ -23,29 +24,35 @@ class Sentinel2Dataloader(Dataloader):
 
         # Attempt to load cached training data
         training_data = self.loader._load_data("temp_file")
+
+        # Convert location MultiIndex to a proper index
+        location_index = training_data.location.to_index()
+
+        # Identify duplicates
+        duplicates = location_index.duplicated()
+        
+        # Keep only the first occurrence of each location
+        training_data = training_data.sel(location=~duplicates)
         # path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-14_11:57:24_full_fluxnet_therightone_highveg/EVI_EN/temp_file.zarr"
         # training_data = None  # xr.open_zarr(path)
         # training_data = cfxr.decode_compress_to_multi_index(training_data, "location")
 
         if training_data is not None:
             self.data = training_data[self.variable_name]
-            # if self.n_samples:
-            #    random_indices = np.random.choice(
-            #        len(self.data.location), size=self.n_samples, replace=False
-            #    )
-            #    self.data = self.data.isel(location=random_indices)
+            if self.n_samples:
+               random_indices = np.random.choice(
+                   len(self.data.location), size=self.n_samples, replace=False
+               )
+               self.data = self.data.isel(location=random_indices)
 
             self.data = _ensure_time_chunks(self.data)
             return self.data
 
         printt(f"Number of samples for the training set: {sample_count}")
-
+        
         # Randomly sample paths for processing
         sample_paths = np.random.choice(sample_paths, size=sample_count, replace=True)
-        # data = [
-        #     delayed(self.load_file)(Path(EARTHNET_FILEPATH + path))
-        #     for path in sample_paths
-        # ]
+        
         data = [
             delayed(self.load_file)(Path(EARTHNET_FILEPATH + path))
             for path in sample_paths
@@ -54,14 +61,14 @@ class Sentinel2Dataloader(Dataloader):
             data = compute(*data, scheduler="processes")
 
         ds = [d for d in data if isinstance(d, xr.Dataset)]
-        # ds = xr.concat(ds, dim="location")
-        ds = xr.combine_by_coords(ds, combine_attrs="override", join="outer")
-        ds = cfxr.encode_multi_index_as_compress(ds, "location")
+        ds = xr.concat(ds, dim="location", combine_attrs="override")
         printt("Chunking dataset...")
-        ds = ds.chunk({"time": -1, "location": 500})
+        ds = ds.chunk({"time": 100, "location": 500})
+        ds = cfxr.encode_multi_index_as_compress(ds, "location")
         path = self.config.saving_path / "temp_file.zarr"
         printt("Saving dataset to cache...")
-        ds.to_zarr(path, mode="w")
+        encoding = {var: {"compressor": None} for var in ds.data_vars}
+        ds.to_zarr(path, mode="w", encoding=encoding)
         printt(f"Data saved to {path}")
         # Explicitly close dataset to release memory and file handles
         ds.close()
@@ -167,6 +174,7 @@ class Sentinel2Dataloader(Dataloader):
         ds = self.compute_vegetation_index(ds)
         if ds is None:
             return None
+        ds = self.compute_max_per_period(ds, period_size=16)
         return ds
 
     def compute_vegetation_index(self, ds):
@@ -176,22 +184,20 @@ class Sentinel2Dataloader(Dataloader):
         evi = self._calculate_evi(ds)
         mask = self._compute_masks(ds, evi)
 
-        # if getattr(self.config, "modis_resolution", False):
-        #    evi = evi.unstack("location")
-        #    mask = mask.unstack("location")
-        #    evi = evi.coarsen(latitude=12, longitude=12, boundary="trim").mean(
-        #        skipna=True
-        #    )
-        #    mask_coarse_frac = mask.coarsen(
-        #        latitude=12, longitude=12, boundary="trim"
-        #    ).mean(skipna=True)
-        #
-        #    mask = xr.where(mask_coarse_frac > 0.5, 1, np.nan)
-        #
-        #    # mask = mask.where(mask, np.nan)
-        #
-        #    evi = evi.stack(location=("latitude", "longitude"))
-        #    mask = mask.stack(location=("latitude", "longitude"))
+        if getattr(self.config, "modis_resolution", False):
+           evi = evi.unstack("location")
+           mask = mask.unstack("location")
+           evi = evi.coarsen(latitude=12, longitude=12, boundary="trim").mean(
+               skipna=True
+           )
+           mask_coarse_frac = mask.coarsen(
+               latitude=12, longitude=12, boundary="trim"
+           ).mean(skipna=True)
+    
+           mask = xr.where(mask_coarse_frac > 0.5, 1, np.nan)
+        
+           evi = evi.stack(location=("latitude", "longitude"))
+           mask = mask.stack(location=("latitude", "longitude"))
 
         masked_evi = evi * mask
         data = xr.Dataset(
@@ -236,7 +242,7 @@ class Sentinel2Dataloader(Dataloader):
         if epsg is not None:
             transformer = Transformer.from_crs(epsg, 4326, always_xy=True)
             lon, lat = transformer.transform(ds.x.values, ds.y.values)
-            ds = ds.drop_vars("spatial_ref")
+            # ds = ds.drop_vars("spatial_ref")
             ds.assign_coords({"x": ("x", lon), "y": ("y", lat)})
 
         ds["time"] = ds["time"].dt.floor("D")

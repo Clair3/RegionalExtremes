@@ -94,7 +94,6 @@ class Saver:
 
     def _save_data(self, data, name, basepath=None, location=True, eco_cluster=False):
         """Saves the data to a file."""
-        printt(f"Saving data with dims: {data.dims} and shape: {data.sizes}")
         if basepath is None:
             basepath = self.config.saving_path
         path = basepath / f"{name}.zarr"
@@ -132,7 +131,6 @@ class Saver:
         elif "dayofyear" in data.dims:
             data = data.chunk({"location": 50, "dayofyear": -1})
 
-        printt("Writing to Zarr...")
         data.to_zarr(path, mode="w") #, consolidated=True)
         printt(f"{name} computed and saved.")
 
