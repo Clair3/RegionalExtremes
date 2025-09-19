@@ -79,7 +79,7 @@ def regional_extremes_method(args):
         # Initialization of the climatic or ecological DatasetHandler
         dataset_processor = dataloader(
             config=config,
-            n_samples= 10000,  # config.n_samples,  # all the dataset
+            n_samples= 15000, #config.n_samples,  # all the dataset
         )
         # Load and preprocess the dataset
         msc = dataset_processor.preprocess_data()  # minicube_path=minicube_path)

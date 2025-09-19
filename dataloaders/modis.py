@@ -7,7 +7,10 @@ from pyproj import Transformer
 class ModisDataloader(Sentinel2Dataloader):
     def _calculate_evi(self, ds):
         """Calculates the Enhanced Vegetation Index (EVI)."""
-        return (ds["250m_16_days_EVI"] + 2000) / 12000
+        ds = (ds["250m_16_days_EVI"] + 2000) / 12000
+        if "start_range" in ds.coords:
+            ds = ds.rename({"start_range": "time"})
+        return ds
 
     def _ensure_coordinates(self, ds):
         """Transforms UTM coordinates to latitude and longitude."""
@@ -20,18 +23,17 @@ class ModisDataloader(Sentinel2Dataloader):
         if epsg is not None:
             transformer = Transformer.from_crs(epsg, 4326, always_xy=True)
             lon, lat = transformer.transform(ds.x.values, ds.y.values)
-            ds = ds.drop_vars("spatial_ref")
+            #if "spatial_ref" in ds:
+            #    ds = ds.drop_vars("spatial_ref")
             ds.assign_coords({"x": ("x", lon), "y": ("y", lat)})
 
-        ds["time"] = ds["time"].dt.floor("D")
-
-        if "start_range" in ds.coords:
-            ds = ds.rename({"start_range": "time"})
+        
         elif "time_modis-13Q1-061" in ds.coords:
             ds = ds.rename({"time_modis-13Q1-061": "time"})
         elif "y231" in ds.coords:
             ds = ds.rename({"x231": "x", "y231": "y"})
-
+        ds["time"] = ds["time"].dt.floor("D")
+        # print(ds.coords)
         return ds.rename({"x": "longitude", "y": "latitude"})
 
     # def load_file(self, minicube_path, process_entire_minicube=False):

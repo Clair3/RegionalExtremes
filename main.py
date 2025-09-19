@@ -6,7 +6,7 @@ import os
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from RegionalExtremesPackage.utils.logging_config import int_or_none, printt
-
+from dask import delayed, compute
 import argparse
 from RegionalExtremesPackage.methods import (
     regional_extremes_method,
@@ -114,11 +114,11 @@ def parser_arguments():
 
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
-    args.name = "large_training_set"
-    #args.modis_resolution = True
+    args.name = "S2_low_res" #"large_training_set"
+    args.modis_resolution = True
     args.index = "EVI_EN"
     args.k_pca = False
-    args.n_samples = 50000  # 40000
+    args.n_samples = 100 # 50000  # 40000
     args.n_components = 3
     args.n_eco_clusters = 20
     args.compute_variance = False
@@ -127,77 +127,49 @@ if __name__ == "__main__":
     args.lower_quantiles = [0.025, 0.05, 0.10, 0.2, 0.3, 0.4, 0.50]
     args.upper_quantiles = [0.501, 0.6, 0.7, 0.8, 0.9, 0.95, 0.975]
 
-    args.saving_path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN/" #"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-22_14:35:49_local_sentinel2/EVI_EN" ##"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:10:25_local_sentinel2_modisres/EVI_EN/" #/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-22_14:35:49_local_sentinel2/EVI_EN/"  #
+    # args.saving_path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-14_17:14:03_S2_low_res/EVI_EN/" #"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-14_16:23:50_S2_low_res/EVI_EN/" #"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-14_16:23:50_S2_low_res/EVI_EN" #"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-13_14:26:50_S2_low_res/EVI_EN" #/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN/" #"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-22_14:35:49_local_sentinel2/EVI_EN" ##"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:10:25_local_sentinel2_modisres/EVI_EN/" #/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-22_14:35:49_local_sentinel2/EVI_EN/"  #
 
     if args.method == "regional":
         # Train the regional extreme method on a subset of locations
-        # regional_extremes_method(args)
+        regional_extremes_method(args)
         # Apply the regional extremes method on a single minicube
-        parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/"
-
+        #parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/"
+        parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/" #"/Net/Groups/BGI/work_5/scratch/EU_Minicubes/_final/"
         subfolders = [
             folder for folder in os.listdir(parent_folder) if folder[-4:] == ".zip"
         ]
-        # parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/_test/"
-        # subfolders = [
-        #     "DE-Hai_51.08_10.45_v0.zarr.zip",
-        #     "FR-LGt_47.32_2.28_v0.zarr.zip",
-        #     "ES-Cnd_37.91_-3.23_v0.zarr.zip",
-        #     "ES-LM1_39.94_-5.78_v0.zarr.zip",
-        #     "ES-LM2_39.93_-5.78_v0.zarr.zip",
-        #     "ES-LMa_39.94_-5.77_v0.zarr.zip",
-        #     "DE-Geb_51.10_10.91_v0.zarr.zip",
-        #     "DE-Wet_50.45_11.46_v0.zarr.zip",
-        #     "DE-Bay_50.14_11.87_v0.zarr.zip",
-        #     "DE-Meh_51.28_10.66_v0.zarr.zip",
-        #     "DE-Lnf_51.33_10.37_v0.zarr.zip",
-        # ]
-        # subfolders = [
-        #    "DE-Hai_51.08_10.45_v0.zarr.zip",
-        #    # "ES-LM1_39.94_-5.78_v0.zarr.zip",
-        #    # "ES-LM2_39.93_-5.78_v0.zarr.zip",
-        #    # # "ES-LMa_39.94_-5.77_v0.zarr.zip",
-        #    # "ES-Cnd_37.91_-3.23_v0.zarr.zip",
-        #    # "FR-LGt_47.32_2.28_v0.zarr.zip",
-        #    # "DE-Lnf_51.33_10.37_v0.zarr.zip",
-        #    # "DE-Geb_51.10_10.91_v0.zarr.zip",
-        #    # "DE-Wet_50.45_11.46_v0.zarr.zip",
-        #    # "DE-Bay_50.14_11.87_v0.zarr.zip",
-        #    # "DE-Meh_51.28_10.66_v0.zarr.zip",
-        # ]
-
-        # subfolders = [
-        #     "custom_cube_50.90_11.56.zarr.zip",
-        #     "custom_cube_44.17_5.24.zarr.zip",
-        #     "custom_cube_44.24_5.14.zarr.zip",
-        #     "custom_cube_47.31_0.18.zarr.zip",
-        # ]
-        # regional_extremes_minicube(
-        #     args,
-        #     minicube_path="/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/32UNB_Hainich.zarr",
-        # )
-        # cube = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/32UNB_Hainich.zarr"
-
-        # regional_extremes_minicube(
-        #    args,
-        #    minicube_path=cube,
-        # )
-        for folder in subfolders:
-            if folder[:-4] not in os.listdir(
-                f"{args.saving_path}/"
-            ):
-                
+        
+        
+        @delayed
+        def process_sample(folder):
+            # if folder[:-4] not in os.listdir(
+            #     f"{args.saving_path}"
+            # ):
+            try:
                 regional_extremes_minicube(
                     args,
                     minicube_path=parent_folder + folder,
                 )
-                #except:
-                #    print(f"error with {folder}")
+            except Exception as e:
+                print(f"error with {folder} - {e}")
+                    
+        tasks = [process_sample(sample) for sample in subfolders]
+        # Trigger execution
+        for i in range(0, len(tasks), 10):
+            if i < len(tasks) - 10:
+                compute(
+                    *tasks[i : i + 10], scheduler="threads"
+                )  # or "processes" depending on workload
+            else:
+                compute(
+                    *tasks[i:], scheduler="threads"
+                )  # or "processes" depending on workload
+
 
     elif args.method == "local":
         # Apply the uniform threshold method
-        parent_folder = "/Net/Groups/BGI/work_5/scratch/EU_Minicubes/_final/" #"/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/"
-
+        parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/" #"/Net/Groups/BGI/work_5/scratch/EU_Minicubes/_final/" #
+    
         # subfolders = [
         #     "DE-Hai_51.08_10.45_v0.zarr.zip",
         #     "FR-LGt_47.32_2.28_v0.zarr.zip",
@@ -214,7 +186,6 @@ if __name__ == "__main__":
 
 
         subfolders = [folder for folder in os.listdir(parent_folder)]
-
         # parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/_test/"
         # subfolders = [
         #     "custom_cube_44.17_5.24.zarr.zip",
@@ -224,14 +195,14 @@ if __name__ == "__main__":
         # ]
 
         for folder in subfolders:
-            if folder[:-4] not in os.listdir(
-                f"{args.saving_path}"
-            ):
-                try:
-                    local_extremes_method(
-                        args,
-                        minicube_path=parent_folder + folder)
-                except Exception as e:
-                    printt(f"Error with {folder}: {e}")
+            #if folder[:-4] not in os.listdir(
+            #    f"{args.saving_path}"
+            #):
+            #try:
+            local_extremes_method(
+                args,
+                minicube_path=parent_folder + folder)
+            # except Exception as e:
+            #     printt(f"Error with {folder}: {e}")
     elif args.method == "global":
         raise NotImplementedError("the global method is not yet implemented.")

@@ -188,6 +188,20 @@ class QuantilesBase(ABC):
         data : xarray.DataArray (time, location) to compute the distribution
         """
         assert self.config.method == "regional"
+        # Ensure eco_clusters_load has unique locations and a clean coordinate index
+        # loc_index = pd.MultiIndex.from_arrays(
+        #     [eco_clusters_load.longitude.values, eco_clusters_load.latitude.values],
+        #     names=["longitude", "latitude"]
+        # )
+# 
+        # # Drop duplicate coordinate pairs
+        # unique_index = loc_index.drop_duplicates()
+# 
+        # # Assign the cleaned index back to eco_clusters_load
+        # eco_clusters_load = eco_clusters_load.assign_coords(location=unique_index)
+# 
+        # # Now align data to these locations
+        # data = data.sel(location=eco_clusters_load.location)
 
         def _process_group(grp):
             """

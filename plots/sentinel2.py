@@ -233,7 +233,6 @@ class PlotsSentinel2(Plots):
 
         # Get the latitude values you want
         selected_lons = unique_lons[0:20]
-        print(selected_lats, selected_lons)
         # Now build a mask to select locations with those latitudes
         mask_lats = cluster.latitude.isin(selected_lats)
         mask_lons = cluster.longitude.isin(selected_lons)
@@ -243,8 +242,6 @@ class PlotsSentinel2(Plots):
         # subset = data.unstack("location").isel(
         #     latitude=slice(0, 20), longitude=slice(0, 20)
         # )
-        print(selected_lats)
-        print(selected_lons)
         subset = subset.chunk({"location": 50, "dayofyear": -1})
         print("After chunking:", cluster.chunk)
 

@@ -20,34 +20,25 @@ class Sentinel2Dataloader(Dataloader):
         """
         self.variable_name = "evi"
         sample_paths = [folder for folder in os.listdir(EARTHNET_FILEPATH)]
-        sample_count = self.n_samples or 50000
 
         # Attempt to load cached training data
         training_data = self.loader._load_data("temp_file")
 
-        # Convert location MultiIndex to a proper index
-        location_index = training_data.location.to_index()
-
-        # Identify duplicates
-        duplicates = location_index.duplicated()
-        
-        # Keep only the first occurrence of each location
-        training_data = training_data.sel(location=~duplicates)
-        # path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-14_11:57:24_full_fluxnet_therightone_highveg/EVI_EN/temp_file.zarr"
-        # training_data = None  # xr.open_zarr(path)
-        # training_data = cfxr.decode_compress_to_multi_index(training_data, "location")
-
         if training_data is not None:
+            sample_count = self.n_samples or 50000
+
             self.data = training_data[self.variable_name]
-            if self.n_samples:
+            # Convert location MultiIndex to a proper index
+            if self.n_samples is not None and self.n_samples < len(self.data.location):
                random_indices = np.random.choice(
                    len(self.data.location), size=self.n_samples, replace=False
                )
                self.data = self.data.isel(location=random_indices)
 
-            self.data = _ensure_time_chunks(self.data)
-            return self.data
 
+            #self.data = _ensure_time_chunks(self.data)
+            return self.data
+        sample_count = 50000 
         printt(f"Number of samples for the training set: {sample_count}")
         
         # Randomly sample paths for processing
@@ -62,6 +53,11 @@ class Sentinel2Dataloader(Dataloader):
 
         ds = [d for d in data if isinstance(d, xr.Dataset)]
         ds = xr.concat(ds, dim="location", combine_attrs="override")
+        location_index = ds.location.to_index()
+        # Identify duplicates
+        duplicates = location_index.duplicated()
+        # Keep only the first occurrence of each location
+        ds = ds.sel(location=~duplicates)
         printt("Chunking dataset...")
         ds = ds.chunk({"time": 100, "location": 500})
         ds = cfxr.encode_multi_index_as_compress(ds, "location")
@@ -165,7 +161,6 @@ class Sentinel2Dataloader(Dataloader):
             # Select a random vegetation location
             ds = self._get_random_vegetation_pixel_series(ds)
             if ds is None:
-                # printt(f"No valid vegetation pixel found in {filepath}.")
                 return None
         else:
             ds = ds.stack(location=("longitude", "latitude"))
@@ -180,36 +175,73 @@ class Sentinel2Dataloader(Dataloader):
     def compute_vegetation_index(self, ds):
         self.variable_name = "evi"
 
-        # Calculate EVI and apply cloud/vegetation mask
-        evi = self._calculate_evi(ds)
-        mask = self._compute_masks(ds, evi)
+        if getattr(self.config, "modis_resolution", True):
+            # Unstack before coarsening
+            ds = ds.unstack("location")
 
-        if getattr(self.config, "modis_resolution", False):
-           evi = evi.unstack("location")
-           mask = mask.unstack("location")
-           evi = evi.coarsen(latitude=12, longitude=12, boundary="trim").mean(
-               skipna=True
-           )
-           mask_coarse_frac = mask.coarsen(
-               latitude=12, longitude=12, boundary="trim"
-           ).mean(skipna=True)
-    
-           mask = xr.where(mask_coarse_frac > 0.5, 1, np.nan)
-        
-           evi = evi.stack(location=("latitude", "longitude"))
-           mask = mask.stack(location=("latitude", "longitude"))
+            # Coarsen reflectance bands
+            ds_coarse = ds[["B8A", "B04", "B02"]].coarsen(
+                latitude=12, longitude=12, boundary="trim"
+            ).mean(skipna=True)
+
+            # Compute coarse mask
+            mask = self._compute_masks(ds, use_coarsen=True)
+
+            # Re-stack
+            ds_coarse = ds_coarse.stack(location=("latitude", "longitude"))
+
+            # Compute EVI at coarse resolution
+            evi = self._calculate_evi(ds_coarse)
+
+        else:
+            # High-resolution computation
+            evi = self._calculate_evi(ds)
+            mask = self._compute_masks(ds)
 
         masked_evi = evi * mask
+
         data = xr.Dataset(
             data_vars={
                 f"{self.variable_name}": masked_evi,
             },
         )
-        # Check for excessive missing data
+
         if self._has_excessive_nan(masked_evi):
-            # printt(f"Excessive NaN values for the selected location.")
             return None
         return data
+
+    # def compute_vegetation_index(self, ds):
+    #     self.variable_name = "evi"
+# 
+    #     # Calculate EVI and apply cloud/vegetation mask
+    #     evi = self._calculate_evi(ds)
+    #     mask = self._compute_masks(ds, evi)
+# 
+    #     if getattr(self.config, "modis_resolution", True):
+    #        evi = evi.unstack("location")
+    #        mask = mask.unstack("location")
+    #        evi = evi.coarsen(latitude=12, longitude=12, boundary="trim").mean(
+    #            skipna=True
+    #        )
+    #        mask_coarse_frac = mask.coarsen(
+    #            latitude=12, longitude=12, boundary="trim"
+    #        ).mean(skipna=True)
+    # 
+    #        mask = xr.where(mask_coarse_frac > 0.5, 1, np.nan)
+    #     
+    #        evi = evi.stack(location=("latitude", "longitude"))
+    #        mask = mask.stack(location=("latitude", "longitude"))
+# 
+    #     masked_evi = evi * mask
+    #     data = xr.Dataset(
+    #         data_vars={
+    #             f"{self.variable_name}": masked_evi,
+    #         },
+    #     )
+    #     # Check for excessive missing data
+    #     if self._has_excessive_nan(masked_evi):
+    #         return None
+    #     return data
 
     def _ensure_coordinates(self, ds):
         """Transforms UTM coordinates to latitude and longitude."""
@@ -233,7 +265,6 @@ class Sentinel2Dataloader(Dataloader):
             # Merge all bands
             ds = xr.merge([ds_10m, ds_20m])
             ds = ds.rename({"x20": "x", "y20": "y"})
-
         epsg = (
             ds.attrs.get("spatial_ref") or ds.attrs.get("EPSG") or ds.attrs.get("CRS")
         )
@@ -242,13 +273,16 @@ class Sentinel2Dataloader(Dataloader):
         if epsg is not None:
             transformer = Transformer.from_crs(epsg, 4326, always_xy=True)
             lon, lat = transformer.transform(ds.x.values, ds.y.values)
-            # ds = ds.drop_vars("spatial_ref")
-            ds.assign_coords({"x": ("x", lon), "y": ("y", lat)})
+            ds = ds.assign_coords({"x": ("x", lon), "y": ("y", lat)})
+        
+        if "spatial_ref" in ds.attrs: 
+            ds = ds.drop_vars("spatial_ref")
 
         ds["time"] = ds["time"].dt.floor("D")
         ds = ds.sel(time=slice(date(2017, 3, 1), None))
 
         return ds.rename({"x": "longitude", "y": "latitude"})
+        
 
     def _get_random_vegetation_pixel_series(self, ds):
         """Selects a random time serie vegetation pixel location in the minicube based on SCL classification."""
@@ -267,50 +301,91 @@ class Sentinel2Dataloader(Dataloader):
 
         if eligible_indices.size > 0:
             random_index = eligible_indices[np.random.choice(eligible_indices.shape[0])]
-            selected_data = ds.isel(longitude=random_index[0], latitude=random_index[1])
-            # Expand dimensions and rename for clarity
-            selected_data = selected_data.expand_dims(
-                longitude=[selected_data.longitude.values.item()],
-                latitude=[selected_data.latitude.values.item()],
-            )
+            if getattr(self.config, "modis_resolution", True):
+                lon_size, lat_size = ds.sizes["longitude"], ds.sizes["latitude"]
+                lon_start = min(random_index[0], lon_size - 12)
+                lat_start = min(random_index[1], lat_size - 12)
+
+                selected_data = ds.isel(
+                    longitude=slice(lon_start, lon_start + 12),
+                    latitude=slice(lat_start, lat_start + 12),
+                )
+            else:
+                selected_data = ds.isel(longitude=random_index[0], latitude=random_index[1])
+                # Expand dimensions 
+                selected_data = selected_data.expand_dims(
+                    longitude=[selected_data.longitude.values.item()],
+                    latitude=[selected_data.latitude.values.item()],
+                )
             # Stack spatial dimensions for easier processing
             return selected_data.stack(location=("longitude", "latitude"))
         return None
 
     def _calculate_evi(self, ds):
         """Calculates the Enhanced Vegetation Index (EVI)."""
-        # return (2.5 * (ds.B08 - ds.B04)) / (
-        #    ds.B08 + 6 * ds.B04 - 7.5 * ds.B02 + 1 + 10e-8
-        # )
         return (2.5 * (ds.B8A - ds.B04)) / (
             ds.B8A + 6 * ds.B04 - 7.5 * ds.B02 + 1 + 10e-8
         )
+    
+    def _compute_masks(self, ds, use_coarsen=False, coarsen_kwargs=None):
+        """
+        Applies cloud and vegetation masks.
+        If use_coarsen=True, masks are coarsened before being returned.
+        """
+        if coarsen_kwargs is None:
+            coarsen_kwargs = dict(latitude=12, longitude=12, boundary="trim")
 
-    def _compute_masks(self, ds, evi):
-        """Applies cloud and vegetation masks to the EVI data."""
-        mask = xr.ones_like(evi)  # Default mask (all ones, meaning no masking)
+        # Start with all valid
+        mask = xr.ones_like(ds.B04).stack(location=("latitude", "longitude"))  
 
         # Apply vegetation mask if SCL exists
         if "SCL" in ds.data_vars:
-            # keep only pixel valid accordingly to the SCL
             valid_scl = ds.SCL.isin([4, 5, 6, 7])
-
+            valid_scl = valid_scl.stack(location=("latitude", "longitude"))
             mask = mask.where(valid_scl, np.nan)
 
-            # keep only time steps with more than 50% of valid pixels
-            valid_ratio = valid_scl.sum(
-                dim=["location"]  # ["latitude", "longitude"]  # ["location"]  #
-            ) / valid_scl.count(
-                dim=["location"]  # ["latitude", "longitude"]  # ["location"]
-            )  # ["latitude", "longitude"])
+            # drop timesteps where less than 90% valid pixels
+            valid_ratio = valid_scl.sum(dim=["location"]) / valid_scl.count(dim=["location"])
             invalid_time_steps = valid_ratio < 0.9
             mask = mask.where(~invalid_time_steps, np.nan)
 
+        # Apply cloud mask if available
         if "cloudmask_en" in ds.data_vars:
             mask = mask.where(ds.cloudmask_en == 0, np.nan)
 
-        return mask
+        # If requested, coarsen mask
+        if use_coarsen:
+            mask = mask.unstack("location")
+            mask_frac = mask.coarsen(**coarsen_kwargs).mean(skipna=True)
+            mask = xr.where(mask_frac > 0.5, 1, np.nan)
+            mask = mask.stack(location=("latitude", "longitude"))
 
+        return mask
+    #def _compute_masks(self, ds, evi):
+    #    """Applies cloud and vegetation masks to the EVI data."""
+    #    mask = xr.ones_like(evi)  # Default mask (all ones, meaning no masking)
+#
+    #    # Apply vegetation mask if SCL exists
+    #    if "SCL" in ds.data_vars:
+    #        # keep only pixel valid accordingly to the SCL
+    #        valid_scl = ds.SCL.isin([4, 5, 6, 7])
+#
+    #        mask = mask.where(valid_scl, np.nan)
+#
+    #        # keep only time steps with more than 50% of valid pixels
+    #        valid_ratio = valid_scl.sum(
+    #            dim=["location"]  # ["latitude", "longitude"]  # ["location"]  #
+    #        ) / valid_scl.count(
+    #            dim=["location"]  # ["latitude", "longitude"]  # ["location"]
+    #        )  # ["latitude", "longitude"])
+    #        invalid_time_steps = valid_ratio < 0.9
+    #        mask = mask.where(~invalid_time_steps, np.nan)
+#
+    #    if "cloudmask_en" in ds.data_vars:
+    #        mask = mask.where(ds.cloudmask_en == 0, np.nan)
+#
+    #    return mask
+#
     def _has_excessive_nan(self, data):
         """Checks if the masked data contains excessive NaN values."""
         nan_percentage = data.isnull().mean().values * 100
@@ -336,16 +411,7 @@ class Sentinel2Dataloader(Dataloader):
         mean_seasonal_cycle = clean_data.groupby("time.dayofyear").mean(
             "time", skipna=True
         )
-        # Step 1: Compute mean seasonal cycle with at least 2 values
-        # mean_seasonal_cycle = clean_data.groupby("time.dayofyear").apply(
-        #    lambda x: (
-        #        x.mean("time")
-        #        if x.count("time") >= 2
-        #        else x.isel(time=0) * float("nan")
-        #    )
-        # )
-
-        # Step 2: Apply circular padding along the dayofyear axis before rolling
+        # Apply circular padding along the dayofyear axis before rolling
         # # edge case growing season during the change of year
         padded_values = np.pad(
             mean_seasonal_cycle.values,
@@ -376,27 +442,27 @@ class Sentinel2Dataloader(Dataloader):
         mean_seasonal_cycle = mean_seasonal_cycle.where(mean_seasonal_cycle > 0, 0)
         return mean_seasonal_cycle
 
-    def cumulative_evi(self, deseaonalized, window_size=2):
-
-        # Ensure input is xarray DataArray
-        if not isinstance(deseaonalized, xr.DataArray):
-            deseaonalized = xr.DataArray(deseaonalized, dims=["time"])
-
-        # Create arrays to store sum and count for before/after
-        sum = 0
-        count = 0
-
-        # Calculate sums using shifts instead of rolling
-        for i in range(1, window_size + 1):
-            # Before window
-            shifted_before = deseaonalized.shift(time=i)
-            mask_before = ~np.isnan(shifted_before)
-            sum += xr.where(mask_before, shifted_before, 0)
-            count += mask_before.astype(int)
-
-        # Calculate means, avoiding division by zero
-        mean = xr.where(count > 1, sum / (count + 1e-10), np.nan)
-        return mean
+    # def cumulative_evi(self, deseaonalized, window_size=2):
+# 
+    #     # Ensure input is xarray DataArray
+    #     if not isinstance(deseaonalized, xr.DataArray):
+    #         deseaonalized = xr.DataArray(deseaonalized, dims=["time"])
+# 
+    #     # Create arrays to store sum and count for before/after
+    #     sum = 0
+    #     count = 0
+# 
+    #     # Calculate sums using shifts instead of rolling
+    #     for i in range(1, window_size + 1):
+    #         # Before window
+    #         shifted_before = deseaonalized.shift(time=i)
+    #         mask_before = ~np.isnan(shifted_before)
+    #         sum += xr.where(mask_before, shifted_before, 0)
+    #         count += mask_before.astype(int)
+# 
+    #     # Calculate means, avoiding division by zero
+    #     mean = xr.where(count > 1, sum / (count + 1e-10), np.nan)
+    #     return mean
 
     def compute_max_per_period(self, data, period_size=10):
         # Function to generate valid dates (time bins) for all years at once

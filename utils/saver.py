@@ -130,8 +130,12 @@ class Saver:
             data = data.chunk({"time": 50, "location": 100})
         elif "dayofyear" in data.dims:
             data = data.chunk({"location": 50, "dayofyear": -1})
+        try:
+            data.to_zarr(path, mode="w") #, consolidated=True)
+        except:
+            data = data.drop_vars("spatial_ref")
+            data.to_zarr(path, mode="w")
 
-        data.to_zarr(path, mode="w") #, consolidated=True)
         printt(f"{name} computed and saved.")
 
     def _save_spatial_masking(self, mask):
