@@ -23,17 +23,16 @@ class ModisDataloader(Sentinel2Dataloader):
         if epsg is not None:
             transformer = Transformer.from_crs(epsg, 4326, always_xy=True)
             lon, lat = transformer.transform(ds.x.values, ds.y.values)
-            #if "spatial_ref" in ds:
+            # if "spatial_ref" in ds:
             #    ds = ds.drop_vars("spatial_ref")
-            ds.assign_coords({"x": ("x", lon), "y": ("y", lat)})
+            ds = ds.assign_coords({"x": ("x", lon), "y": ("y", lat)})
 
-        
         elif "time_modis-13Q1-061" in ds.coords:
             ds = ds.rename({"time_modis-13Q1-061": "time"})
         elif "y231" in ds.coords:
             ds = ds.rename({"x231": "x", "y231": "y"})
         ds["time"] = ds["time"].dt.floor("D")
-        # print(ds.coords)
+
         return ds.rename({"x": "longitude", "y": "latitude"})
 
     # def load_file(self, minicube_path, process_entire_minicube=False):
@@ -126,16 +125,18 @@ class ModisDataloader(Sentinel2Dataloader):
     def _compute_masks(self, ds, evi):
         """Applies cloud and vegetation masks to the EVI data."""
         printt("Applying cloud and vegetation masks to EVI data.")
+
         if "250m_16_days_pixel_reliability" not in ds:
             return self._compute_mask_VI_Quality(ds, evi)
 
-        mask = xr.ones_like(evi)  # Default mask (all ones, meaning no masking)
+        # mask = xr.ones_like(evi)  # Default mask (all ones, meaning no masking)
 
         # Apply cloud mask if available
         mask = ds["250m_16_days_pixel_reliability"].where(
             ds["250m_16_days_pixel_reliability"] == 0, np.nan
         )
-
+        if "start_range" in mask.coords:
+            mask = mask.rename({"start_range": "time"})
         mask = mask.where(
             mask != 0, 1
         )  # Convert to binary mask (1 = valid, NaN = masked)
@@ -145,6 +146,8 @@ class ModisDataloader(Sentinel2Dataloader):
     def _compute_mask_VI_Quality(self, ds, evi):
         """Applies cloud and vegetation masks to the EVI data using VI_Quality."""
         vi_quality = ds["250m_16_days_VI_Quality"].astype(np.uint16)
+        if "start_range" in vi_quality.coords:
+            vi_quality = vi_quality.rename({"start_range": "time"})
 
         # Define bitwise extract function
         def extract_bit(arr, bit):
@@ -259,30 +262,25 @@ class ModisDataloader(Sentinel2Dataloader):
             data = self.load_dataset()
 
         printt(f"Processing entire dataset: {data.sizes['location']} locations.")
-        data = self.compute_max_per_period(data, self.config_dict["period_size"])
+        # data = self.compute_max_per_period(data, self.config_dict["period_size"])
         data = self.noise_removal.cloudfree_timeseries(
             data, noise_half_windows=self.config_dict["noise_half_windows"]
         )
-        # data = self._remove_low_vegetation_location(data, threshold=0.2)
+        data = self._remove_low_vegetation_location(data, threshold=0.2)
         self.saver._save_data(data, "evi")
-
         # Compute Mean Seasonal Cycle (MSC)
         msc = self.compute_msc(data)
-        msc = msc.transpose("location", "dayofyear", ...)
+
+        msc = msc.transpose
         self.saver._save_data(msc, "msc")
 
         if not return_time_series:
+            print("msc", msc)
             return msc
 
         # Step 3: Deseasonalization
         data = self._deseasonalize(data, msc)  # needed?
         self.saver._save_data(data, "deseasonalized")
-
-        # Step 5: Cumulative EVI computation
-        # data = self.cumulative_evi(
-        #     data, window_size=dict_config["cumulative_evi_window"]
-        # )
-        # self.saver._save_data(data, "cumulative_evi")
 
         data = _ensure_time_chunks(data)
         data = data.transpose("location", "time", ...).compute()

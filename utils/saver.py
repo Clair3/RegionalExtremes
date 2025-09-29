@@ -131,7 +131,7 @@ class Saver:
         elif "dayofyear" in data.dims:
             data = data.chunk({"location": 50, "dayofyear": -1})
         try:
-            data.to_zarr(path, mode="w") #, consolidated=True)
+            data.to_zarr(path, mode="w")  # , consolidated=True)
         except:
             data = data.drop_vars("spatial_ref")
             data.to_zarr(path, mode="w")

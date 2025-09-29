@@ -44,7 +44,7 @@ class EcoCluster:
         # Saver class to save intermediate steps.
         self.saver = Saver(config)
 
-        #if self.config.load_existing_experiment:
+        # if self.config.load_existing_experiment:
         # Load every variable if already available, otherwise return None.
         self.pca = self.loader._load_pca_matrix()
         self.projected_data = self.loader._load_pca_projection()
@@ -77,10 +77,10 @@ class EcoCluster:
         ), "n_components have to be in the range of days of a years"
         # Fit the PCA. Each colomns give us the projection through 1 component.
         if self.config.k_pca:
-                self.pca = KernelPCA(n_components=self.n_components, kernel="rbf")
+            self.pca = KernelPCA(n_components=self.n_components, kernel="rbf")
         else:
             self.pca = PCA(n_components=self.n_components)
-        #self.pca = PCA(n_components=self.n_components)
+        # self.pca = PCA(n_components=self.n_components)
         pca_components = self.pca.fit_transform(scaled_data)
 
         if isinstance(self.pca, PCA):
@@ -132,17 +132,17 @@ class EcoCluster:
 
     def _validate_scaled_data(self, scaled_data: np.ndarray) -> None:
         """Validates the scaled data to ensure it matches the expected shape."""
-        if self.config.index in EARTHNET_INDICES:
-            expected_shape = 24
-        else:
-            if self.config.compute_variance:
-                expected_shape = round(366 / self.config.time_resolution) * 2 + 1
-            else:
-                expected_shape = round(366 / self.config.time_resolution)
-            if scaled_data.shape[1] != expected_shape:
-                raise ValueError(
-                    f"scaled_data should have {expected_shape} columns, but has {scaled_data.shape[1]} columns."
-                )
+        # if self.config.index in (EARTHNET_INDICES or MODIS_INDICES)
+        expected_shape = 24
+        # else:
+        #    if self.config.compute_variance:
+        #        expected_shape = round(366 / self.config.time_resolution) * 2 + 1
+        #    else:
+        #        expected_shape = round(366 / self.config.time_resolution)
+        #    if scaled_data.shape[1] != expected_shape:
+        #        raise ValueError(
+        #            f"scaled_data should have {expected_shape} columns, but has {scaled_data.shape[1]} columns."
+        #        )
 
     def define_limits_eco_clusters(self) -> list[np.ndarray]:
         """

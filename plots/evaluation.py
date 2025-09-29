@@ -214,7 +214,7 @@ def compute_diversity(sample: str, metric="simpson") -> xr.DataArray:
         else:
             # Step 4: Simpson diversity
             if metric == "shannon":
-                # Shannon diversity
+                # S\documentclass[5p,authoryear]{elsarticle}hannon diversity
                 diversity = -np.sum(p * np.log(p))
             if metric == "simpson":
                 # Simpson diversity
@@ -267,7 +267,7 @@ def compute_kl_div(sample: str, metric="raoq") -> xr.DataArray:
     eco_cluster_training_s2 = load(path_eco_clusters_training, "eco_clusters")
     data_training_s2 = load(path_train_data_s2, "deseasonalized")
 
-    #path_raoq = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN/{sample}/{metric}.zarr"
+    # path_raoq = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN/{sample}/{metric}.zarr"
     # raoq = load(path_raoq, metric)
 
     # path_lc = f"/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/{sample}.zip"
@@ -871,20 +871,23 @@ def compute_extremes(
     sample: str, type="missed", dim="time", threshold=0.2
 ) -> xr.DataArray:
     path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN/{sample}/extremes.zarr"
+    # path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-20_12:06:49_S2_low_res/EVI_EN/{sample}/extremes.zarr"
     ds = xr.open_zarr(path)
     s2 = cfxr.decode_compress_to_multi_index(ds, "location").extremes
 
-    path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-14_13:17:58_full_fluxnet_therightone_highveg_modis/EVI_MODIS/{sample}/extremes.zarr"
+    path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-20_12:06:49_S2_low_res/EVI_EN/{sample}/extremes.zarr"
+    # path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-14_13:17:58_full_fluxnet_therightone_highveg_modis/EVI_MODIS/{sample}/extremes.zarr"
+
     ds = xr.open_zarr(path)
     modis = cfxr.decode_compress_to_multi_index(ds, "location").extremes
-    
+
     path_thresh = os.path.abspath(
         f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-14_13:17:58_full_fluxnet_therightone_highveg_modis/EVI_MODIS/{sample}/thresholds.zarr"
     )
 
     thresholds_modis = xr.open_zarr(path_thresh)
     # Load thresholds and decode multi-index
-    #thresholds_modis = xr.open_zarr(path_thresh)
+    # thresholds_modis = xr.open_zarr(path_thresh)
     thresholds_modis = cfxr.decode_compress_to_multi_index(
         thresholds_modis, "location"
     ).thresholds
@@ -923,22 +926,20 @@ def compute_extremes(
         # Mask locations where the threshold == value
         mask = ds_tr == modis_pixel_indice
         masked = ds_tr.where(mask.compute(), drop=True)
-        modis_pixel = masked.location #.values
+        modis_pixel = masked.location  # .values
         if len(modis_pixel) < 100:
             mean_lon = modis_pixel.location.longitude.mean().item()
             mean_lat = modis_pixel.location.latitude.mean().item()
-            
+
             # Create a DataArray filled with NaN
-            sos_std = xr.full_like(
-                s2.sel(location=modis_pixel).mean(), np.nan
-            )
-            
+            sos_std = xr.full_like(s2.sel(location=modis_pixel).mean(), np.nan)
+
             # Expand to have lon/lat coordinates
             sos_std = sos_std.expand_dims(
                 longitude=[mean_lon],
                 latitude=[mean_lat],
             )
-            
+
             # Stack into a multi-index for location
             sos_std = sos_std.stack(location=["longitude", "latitude"])
             return sos_std
@@ -947,26 +948,29 @@ def compute_extremes(
             missed_detection = s2_extreme.sel(location=modis_pixel) & (
                 ~modis_extreme.sel(location=modis_pixel)
             )
-            missed_detection = missed_detection.where(~modis_extreme.sel(location=modis_pixel)) # set to nan where modis is extreme
+            missed_detection = missed_detection.where(
+                ~modis_extreme.sel(location=modis_pixel)
+            )  # set to nan where modis is extreme
         elif type == "common":
             missed_detection = s2_extreme.sel(location=modis_pixel) & (
                 modis_extreme.sel(location=modis_pixel)
             )
-            missed_detection = missed_detection.where(modis_extreme.sel(location=modis_pixel))
+            missed_detection = missed_detection.where(
+                modis_extreme.sel(location=modis_pixel)
+            )
 
         n_missed = missed_detection.sum(dim="location")
-        n_total = (
-            missed_detection.count(dim="location")
-        )  
+        n_total = missed_detection.count(dim="location")
         n_total = n_total.where(n_total > 0)
         missed_fraction = n_missed / n_total
 
-        no_extreme_days = (~s2_extreme.sel(location=modis_pixel) & ~modis_extreme.sel(location=modis_pixel)).all(dim="location")
+        no_extreme_days = (
+            ~s2_extreme.sel(location=modis_pixel)
+            & ~modis_extreme.sel(location=modis_pixel)
+        ).all(dim="location")
         missed_fraction = missed_fraction.where(~no_extreme_days)
         if dim == "avg":
-            missed_fraction = missed_fraction.mean(
-                dim="time", skipna=True
-            )  
+            missed_fraction = missed_fraction.mean(dim="time", skipna=True)
             mean_lon = modis_pixel.location.longitude.mean().item()
             mean_lat = modis_pixel.location.latitude.mean().item()
 
@@ -989,18 +993,158 @@ def compute_extremes(
     missed_fraction = combined_results_sorted.compute()
     print("missed", missed_fraction.mean().values)
 
-
     ds = missed_fraction.to_dataset(name=f"{type}_fraction_{dim}")
     ds = cfxr.encode_multi_index_as_compress(ds, "location")
-    save_path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN/{sample}/{type}_extremes_fraction_{dim}_{threshold}_agreement2.zarr"
+    save_path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-20_12:06:49_S2_low_res/EVI_EN/{sample}/{type}_extremes_fraction_{dim}_{threshold}_s2_vs_s2_coarse.zarr"
     ds = ds.chunk("auto")
     ds.to_zarr(save_path, mode="w", consolidated=True)
     print(f"agreement index computed for:", sample)
 
 
-def compute_sos_std(
-    sample: str, threshold=0.2
+def compute_jaccard(
+    sample: str, type="missed", dim="avg", threshold=0.1
 ) -> xr.DataArray:
+    path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN/{sample}/extremes.zarr"
+    # path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-20_12:06:49_S2_low_res/EVI_EN/{sample}/extremes.zarr"
+    ds = xr.open_zarr(path)
+    s2 = cfxr.decode_compress_to_multi_index(ds, "location").extremes
+
+    path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-26_15:10:44_S2_reg_modis/EVI_MODIS/{sample}/extremes.zarr"
+    # path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-14_13:17:58_full_fluxnet_therightone_highveg_modis/EVI_MODIS/{sample}/extremes.zarr"
+    ds = xr.open_zarr(path)
+    modis = cfxr.decode_compress_to_multi_index(ds, "location").extremes
+
+    path_thresh = os.path.abspath(
+        f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-14_13:17:58_full_fluxnet_therightone_highveg_modis/EVI_MODIS/{sample}/thresholds.zarr"
+    )
+
+    thresholds_modis = xr.open_zarr(path_thresh)
+    # Load thresholds and decode multi-index
+    # thresholds_modis = xr.open_zarr(path_thresh)
+    thresholds_modis = cfxr.decode_compress_to_multi_index(
+        thresholds_modis, "location"
+    ).thresholds
+    s2 = s2.unstack("location")
+    modis = modis.unstack("location")
+    thresholds_modis = thresholds_modis.unstack("location")
+    thresholds_modis = thresholds_modis.assign_coords(
+        latitude=s2.latitude, longitude=s2.longitude
+    )
+    modis = modis.assign_coords(latitude=s2.latitude, longitude=s2.longitude)
+    s2 = s2.stack(location=["longitude", "latitude"])
+    modis = modis.stack(location=["longitude", "latitude"])
+    thresholds_modis = thresholds_modis.stack(location=["longitude", "latitude"])
+    modis = modis.drop_duplicates("location")  # .unstack("location")
+    thresholds_modis = thresholds_modis.drop_duplicates(
+        "location"
+    )  # .unstack("location")
+    s2 = s2.drop_duplicates("location")  # .unstack("location")
+    # # s2, modis = xr.align(s2, modis, join="inner")
+    # common_locations_modis = xr.align(
+    #     thresholds_modis.location, modis.location, join="inner"
+    # )[0]
+    # common_locations = xr.align(s2.location, common_locations_modis, join="inner")[0]
+    common_time = xr.align(s2.time, modis.time, join="inner")[0]
+    ds_tr = thresholds_modis.sel(quantile=0.10)
+    unique_values = np.unique(ds_tr.values)
+
+    s2 = s2.sel(time=common_time)
+    modis = modis.sel(time=common_time)
+
+    valid_mask = (~np.isnan(modis.values)) & (~np.isnan(s2.values))
+
+    modis = modis.where(valid_mask)
+    s2 = s2.where(valid_mask)
+
+    if threshold < 0.501:
+        s2_extreme = s2 <= threshold
+        modis_extreme = modis <= threshold
+    else:
+        s2_extreme = s2 >= threshold
+        modis_extreme = modis >= threshold
+
+    # Per-day missed count
+    def process_group(modis_pixel_indice):
+        # Mask locations where the threshold == value
+        mask = ds_tr == modis_pixel_indice
+        masked = ds_tr.where(mask.compute(), drop=True)
+        modis_pixel = masked.location  # .values
+        # if len(modis_pixel) < 50:
+        #    mean_lon = modis_pixel.location.longitude.mean().item()
+        #    mean_lat = modis_pixel.location.latitude.mean().item()
+        #
+        #    # Create a DataArray filled with NaN
+        #    sos_std = xr.full_like(s2.sel(location=modis_pixel).mean(), np.nan)
+        #
+        #    # Expand to have lon/lat coordinates
+        #    sos_std = sos_std.expand_dims(
+        #        longitude=[mean_lon],
+        #        latitude=[mean_lat],
+        #    )
+        #
+        #    # Stack into a multi-index for location
+        #    sos_std = sos_std.stack(location=["longitude", "latitude"])
+        #    return sos_std
+
+        if type == "missed":
+            missed_detection = s2_extreme.sel(location=modis_pixel) & (
+                ~modis_extreme.sel(location=modis_pixel)
+            )
+            missed_detection = missed_detection.where(
+                ~modis_extreme.sel(location=modis_pixel)
+            )  # set to nan where modis is extreme
+        elif type == "common":
+            # true positive
+            missed_detection = s2_extreme.sel(location=modis_pixel) & (
+                modis_extreme.sel(location=modis_pixel)
+            )
+            # missed_detection = missed_detection.where(
+            #     modis_extreme.sel(location=modis_pixel)
+            # )
+
+        n_missed = missed_detection.sum(dim="location")
+        n_total = missed_detection.count(dim="location")
+        n_total = n_total.where(n_total > 0)
+        missed_fraction = n_missed / n_total
+        no_extreme_days = (
+            ~s2_extreme.sel(location=modis_pixel)
+            & ~modis_extreme.sel(location=modis_pixel)
+        ).all(dim="location")
+        missed_fraction = missed_fraction.where(~no_extreme_days)
+        if dim == "avg":
+            missed_fraction = missed_fraction.mean(dim="time", skipna=True)
+            mean_lon = modis_pixel.location.longitude.mean().item()
+            mean_lat = modis_pixel.location.latitude.mean().item()
+
+            # Expand scalar to have these coordinates
+            missed_fraction = missed_fraction.expand_dims(
+                longitude=[mean_lon],
+                latitude=[mean_lat],
+            )
+
+            # Stack into a multi-index for location
+            missed_fraction = missed_fraction.stack(location=["longitude", "latitude"])
+        return missed_fraction
+
+    # Parallel compute across unique threshold values
+    results = [delayed(process_group)(val) for val in unique_values]
+    # Combine results and ensure location is sorted
+    combined_results = delayed(xr.concat)(results, dim="location", coords="minimal")
+
+    # Ensure location is sorted (since it can be unsorted across different results)
+    combined_results_sorted = combined_results.sortby("location")
+    missed_fraction = combined_results_sorted.compute()
+    print("missed", missed_fraction.mean().values)
+
+    ds = missed_fraction.to_dataset(name=f"jaccard")
+    ds = cfxr.encode_multi_index_as_compress(ds, "location")
+    save_path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN/{sample}/jaccard_modis_reg.zarr"
+    ds = ds.chunk("auto")
+    ds.to_zarr(save_path, mode="w", consolidated=True)
+    print(f"agreement index computed for:", sample)
+
+
+def compute_sos_std(sample: str, threshold=0.2) -> xr.DataArray:
     path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN/{sample}/msc.zarr"
     ds = xr.open_zarr(path)
     s2 = cfxr.decode_compress_to_multi_index(ds, "location").msc
@@ -1030,7 +1174,9 @@ def compute_sos_std(
     ds_tr = thresholds_modis.sel(quantile=0.10, location=common_locations.location)
     unique_values = np.unique(ds_tr.values)
 
-    s2 = s2.sel(location=common_locations,)
+    s2 = s2.sel(
+        location=common_locations,
+    )
 
     # Per-day missed count
     def process_group(modis_pixel_indice):
@@ -1041,18 +1187,16 @@ def compute_sos_std(
         if len(modis_pixel) < 100:
             mean_lon = s2.sel(location=modis_pixel).location.longitude.mean().item()
             mean_lat = s2.sel(location=modis_pixel).location.latitude.mean().item()
-            
+
             # Create a DataArray filled with NaN
-            sos_std = xr.full_like(
-                s2.sel(location=modis_pixel).mean(), np.nan
-            )
-            
+            sos_std = xr.full_like(s2.sel(location=modis_pixel).mean(), np.nan)
+
             # Expand to have lon/lat coordinates
             sos_std = sos_std.expand_dims(
                 longitude=[mean_lon],
                 latitude=[mean_lat],
             )
-            
+
             # Stack into a multi-index for location
             sos_std = sos_std.stack(location=["longitude", "latitude"])
             return sos_std
@@ -1064,7 +1208,7 @@ def compute_sos_std(
         threshold_norm = vmin + threshold * (vmax - vmin)
         # values shifted by one (circular)
         # boolean mask where crossing happens
-        mask = (pixel >= threshold_norm)
+        mask = pixel >= threshold_norm
         # index of first True along time
         sos_idx = mask.argmax(dim="dayofyear")
         sos_std = sos_idx.std(dim="location", skipna=True)
@@ -1099,9 +1243,7 @@ def compute_sos_std(
     print(f"sos_std index computed for:", sample)
 
 
-def compute_agreement_extremes(
-    sample: str, dim="time", threshold=0.1
-) -> xr.DataArray:
+def compute_agreement_extremes(sample: str, dim="time", threshold=0.1) -> xr.DataArray:
     path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN/{sample}/extremes.zarr"
     ds = xr.open_zarr(path)
     s2 = cfxr.decode_compress_to_multi_index(ds, "location").extremes
@@ -1111,13 +1253,12 @@ def compute_agreement_extremes(
     modis = cfxr.decode_compress_to_multi_index(ds, "location").extremes
 
     modis = modis.drop_duplicates("location")  # .unstack("location")
-    
+
     s2 = s2.drop_duplicates("location")  # .unstack("location")
     # s2, modis = xr.align(s2, modis, join="inner")
 
     common_locations = xr.align(s2.location, modis.location, join="inner")[0]
     common_time = xr.align(s2.time, modis.time, join="inner")[0]
-
 
     # Align datasets in time and location
     s2 = s2.sel(location=common_locations, time=common_time)
@@ -1140,7 +1281,7 @@ def compute_agreement_extremes(
 
     # Count percentage of common extremes for each S2 pixel
     n_common = common_extreme.sum(dim="time")
-    n_s2_extremes = s2_extreme.sum(dim="time") 
+    n_s2_extremes = s2_extreme.sum(dim="time")
     common_fraction = xr.where(n_s2_extremes > 0, n_common / n_s2_extremes, np.nan)
 
     # Optionally take average over time if needed
@@ -1155,6 +1296,7 @@ def compute_agreement_extremes(
     ds.to_zarr(save_path, mode="w", consolidated=True)
     print(f"Common fraction per S2 pixel computed for: {sample}")
 
+
 def compute_extremes_s2(
     sample: str, type="missed", dim="time", threshold=0.1
 ) -> xr.DataArray:
@@ -1165,7 +1307,7 @@ def compute_extremes_s2(
     path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_13:04:42_full_fluxnet_therightone_modis/EVI_MODIS/{sample}/extremes.zarr"
     ds = xr.open_zarr(path)
     modis = cfxr.decode_compress_to_multi_index(ds, "location").extremes
-        
+
     path_thresh = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_13:04:42_full_fluxnet_therightone_modis/EVI_MODIS/{sample}/thresholds.zarr"
     # Load thresholds and decode multi-index
     thresholds_modis = xr.open_zarr(path_thresh)
@@ -1207,7 +1349,7 @@ def compute_extremes_s2(
     # Per-day missed count
     elif type == "all":
         missed_detection = s2_extreme
-    
+
     n_missed = missed_detection.sum(dim="location")
     n_total = (
         missed_detection.count(dim="location")
@@ -1231,12 +1373,14 @@ def compute_extremes_s2(
 def compute_extremes_s2_coarse_res(
     sample: str, type="missed", dim="time", threshold=0.1
 ) -> xr.DataArray:
-    #path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-22_14:35:49_local_sentinel2/EVI_EN/{sample}/extremes.zarr"
+    # path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-22_14:35:49_local_sentinel2/EVI_EN/{sample}/extremes.zarr"
     path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN/{sample}/extremes.zarr"
+    # path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-22_23:58:39_S2_low_res_local/EVI_EN/{sample}/extremes.zarr"
     ds = xr.open_zarr(path)
     s2 = cfxr.decode_compress_to_multi_index(ds, "location").extremes
     s2 = s2.unstack("location")
-    path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-14_17:14:03_S2_low_res/EVI_EN/{sample}/extremes.zarr"
+    path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-14_13:17:58_full_fluxnet_therightone_highveg_modis/EVI_MODIS/{sample}/extremes.zarr"
+    # path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-14_17:14:03_S2_low_res/EVI_EN/{sample}/extremes.zarr"
     ds = xr.open_zarr(path)
     modis = cfxr.decode_compress_to_multi_index(ds, "location").extremes
     modis = modis.unstack("location")
@@ -1248,19 +1392,18 @@ def compute_extremes_s2_coarse_res(
         s2_extreme = s2 >= threshold
         modis_extreme = modis >= threshold
 
-    s2_frac = s2_extreme #.coarsen(latitude=12, longitude=12, boundary="trim").mean(
+    s2_frac = s2_extreme  # .coarsen(latitude=12, longitude=12, boundary="trim").mean(
     #     skipna=True
-    #)
-    
+    # )
+
     # Align MODIS grid to S2 once, nearest-neighbor
     modis_aligned = modis_extreme.assign_coords(
-        latitude=s2_frac.latitude,
-        longitude=s2_frac.longitude
+        latitude=s2_frac.latitude, longitude=s2_frac.longitude
     )
-    #valid_mask = (~np.isnan(modis_aligned.values)) & (~np.isnan(s2_frac.values))
+    # valid_mask = (~np.isnan(modis_aligned.values)) & (~np.isnan(s2_frac.values))
 
-    #modis = modis_aligned.where(valid_mask)
-    #s2_frac = s2_frac.where(valid_mask)
+    # modis = modis_aligned.where(valid_mask)
+    # s2_frac = s2_frac.where(valid_mask)
     # Use xarray-native boolean operations (stay lazy in dask!)
     if type == "missed":
         missed_detection = s2_frac.where(modis_aligned == 0)
@@ -1274,21 +1417,22 @@ def compute_extremes_s2_coarse_res(
     if dim == "avg":
         missed_fraction = missed_fraction.mean(dim="time", skipna=True)
     missed_fraction = missed_fraction.stack(location=["longitude", "latitude"])
-    
-   
+
     ds = missed_fraction.to_dataset(name=f"common_fraction_avg")
-        #ds = s2_frac.to_dataset(name=f"s2_fraction")
+    # ds = s2_frac.to_dataset(name=f"s2_fraction")
 
     ds = cfxr.encode_multi_index_as_compress(ds, "location")
-    save_path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-14_17:14:03_S2_low_res/EVI_EN/{sample}/{type}_extremes_fraction_{dim}_0.1_agreement3.zarr" #{type}_fraction_{threshold}.zarr"
+    # save_path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-14_17:14:03_S2_low_res/EVI_EN/{sample}/{type}_extremes_fraction_{dim}_0.1_agreement3.zarr" #{type}_fraction_{threshold}.zarr"
+    save_path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-22_23:58:39_S2_low_res_local/EVI_EN/{sample}/{type}_extremes_fraction_{dim}_0.1_s2_vs_s2_coarse.zarr"
     ds = ds.chunk("auto")
     ds.to_zarr(save_path, mode="w", consolidated=True)
     print(f"agreement_extremes computed for:", sample)
 
+
 def compute_sos_std_s2_coarse_res(
     sample: str,
 ) -> xr.DataArray:
-    #path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-22_14:35:49_local_sentinel2/EVI_EN/{sample}/extremes.zarr"
+    # path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-22_14:35:49_local_sentinel2/EVI_EN/{sample}/extremes.zarr"
     path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN/{sample}/msc.zarr"
     ds = xr.open_zarr(path)
     s2 = cfxr.decode_compress_to_multi_index(ds, "location").msc
@@ -1298,19 +1442,21 @@ def compute_sos_std_s2_coarse_res(
 
     vmin = s2.min(dim="dayofyear", skipna=True)
     vmax = s2.max(dim="dayofyear", skipna=True)
-    
+
     threshold_norm = vmin + threshold * (vmax - vmin)
     mask = s2 >= threshold_norm
     sos_idx = mask.argmax(dim="dayofyear")
 
-    s2_std = sos_idx.coarsen(latitude=12, longitude=12, boundary="trim").std(skipna=True)
+    s2_std = sos_idx.coarsen(latitude=12, longitude=12, boundary="trim").std(
+        skipna=True
+    )
 
     missed_fraction = s2_std.stack(location=["longitude", "latitude"])
     ds = missed_fraction.to_dataset(name=f"sos_std")
-        #ds = s2_frac.to_dataset(name=f"s2_fraction")
+    # ds = s2_frac.to_dataset(name=f"s2_fraction")
 
     ds = cfxr.encode_multi_index_as_compress(ds, "location")
-    save_path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-14_17:14:03_S2_low_res/EVI_EN/{sample}/sos_std.zarr" #{type}_fraction_{threshold}.zarr"
+    save_path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-22_23:58:39_S2_low_res_local/EVI_EN/{sample}/sos_std.zarr"  # {type}_fraction_{threshold}.zarr"
     ds = ds.chunk("auto")
     ds.to_zarr(save_path, mode="w", consolidated=True)
     print(f"agreement_extremes computed for:", sample)
@@ -1331,10 +1477,12 @@ if __name__ == "__main__":
     # subfolders = [
     #      "ES-Cnd_37.91_-3.23_v0.zarr",
     #      # "DE-Lnf_51.33_10.37_v0.zarr",
-    # ]
+    # ]/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-26_11:30:09_S2_low_res_30
     #     "UK-ESa_55.91_-2.86_v0.zarr",
     #     "FR-LGt_47.32_2.28_v0.zarr",
     # ]
+    sample = "DE-Hai_51.08_10.45_v0.zarr"
+    compute_jaccard(sample, type="common", dim="avg", threshold=0.1)
 
     @delayed
     def process_sample(sample):
@@ -1343,24 +1491,26 @@ if __name__ == "__main__":
         try:
             # compute_sos_std(sample, threshold=0.2)
 
-            #base_path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-14_12:48:54_full_fluxnet_therightone_highveg/EVI_EN"
-            #sample_path = os.path.join(parent_folder, sample)
-            #compute_agreement_extremes(sample)
-            #compute_kl_div(sample)
-            #if "s2_frac.zarr" not in os.listdir(sample_path):
-            #compute_sos_std_s2_coarse_res(sample)
-            
-            compute_extremes_s2_coarse_res(sample, type="missed", threshold=0.1)
-            
-            # compute_extremes(sample, type="common", dim="avg", threshold=0.1)
+            # base_path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-14_12:48:54_full_fluxnet_therightone_highveg/EVI_EN"
+            # sample_path = os.path.join(parent_folder, sample)
+            # compute_agreement_extremes(sample)
+            # compute_kl_div(sample)
+            # if "s2_frac.zarr" not in os.listdir(sample_path):
+            # compute_sos_std_s2_coarse_res(sample)
+
+            # compute_extremes_s2_coarse_res(
+            #     sample, type="common", dim="avg", threshold=0.1
+            # )
+
+            compute_jaccard(sample, type="common", dim="avg", threshold=0.1)
             # compute_extremes(sample, type="missed", dim="time", threshold=0.1)
         #    # remove the file
         #    shutil.rmtree(os.path.join(sample_path, "kl_div_raoq.zarr"))
         ## compute_variance(sample)
         # compute_raoq(sample)
         ## compute_diversity(sample, metric="raoq")
-            #compute_diversity(sample, metric="relative_abundance")
-            #compute_diversity(sample, metric="berger")
+        # compute_diversity(sample, metric="relative_abundance")
+        # compute_diversity(sample, metric="berger")
         # compute_kl_div(sample)
 
         # compute_kl_div_loc2(sampbfolders[0]le, metric="raoq")
