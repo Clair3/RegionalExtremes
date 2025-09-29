@@ -1009,8 +1009,8 @@ def compute_jaccard(
     ds = xr.open_zarr(path)
     s2 = cfxr.decode_compress_to_multi_index(ds, "location").extremes
 
-    path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-26_15:10:44_S2_reg_modis/EVI_MODIS/{sample}/extremes.zarr"
-    # path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-14_13:17:58_full_fluxnet_therightone_highveg_modis/EVI_MODIS/{sample}/extremes.zarr"
+    # path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-26_15:10:44_S2_reg_modis/EVI_MODIS/{sample}/extremes.zarr"
+    path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-29_12:08:16_S2_low_res_20/EVI_EN/{sample}/extremes.zarr"
     ds = xr.open_zarr(path)
     modis = cfxr.decode_compress_to_multi_index(ds, "location").extremes
 
@@ -1098,9 +1098,9 @@ def compute_jaccard(
             missed_detection = s2_extreme.sel(location=modis_pixel) & (
                 modis_extreme.sel(location=modis_pixel)
             )
-            # missed_detection = missed_detection.where(
-            #     modis_extreme.sel(location=modis_pixel)
-            # )
+            missed_detection = missed_detection.where(
+                modis_extreme.sel(location=modis_pixel)
+            )
 
         n_missed = missed_detection.sum(dim="location")
         n_total = missed_detection.count(dim="location")
@@ -1124,6 +1124,7 @@ def compute_jaccard(
 
             # Stack into a multi-index for location
             missed_fraction = missed_fraction.stack(location=["longitude", "latitude"])
+        print(missed_fraction.values)
         return missed_fraction
 
     # Parallel compute across unique threshold values
@@ -1138,7 +1139,7 @@ def compute_jaccard(
 
     ds = missed_fraction.to_dataset(name=f"jaccard")
     ds = cfxr.encode_multi_index_as_compress(ds, "location")
-    save_path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN/{sample}/jaccard_modis_reg.zarr"
+    save_path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN/{sample}/jaccard_s2_coarse.zarr"
     ds = ds.chunk("auto")
     ds.to_zarr(save_path, mode="w", consolidated=True)
     print(f"agreement index computed for:", sample)
@@ -1483,6 +1484,7 @@ if __name__ == "__main__":
     # ]
     sample = "DE-Hai_51.08_10.45_v0.zarr"
     compute_jaccard(sample, type="common", dim="avg", threshold=0.1)
+    sys.exit()
 
     @delayed
     def process_sample(sample):

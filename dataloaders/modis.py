@@ -270,8 +270,7 @@ class ModisDataloader(Sentinel2Dataloader):
         self.saver._save_data(data, "evi")
         # Compute Mean Seasonal Cycle (MSC)
         msc = self.compute_msc(data)
-
-        msc = msc.transpose
+        msc = msc.transpose("location", "dayofyear", ...)
         self.saver._save_data(msc, "msc")
 
         if not return_time_series:

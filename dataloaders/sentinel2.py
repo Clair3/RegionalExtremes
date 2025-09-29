@@ -22,15 +22,15 @@ class Sentinel2Dataloader(Dataloader):
         sample_paths = [folder for folder in os.listdir(EARTHNET_FILEPATH)]
 
         # Attempt to load cached training data
-        # training_data = self.loader._load_data("temp_file")
-        path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN/temp_file.zarr"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-20_12:06:49_S2_low_res/EVI_EN/temp_file.zarr"
-        training_data = xr.open_zarr(path)
-        training_data = cfxr.decode_compress_to_multi_index(training_data, "location")
-        location_index = training_data.location.to_index()
-        # Identify duplicates
-        duplicates = location_index.duplicated()
+        training_data = self.loader._load_data("temp_file")
+        # path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-28_14:29:55_S2_reg_30_modis/EVI_MODIS/evi.zarr"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-20_12:06:49_S2_low_res/EVI_EN/temp_file.zarr"
+        # training_data = xr.open_zarr(path)
+        # training_data = cfxr.decode_compress_to_multi_index(training_data, "location")
+        # location_index = training_data.location.to_index()
+        # # Identify duplicates
+        # duplicates = location_index.duplicated()
         # Keep only the first occurrence of each location
-        training_data = training_data.sel(location=~duplicates)
+        # training_data = training_data.sel(location=~duplicates)
         if training_data is not None:
             sample_count = self.n_samples or 50000
 
@@ -92,7 +92,6 @@ class Sentinel2Dataloader(Dataloader):
                 len(data.location), size=self.n_samples, replace=False
             )
             data = data.isel(location=random_indices)
-        # self.data = self.data  # .isel(location=slice(0, 100))
         self.variable_name = "evi"
         data = data[self.variable_name]
         data = _ensure_time_chunks(data)
@@ -191,19 +190,12 @@ class Sentinel2Dataloader(Dataloader):
             # Align coarse_map to fine EVI
             path = f"/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/{filename}.zip"
             coarse_map = xr.open_zarr(path, consolidated=True)
-            ds["250m_16_days_EVI"].mean(dim="start_range")
-            path_thresh = os.path.abspath(
-                f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-14_13:17:58_full_fluxnet_therightone_highveg_modis/EVI_MODIS/{filename}/thresholds.zarr"
-            )
             coarse_map = (
-                xr.open_zarr(path_thresh)
-                .sel(quantile=0.1)
-                .reset_coords("quantile", drop=True)
+                coarse_map["250m_16_days_EVI"]
+                .isel(start_range=slice(-100, -1))
+                .mean(dim="start_range")
             )
-            coarse_map = cfxr.decode_compress_to_multi_index(
-                coarse_map, "location"
-            ).thresholds.unstack("location")
-
+            coarse_map = coarse_map.rename({"x": "longitude", "y": "latitude"})
             coarse_map = coarse_map.assign_coords(
                 latitude=ds.latitude, longitude=ds.longitude
             )
@@ -211,26 +203,22 @@ class Sentinel2Dataloader(Dataloader):
             # coarsen mask
             mask = mask.unstack("location")
             mask_frac = mask.groupby(coarse_map).map(
-                lambda x: x.mean(dim=("stacked_longitude_latitude"), skipna=True)
+                lambda x: x.mean(dim=("stacked_latitude_longitude"), skipna=True)
             )
             mask_frac = mask_frac.sel({coarse_map.name: coarse_map})
             mask = xr.where(mask_frac > 0.5, 1, np.nan)
             # Re-stack
-            mask = mask.stack(location=("latitude", "longitude")).drop_vars(
-                "thresholds"
-            )
+            mask = mask.stack(location=("latitude", "longitude"))
 
             # Group fine-resolution reflectance bands by coarse_map
             ds_coarse = (
                 ds[["B8A", "B04", "B02"]]
                 .groupby(coarse_map)
-                .map(lambda x: x.mean(dim=("stacked_longitude_latitude"), skipna=True))
+                .map(lambda x: x.mean(dim=("stacked_latitude_longitude"), skipna=True))
             )
             ds_coarse = ds_coarse.sel({coarse_map.name: coarse_map})
 
-            ds_coarse = ds_coarse.stack(location=("latitude", "longitude")).drop_vars(
-                "thresholds"
-            )
+            ds_coarse = ds_coarse.stack(location=("latitude", "longitude"))
             ds_coarse = ds_coarse.chunk({"time": -1, "location": 3606})
             # Compute EVI at coarse resolution
             evi = self._calculate_evi(ds_coarse).compute()
