@@ -8,8 +8,8 @@ from RegionalExtremesPackage.utils.logging_config import printt
 from RegionalExtremesPackage.utils.config import InitializationConfig
 
 
-CLIMATIC_FILEPATH = "/Net/Groups/BGI/scratch/mweynants/DeepExtremes/v3/PEICube.zarr"
-ECOLOGICAL_FILEPATH = (
-    lambda index: f"/Net/Groups/BGI/work_1/scratch/fluxcom/upscaling_inputs/MODIS_VI_perRegion061/{index}/Groups_{index}gapfilled_QCdyn.zarr"
-)
-VARIABLE_NAME = lambda index: f"{index}gapfilled_QCdyn"
+# CLIMATIC_FILEPATH = "/Net/Groups/BGI/scratch/mweynants/DeepExtremes/v3/PEICube.zarr"
+# ECOLOGICAL_FILEPATH = (
+#     lambda index: f"/Net/Groups/BGI/work_1/scratch/fluxcom/upscaling_inputs/MODIS_VI_perRegion061/{index}/Groups_{index}gapfilled_QCdyn.zarr"
+# )
+# VARIABLE_NAME = lambda index: f"{index}gapfilled_QCdyn"

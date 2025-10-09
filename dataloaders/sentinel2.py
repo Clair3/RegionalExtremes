@@ -22,15 +22,15 @@ class Sentinel2Dataloader(Dataloader):
         sample_paths = [folder for folder in os.listdir(EARTHNET_FILEPATH)]
 
         # Attempt to load cached training data
-        training_data = self.loader._load_data("temp_file")
-        # path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-28_14:29:55_S2_reg_30_modis/EVI_MODIS/evi.zarr"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-20_12:06:49_S2_low_res/EVI_EN/temp_file.zarr"
-        # training_data = xr.open_zarr(path)
-        # training_data = cfxr.decode_compress_to_multi_index(training_data, "location")
-        # location_index = training_data.location.to_index()
-        # # Identify duplicates
-        # duplicates = location_index.duplicated()
+        # training_data = self.loader._load_data("temp_file")
+        path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-28_14:29:55_S2_reg_30_modis/EVI_MODIS/evi.zarr"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-20_12:06:49_S2_low_res/EVI_EN/temp_file.zarr"
+        training_data = xr.open_zarr(path)
+        training_data = cfxr.decode_compress_to_multi_index(training_data, "location")
+        location_index = training_data.location.to_index()
+        # Identify duplicates
+        duplicates = location_index.duplicated()
         # Keep only the first occurrence of each location
-        # training_data = training_data.sel(location=~duplicates)
+        training_data = training_data.sel(location=~duplicates)
         if training_data is not None:
             sample_count = self.n_samples or 50000
 
@@ -180,8 +180,7 @@ class Sentinel2Dataloader(Dataloader):
         self.variable_name = "evi"
 
         # Compute coarse mask
-
-        if getattr(self.config, "modis_resolution", True) and (
+        if getattr(self.config, "modis_resolution", False) and (
             self.config.index == "EVI_EN"
         ):
             mask = self._compute_masks(ds)
@@ -221,12 +220,12 @@ class Sentinel2Dataloader(Dataloader):
             ds_coarse = ds_coarse.stack(location=("latitude", "longitude"))
             ds_coarse = ds_coarse.chunk({"time": -1, "location": 3606})
             # Compute EVI at coarse resolution
-            evi = self._calculate_evi(ds_coarse).compute()
+            evi = self._calculate_vi(ds_coarse).compute()
             mask = mask.chunk({"time": -1, "location": 3906}).compute()
 
         else:
             # High-resolution computation
-            evi = self._calculate_evi(ds)
+            evi = self._calculate_vi(ds)
             mask = self._compute_masks(ds, evi)
         masked_evi = evi * mask
         data = xr.Dataset(
@@ -317,11 +316,16 @@ class Sentinel2Dataloader(Dataloader):
             return selected_data.stack(location=("longitude", "latitude"))
         return None
 
-    def _calculate_evi(self, ds):
-        """Calculates the Enhanced Vegetation Index (EVI)."""
-        return (2.5 * (ds.B8A - ds.B04)) / (
-            ds.B8A + 6 * ds.B04 - 7.5 * ds.B02 + 1 + 10e-8
-        )
+    def _calculate_vi(self, ds):
+        """Calculates the Vegetation Index (EVI)."""
+        if self.config.index == "EVI_EN":
+            return (2.5 * (ds.B8A - ds.B04)) / (
+                ds.B8A + 6 * ds.B04 - 7.5 * ds.B02 + 1 + 10e-8
+            )
+        elif self.config.index == "NDVI":
+            return (ds.B8A - ds.B04) / (ds.B8A + ds.B04 + 10e-8)
+        else:
+            raise ValueError(f"Unknown vegetation index: {self.config.index}")
 
     def _compute_masks(self, ds, evi=None):
         """
@@ -463,7 +467,7 @@ class Sentinel2Dataloader(Dataloader):
         # Define window sizes for gap-filling and cloud noise removal
         config = dict()
         config["nan_fill_windows"] = [3, 4]
-        config["noise_half_windows"] = [1, 2]
+        config["noise_half_windows"] = [1]
         config["cumulative_evi_window"] = 5
         config["period_size"] = 16
         config["smoothing_window_msc"] = 5
@@ -526,7 +530,7 @@ class Sentinel2Dataloader(Dataloader):
         data = self.noise_removal.cloudfree_timeseries(
             data, noise_half_windows=self.config_dict["noise_half_windows"]
         )
-        data = self._remove_low_vegetation_location(data, threshold=0.2)
+        # data = self._remove_low_vegetation_location(data, threshold=0.2)
 
         printt(f"Processing entire dataset: {data.sizes['location']} locations.")
         # data = data.compute()

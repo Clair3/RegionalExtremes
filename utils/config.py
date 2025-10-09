@@ -18,8 +18,9 @@ GRANDPARENT_DIRECTORY_PATH = os.path.abspath(
 )
 CLIMATIC_INDICES = ["pei_30", "pei_90", "pei_180"]
 ECOLOGICAL_INDICES = ["EVI", "NDVI", "kNDVI"]
-EARTHNET_INDICES = ["EVI_EN"]
-MODIS_INDICES = ["EVI_MODIS"]
+DATA_SOURCES = ["S2", "MODIS"]
+# EARTHNET_INDICES = ["EVI_EN"]
+# MODIS_INDICES = ["EVI_MODIS"]
 
 
 class InitializationConfig:
@@ -66,7 +67,9 @@ class InitializationConfig:
             args.id = datetime.datetime.today().strftime("%Y-%m-%d_%H:%M:%S")
 
         if args.saving_path:
-            self.saving_path = Path(args.saving_path) / {args.id} / self.index
+            self.saving_path = (
+                Path(args.saving_path) / {args.id} / f"{self.data_source}_{self.index}"
+            )
         else:
             if args.name:
                 self.saving_path = (

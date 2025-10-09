@@ -5,9 +5,14 @@ from pyproj import Transformer
 
 
 class ModisDataloader(Sentinel2Dataloader):
-    def _calculate_evi(self, ds):
-        """Calculates the Enhanced Vegetation Index (EVI)."""
-        ds = (ds["250m_16_days_EVI"] + 2000) / 12000
+    def _calculate_vi(self, ds):
+        """Calculates the Vegetation Index (EVI)."""
+        if self.config.index == "EVI_MODIS":
+            ds = (ds["250m_16_days_EVI"] + 2000) / 12000
+        elif self.config.index == "NDVI_MODIS":
+            ds = (ds["250m_16_days_NDVI"] + 2000) / 12000
+        else:
+            raise ValueError(f"Unknown vegetation index: {self.config.index}")
         if "start_range" in ds.coords:
             ds = ds.rename({"start_range": "time"})
         return ds

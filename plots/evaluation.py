@@ -1001,16 +1001,16 @@ def compute_extremes(
     print(f"agreement index computed for:", sample)
 
 
-def compute_jaccard(
-    sample: str, type="missed", dim="avg", threshold=0.1
+def compute_dice(
+    sample: str, path_data1: str, path_data2: str, savename: str, threshold=0.1
 ) -> xr.DataArray:
-    path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN/{sample}/extremes.zarr"
-    # path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-20_12:06:49_S2_low_res/EVI_EN/{sample}/extremes.zarr"
+    path = f"{path_data1}/{sample}/extremes.zarr"
+    # path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-29_12:08:16_S2_low_res_20/EVI_EN/{sample}/extremes.zarr"
     ds = xr.open_zarr(path)
     s2 = cfxr.decode_compress_to_multi_index(ds, "location").extremes
 
-    # path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-26_15:10:44_S2_reg_modis/EVI_MODIS/{sample}/extremes.zarr"
-    path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-29_12:08:16_S2_low_res_20/EVI_EN/{sample}/extremes.zarr"
+    # path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-14_13:17:58_full_fluxnet_therightone_highveg_modis/EVI_MODIS/{sample}/extremes.zarr"
+    path = f"{path_data2}/{sample}/extremes.zarr"
     ds = xr.open_zarr(path)
     modis = cfxr.decode_compress_to_multi_index(ds, "location").extremes
 
@@ -1068,7 +1068,7 @@ def compute_jaccard(
         # Mask locations where the threshold == value
         mask = ds_tr == modis_pixel_indice
         masked = ds_tr.where(mask.compute(), drop=True)
-        modis_pixel = masked.location  # .values
+        # modis_location = masked.location  # .values
         # if len(modis_pixel) < 50:
         #    mean_lon = modis_pixel.location.longitude.mean().item()
         #    mean_lat = modis_pixel.location.latitude.mean().item()
@@ -1086,46 +1086,29 @@ def compute_jaccard(
         #    sos_std = sos_std.stack(location=["longitude", "latitude"])
         #    return sos_std
 
-        if type == "missed":
-            missed_detection = s2_extreme.sel(location=modis_pixel) & (
-                ~modis_extreme.sel(location=modis_pixel)
-            )
-            missed_detection = missed_detection.where(
-                ~modis_extreme.sel(location=modis_pixel)
-            )  # set to nan where modis is extreme
-        elif type == "common":
-            # true positive
-            missed_detection = s2_extreme.sel(location=modis_pixel) & (
-                modis_extreme.sel(location=modis_pixel)
-            )
-            missed_detection = missed_detection.where(
-                modis_extreme.sel(location=modis_pixel)
-            )
+        modis_pixel = modis_extreme.sel(location=masked.location)
+        s2_pixel = s2_extreme.sel(location=masked.location)
 
-        n_missed = missed_detection.sum(dim="location")
-        n_total = missed_detection.count(dim="location")
-        n_total = n_total.where(n_total > 0)
-        missed_fraction = n_missed / n_total
-        no_extreme_days = (
-            ~s2_extreme.sel(location=modis_pixel)
-            & ~modis_extreme.sel(location=modis_pixel)
-        ).all(dim="location")
-        missed_fraction = missed_fraction.where(~no_extreme_days)
-        if dim == "avg":
-            missed_fraction = missed_fraction.mean(dim="time", skipna=True)
-            mean_lon = modis_pixel.location.longitude.mean().item()
-            mean_lat = modis_pixel.location.latitude.mean().item()
+        intersection = (modis_pixel & s2_pixel).sum()
+        # union = (modis_pixel | s2_pixel).sum(dim="location")
+        modis_sum = modis_pixel.sum()
+        s2_sum = s2_pixel.sum()
 
-            # Expand scalar to have these coordinates
-            missed_fraction = missed_fraction.expand_dims(
-                longitude=[mean_lon],
-                latitude=[mean_lat],
-            )
+        # avoid divide by zero
+        # jaccard = intersection / union
+        # jaccard = jaccard.where(union > 0)
+        # # average over time
+        # jaccard = jaccard.mean(dim="time", skipna=True)
+        denom = modis_sum + s2_sum
+        safe_denom = xr.where(denom > 0 + 1e-5, denom, np.nan)
+        dice = 2 * intersection / safe_denom
 
-            # Stack into a multi-index for location
-            missed_fraction = missed_fraction.stack(location=["longitude", "latitude"])
-        print(missed_fraction.values)
-        return missed_fraction
+        # assign pixel coords
+        mean_lon = masked.location.longitude.mean().item()
+        mean_lat = masked.location.latitude.mean().item()
+        dice = dice.expand_dims(longitude=[mean_lon], latitude=[mean_lat])
+        dice = dice.stack(location=["longitude", "latitude"])
+        return dice
 
     # Parallel compute across unique threshold values
     results = [delayed(process_group)(val) for val in unique_values]
@@ -1139,7 +1122,7 @@ def compute_jaccard(
 
     ds = missed_fraction.to_dataset(name=f"jaccard")
     ds = cfxr.encode_multi_index_as_compress(ds, "location")
-    save_path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN/{sample}/jaccard_s2_coarse.zarr"
+    save_path = f"{path_data2}/{sample}/{savename}.zarr"
     ds = ds.chunk("auto")
     ds.to_zarr(save_path, mode="w", consolidated=True)
     print(f"agreement index computed for:", sample)
@@ -1466,7 +1449,21 @@ def compute_sos_std_s2_coarse_res(
 if __name__ == "__main__":
     # Example usage
     parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/"
-    subfolders = [folder[:-4] for folder in os.listdir(parent_folder)]
+    subfolders_0 = [folder[:-4] for folder in os.listdir(parent_folder)]
+
+    path_data1 = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-28_15:16:49_S2_40/EVI_EN/"
+    path_data2 = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN/"
+    savename = f"dice_s2highres20_vs_s2highres40.zarr"
+    print(savename)
+    existing = set(os.listdir(path_data2))
+
+    subfolders = [
+        folder
+        for folder in subfolders_0
+        if not os.path.isdir(os.path.join(path_data2, folder, f"{savename}.zarr"))
+    ]
+    subfolders = ["DE-RuW_50.50_6.33_v0.zarr", "IT-TrF_45.82_7.56_v0.zarr", "IT-MBo_46.01_11.05_v0.zarr", "DE-RuW_50.50_6.33_v0.zarr", "DK-Skj_55.91_8.40_v0.zarr", "IE-Cra_53.32_-7.64_v0.zarr", "IT-Bsn_45.12_7.16_v0.zarr", "DK-Fou_56.48_9.59_v0.zarr", "CZ-BK1_49.50_18.54_v0.zarr"]
+    print(f"Processing {len(subfolders)} samples...")
     # parent_folder = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN/"
     # parent_folder2 = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:10:25_local_sentinel2_modisres/EVI_EN/" #"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN/
     # #subfolders = [folder for folder in os.listdir(parent_folder) if (folder[-4:] ==".zarr" and "s2_frac.zarr" not in os.listdir(os.path.join(parent_folder, folder)))]
@@ -1482,9 +1479,7 @@ if __name__ == "__main__":
     #     "UK-ESa_55.91_-2.86_v0.zarr",
     #     "FR-LGt_47.32_2.28_v0.zarr",
     # ]
-    sample = "DE-Hai_51.08_10.45_v0.zarr"
-    compute_jaccard(sample, type="common", dim="avg", threshold=0.1)
-    sys.exit()
+    # subfolders = ["ES-Cnd_37.91_-3.23_v0.zarr"]
 
     @delayed
     def process_sample(sample):
@@ -1503,8 +1498,13 @@ if __name__ == "__main__":
             # compute_extremes_s2_coarse_res(
             #     sample, type="common", dim="avg", threshold=0.1
             # )
-
-            compute_jaccard(sample, type="common", dim="avg", threshold=0.1)
+            compute_dice(
+                sample=sample,
+                path_data1=path_data1,
+                path_data2=path_data2,
+                savename=savename,
+                threshold=0.05,
+            )
             # compute_extremes(sample, type="missed", dim="time", threshold=0.1)
         #    # remove the file
         #    shutil.rmtree(os.path.join(sample_path, "kl_div_raoq.zarr"))
@@ -1527,10 +1527,10 @@ if __name__ == "__main__":
     # variance_raoq(subfolders[0])
     tasks = [process_sample(sample) for sample in subfolders]
     # Trigger execution
-    for i in range(0, len(tasks), 20):
-        if i < len(tasks) - 20:
+    for i in range(0, len(tasks), 5):
+        if i < len(tasks) - 5:
             compute(
-                *tasks[i : i + 20], scheduler="threads"
+                *tasks[i : i + 5], scheduler="threads"
             )  # or "processes" depending on workload
         else:
             compute(
