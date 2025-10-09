@@ -8,13 +8,13 @@ from .modis import ModisDataloader
 
 @staticmethod
 def dataloader(config: InitializationConfig, n_samples: int):
-    if config.index in ECOLOGICAL_INDICES:
-        return ModisGapfilledDataloader(config, n_samples=n_samples)
-    elif config.index in CLIMATIC_INDICES:
-        return Era5Dataloader(config, n_samples=n_samples)
-    elif config.index in EARTHNET_INDICES:
+    # if config.index in ECOLOGICAL_INDICES:
+    #     return ModisGapfilledDataloader(config, n_samples=n_samples)
+    # elif config.index in CLIMATIC_INDICES:
+    #     return Era5Dataloader(config, n_samples=n_samples)
+    if config.data_source == "S2":  # config.index in EARTHNET_INDICES
         return Sentinel2Dataloader(config, n_samples=n_samples)
-    elif config.index in MODIS_INDICES:
+    elif config.data_source == "MODIS":
         return ModisDataloader(config, n_samples=n_samples)
     else:
         return GenericDataloader(config, n_samples=n_samples)

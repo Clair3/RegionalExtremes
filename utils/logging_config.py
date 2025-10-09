@@ -34,7 +34,6 @@ logger = None
 
 
 def initialize_logger(filepath: str = "log.txt"):
-    print("Initializing logger: ", filepath)
     global logger
     logger = Logger(filepath)
 

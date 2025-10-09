@@ -51,6 +51,13 @@ def parser_arguments():
     )
 
     parser.add_argument(
+        "--data_source_path",
+        type=str,
+        default="path/to/data",
+        help=" Absolute path to the clustering dataset (default: path/to/data).",
+    )
+
+    parser.add_argument(
         "--compute_variance",
         type=bool,
         default=False,
@@ -80,6 +87,20 @@ def parser_arguments():
         type=int_or_none,
         default=100,
         help="Select randomly n_samples. Use 'None' for no limit.",
+    )
+
+    parser.add_argument(
+        "--n_samples_pca",
+        type=int_or_none,
+        default=15000,
+        help="Select randomly n_samples to train the PCA (ideally around 10 or 20000, PCA has O(n²) complexity, no need for a large dataset). Use 'None' for no limit.",
+    )
+
+    parser.add_argument(
+        "--n_samples_clustering",
+        type=int_or_none,
+        default=50000,
+        help="Select randomly n_samples to compute eco-cluster and percentiles (ideally as large as possible). Use 'None' for no limit.",
     )
 
     parser.add_argument(
@@ -122,23 +143,30 @@ def parser_arguments():
 
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
-    args.name = "low_cloud"  # "large_training_set"
+    args.name = "somalia_with_DeepExtreme"  # "large_training_set"
     args.modis_resolution = False  # True
-    args.index = "EVI"
+    args.index = "NDVI"
+    args.dayofyear = True
     args.data_source = "S2"  # "MODIS"  # "S2"
+    args.data_source_path = [
+        "/Net/Groups/BGI/work_5/scratch/Somalia_VCI_test/S2_samples/",
+        "/Net/Groups/BGI/work_2/scratch/DeepExtremes/dx-minicubes/full/",
+    ]
+    # EARTHNET_FILEPATH = "/Net/Groups/BGI/work_5/scratch/EU_Minicubes/_final/"
     args.k_pca = False
-    args.n_samples = 50000  # 40000
+    args.n_samples_pca = 15000  # 40000
+    args.n_samples_clustering = 50000
     args.n_components = 3
     args.n_eco_clusters = 20
     args.compute_variance = False
     args.method = "regional"
     args.start_year = 2000
-    args.lower_quantiles = [0.025, 0.05, 0.10, 0.2, 0.3, 0.4, 0.50]
-    args.upper_quantiles = [0.501, 0.6, 0.7, 0.8, 0.9, 0.95, 0.975]
+    args.lower_quantiles = [0, 0.025, 0.05, 0.10, 0.2, 0.3, 0.4, 0.50]
+    args.upper_quantiles = [0.501, 0.6, 0.7, 0.8, 0.9, 0.95, 0.975, 1]
 
-    args.saving_path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-10-01_17:22:11_low_cloud/EVI_EN"  # /Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN/"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-28_14:31:10_S2_reg_40_modis/EVI_MODIS/"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-26_11:30:09_S2_low_res_30/EVI_EN/"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-28_14:31:10_S2_reg_40_modis/EVI_MODIS/"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-26_11:36:43_S2_low_res_40/EVI_EN/"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-22_23:58:39_S2_low_res_local/EVI_EN/"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-14_16:23:50_S2_low_res/EVI_EN/" #"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-14_16:23:50_S2_low_res/EVI_EN" #"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-13_14:26:50_S2_low_res/EVI_EN" #/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN/" #"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-22_14:35:49_local_sentinel2/EVI_EN" ##"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:10:25_local_sentinel2_modisres/EVI_EN/" #/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-22_14:35:49_local_sentinel2/EVI_EN/"  #
+    args.saving_path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-10-09_11:57:15_somalia/NDVI/"  # /Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN/"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-28_14:31:10_S2_reg_40_modis/EVI_MODIS/"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-26_11:30:09_S2_low_res_30/EVI_EN/"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-28_14:31:10_S2_reg_40_modis/EVI_MODIS/"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-26_11:36:43_S2_low_res_40/EVI_EN/"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-22_23:58:39_S2_low_res_local/EVI_EN/"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-14_16:23:50_S2_low_res/EVI_EN/" #"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-14_16:23:50_S2_low_res/EVI_EN" #"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-13_14:26:50_S2_low_res/EVI_EN" #/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN/" #"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-22_14:35:49_local_sentinel2/EVI_EN" ##"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:10:25_local_sentinel2_modisres/EVI_EN/" #/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-22_14:35:49_local_sentinel2/EVI_EN/"  #
 
-    parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/"  # "/Net/Groups/BGI/work_5/scratch/EU_Minicubes/_final/"
+    parent_folder = "/Net/Groups/BGI/work_5/scratch/Somalia_VCI_test/S2_samples/"  # "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/"  # "/Net/Groups/BGI/work_5/scratch/EU_Minicubes/_final/"
     subfolders = [
         folder for folder in os.listdir(parent_folder) if folder[-4:] == ".zip"
     ]
@@ -156,7 +184,7 @@ if __name__ == "__main__":
     print(f"Processing {len(subfolders)} minicubes...")
     if args.method == "regional":
         # Train the regional extreme method on a subset of locations
-        # regional_extremes_method(args)
+        regional_extremes_method(args)
 
         # Apply the regional extremes method on a single minicube
         # parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/"

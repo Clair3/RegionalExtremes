@@ -79,19 +79,20 @@ def regional_extremes_method(args):
         # Initialization of the climatic or ecological DatasetHandler
         dataset_processor = dataloader(
             config=config,
-            n_samples= 15000, #config.n_samples,  # all the dataset
+            n_samples=config.n_samples_clustering,  # all the dataset
         )
         # Load and preprocess the dataset
         msc = dataset_processor.preprocess_data()  # minicube_path=minicube_path)
         eco_cluster_processor.compute_pca_and_transform(scaled_data=msc)
 
     # Apply the PCA to the entire dataset
-    #if eco_cluster.projected_data is None:
-    
+    # if eco_cluster.projected_data is None:
 
     # Define the boundaries of the eco_clusters
     if eco_cluster_processor.limits_eco_clusters is None:
-        dataset_processor = dataloader(config=config, n_samples=None)  # all the dataset
+        dataset_processor = dataloader(
+            config=config, n_samples=config.n_samples_clustering
+        )  # all the dataset
         msc, data = dataset_processor.preprocess_data(
             return_time_series=True
         )  # minicube_path=minicube_path)
@@ -103,17 +104,19 @@ def regional_extremes_method(args):
         # Load the data
         dataset_processor = dataloader(
             config=config,
-            n_samples=None,
+            n_samples=config.n_samples_clustering,
         )
         # msc, data = dataset_processor.preprocess_data(
         #     return_time_series=True,
         # )
         msc, data = dataset_processor.preprocess_data(
-                return_time_series=True
-            )  # minicube_path=minicube_path)
+            return_time_series=True
+        )  # minicube_path=minicube_path)
         # eco_cluster_processor.apply_pca(scaled_data=msc)
 
-    quantiles_processor.compute_regional_threshold(data, eco_clusters_load=eco_cluster_processor.eco_clusters)
+    quantiles_processor.compute_regional_threshold(
+        data, eco_clusters_load=eco_cluster_processor.eco_clusters
+    )
 
 
 def regional_extremes_minicube(args, minicube_path):
@@ -146,5 +149,4 @@ def regional_extremes_minicube(args, minicube_path):
     eco_cluster_processor.apply_pca(scaled_data=msc)
     eco_clusters = eco_cluster_processor.find_eco_clusters()
     # Compute the quantiles per regions/biome (=eco_clusters)
-
     quantiles_processor.apply_regional_threshold(data, eco_clusters_load=eco_clusters)

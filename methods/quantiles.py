@@ -16,9 +16,6 @@ from RegionalExtremesPackage.utils import Loader, Saver
 from RegionalExtremesPackage.dataloaders import dataloader
 from RegionalExtremesPackage.utils.config import (
     InitializationConfig,
-    CLIMATIC_INDICES,
-    ECOLOGICAL_INDICES,
-    EARTHNET_INDICES,
 )
 
 np.set_printoptions(threshold=sys.maxsize)
@@ -91,7 +88,7 @@ class QuantilesBase(ABC):
         assert self.config.method == "regional", "Method must be regional"
 
         # Initialize parameters
-        #compute_only_thresholds = self.config.is_generic_xarray_dataset
+        # compute_only_thresholds = self.config.is_generic_xarray_dataset
 
         def create_eco_cluster_labels(eco_clusters_load):
             """Create standardized eco-cluster labels."""
@@ -193,13 +190,13 @@ class QuantilesBase(ABC):
         #     [eco_clusters_load.longitude.values, eco_clusters_load.latitude.values],
         #     names=["longitude", "latitude"]
         # )
-# 
+        #
         # # Drop duplicate coordinate pairs
         # unique_index = loc_index.drop_duplicates()
-# 
+        #
         # # Assign the cleaned index back to eco_clusters_load
         # eco_clusters_load = eco_clusters_load.assign_coords(location=unique_index)
-# 
+        #
         # # Now align data to these locations
         # data = data.sel(location=eco_clusters_load.location)
 
@@ -279,7 +276,7 @@ class QuantilesBase(ABC):
         filtered_data = data.where(data.valid_group, drop=True)
         if filtered_data.sizes == 0:
             raise ValueError("No valid groups found.")
-        
+
         aligned_labels = eco_cluster_labels.sel(location=filtered_data.location)
 
         results = self._compute_thresholds_per_grp(filtered_data, aligned_labels)
@@ -295,9 +292,7 @@ class QuantilesBase(ABC):
         multi_index = pd.MultiIndex.from_arrays(
             unique_clusters.T, names=["component_1", "component_2", "component_3"]
         )
-        # printt(group_thresholds)
-        # print(group_thresholds.values.shape)
-        # print(filtered_data.time.dayofyear)
+
         thresholds_by_cluster = xr.DataArray(
             data=group_thresholds.values,
             dims=("eco_cluster", "quantile"),  # , "dayofyear"),
@@ -323,7 +318,6 @@ class QuantilesBase(ABC):
             thresholds_by_cluster, "thresholds", location=False, eco_cluster=True
         )
 
-        
         thresholds_array = xr.DataArray(
             np.full(
                 (
@@ -351,9 +345,9 @@ class QuantilesBase(ABC):
         #         "quantile": self.quantile_levels_combined,
         #     },
         # )
-        thresholds_array.loc[dict(location=results["thresholds"].location)] = (
-            results["thresholds"].values
-        )
+        thresholds_array.loc[dict(location=results["thresholds"].location)] = results[
+            "thresholds"
+        ].values
         self.saver._save_data(thresholds_array, "thresholds_locations")
         extremes_array = xr.full_like(data, np.nan, dtype=float)
         extremes_array.loc[dict(location=results["extremes"].location)] = results[
@@ -393,7 +387,7 @@ class QuantilesBase(ABC):
     def _compute_thresholds(
         self,
         data: xr.DataArray,
-        #return_only_thresholds=False,
+        # return_only_thresholds=False,
     ):
         """
         Assign quantile levels to data data.

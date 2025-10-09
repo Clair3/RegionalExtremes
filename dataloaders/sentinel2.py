@@ -10,6 +10,7 @@ import os
 from tqdm import tqdm
 from dask.config import set
 import more_itertools
+import re
 
 
 class Sentinel2Dataloader(Dataloader):
@@ -18,22 +19,18 @@ class Sentinel2Dataloader(Dataloader):
         Load and preprocess the dataset. If a cached version exists, use it.
         Otherwise, sample and process new data, then save for future use.
         """
-        self.variable_name = "evi"
-        sample_paths = [folder for folder in os.listdir(EARTHNET_FILEPATH)]
+        self.variable_name = self.config.index.lower()
 
         # Attempt to load cached training data
-        # training_data = self.loader._load_data("temp_file")
-        path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-28_14:29:55_S2_reg_30_modis/EVI_MODIS/evi.zarr"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-20_12:06:49_S2_low_res/EVI_EN/temp_file.zarr"
-        training_data = xr.open_zarr(path)
-        training_data = cfxr.decode_compress_to_multi_index(training_data, "location")
-        location_index = training_data.location.to_index()
-        # Identify duplicates
-        duplicates = location_index.duplicated()
-        # Keep only the first occurrence of each location
-        training_data = training_data.sel(location=~duplicates)
+        training_data = self.loader._load_data("temp_file")
+        # path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-10-09_11:13:49_somalia/NDVI/temp_file.zarr"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-20_12:06:49_S2_low_res/EVI_EN/temp_file.zarr"
+        # training_data = xr.open_zarr(path)
+        # training_data = cfxr.decode_compress_to_multi_index(training_data, "location")
         if training_data is not None:
-            sample_count = self.n_samples or 50000
-
+            # Identify duplicates and remove them
+            # location_index = training_data.location.to_index()
+            # duplicates = location_index.duplicated()
+            # training_data = training_data.sel(location=~duplicates)
             self.data = training_data[self.variable_name]
             # Convert location MultiIndex to a proper index
             if self.n_samples is not None and self.n_samples < len(self.data.location):
@@ -44,16 +41,28 @@ class Sentinel2Dataloader(Dataloader):
 
             # self.data = _ensure_time_chunks(self.data)
             return self.data
-        sample_count = 50000
-        printt(f"Number of samples for the training set: {sample_count}")
+        sample_paths = []
+        for path in self.config.data_source_path:
+            if path == "/Net/Groups/BGI/work_2/scratch/DeepExtremes/dx-minicubes/full/":
+                deepextremes = pd.read_csv("africa_samples.csv")
+                paths = deepextremes["path"].tolist()
+                sample_paths += [Path(path) for path in paths]
+            else:
+                paths = [
+                    Path(path + folder)
+                    for folder in os.listdir(path)
+                    if folder.startswith("S2")
+                ]
+                sample_paths += paths
+
+        printt(
+            f"Number of samples for the training set: {len(sample_paths)} \n Number of locations for the training set: {self.n_samples}"
+        )
 
         # Randomly sample paths for processing
-        sample_paths = np.random.choice(sample_paths, size=sample_count, replace=True)
+        sample_paths = np.random.choice(sample_paths, size=self.n_samples, replace=True)
 
-        data = [
-            delayed(self.load_file)(Path(EARTHNET_FILEPATH + path))
-            for path in sample_paths
-        ]
+        data = [delayed(self.load_file)(path) for path in sample_paths]
         with ProgressBar():
             data = compute(*data, scheduler="processes")
 
@@ -269,7 +278,7 @@ class Sentinel2Dataloader(Dataloader):
             lon, lat = transformer.transform(ds.x.values, ds.y.values)
             ds = ds.assign_coords({"x": ("x", lon), "y": ("y", lat)})
 
-        if "spatial_ref" in ds.attrs:
+        if "spatial_ref" in ds:
             ds = ds.drop_vars("spatial_ref")
 
         ds["time"] = ds["time"].dt.floor("D")
@@ -518,7 +527,6 @@ class Sentinel2Dataloader(Dataloader):
         #     if msc is not None and data is not None:
         #         return msc.msc, data.evi
         printt("Starting preprocessing...")
-
         # Load data either from a minicube or from the default dataset
         if minicube_path:
             printt(f"Loading minicube from {minicube_path}")
@@ -534,7 +542,7 @@ class Sentinel2Dataloader(Dataloader):
 
         printt(f"Processing entire dataset: {data.sizes['location']} locations.")
         # data = data.compute()
-        self.saver._save_data(data, "evi")
+        self.saver._save_data(data, "vegetation_index")
         # Compute Mean Seasonal Cycle (MSC)
         msc = self.compute_msc(data)
         msc = msc.transpose("location", "dayofyear", ...)

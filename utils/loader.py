@@ -84,7 +84,7 @@ class Loader:
             basepath = self.config.saving_path
         path = basepath / f"{name}.zarr"
         if not os.path.exists(path):
-            printt(f"Data not found at {path}")
+            printt(f"{name}.zarr not found")
             return None
         data = xr.open_zarr(path)
         if location:

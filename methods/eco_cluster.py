@@ -12,9 +12,6 @@ from RegionalExtremesPackage.utils.logging_config import printt
 from RegionalExtremesPackage.utils import Loader, Saver
 from RegionalExtremesPackage.utils.config import (
     InitializationConfig,
-    CLIMATIC_INDICES,
-    ECOLOGICAL_INDICES,
-    EARTHNET_INDICES,
 )
 
 
