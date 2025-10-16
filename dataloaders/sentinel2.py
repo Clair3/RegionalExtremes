@@ -7,10 +7,6 @@ import cf_xarray as cfxr
 from .data_processing.helpers import _ensure_time_chunks, circular_rolling_mean
 from datetime import datetime, timedelta, date
 import os
-from tqdm import tqdm
-from dask.config import set
-import more_itertools
-import re
 
 
 class Sentinel2Dataloader(Dataloader):
@@ -44,7 +40,9 @@ class Sentinel2Dataloader(Dataloader):
         sample_paths = []
         for path in self.config.data_source_path:
             if path == "/Net/Groups/BGI/work_2/scratch/DeepExtremes/dx-minicubes/full/":
-                deepextremes = pd.read_csv("africa_samples.csv")
+                deepextremes = pd.read_csv(
+                    "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/africa_samples.csv"
+                )
                 paths = deepextremes["path"].tolist()
                 sample_paths += [Path(path) for path in paths]
             else:
@@ -91,73 +89,9 @@ class Sentinel2Dataloader(Dataloader):
         data = self.load_file(filepath, process_entire_minicube=True)
         if data is None:
             return None
-        if self.n_samples:
-            random_indices = np.random.choice(
-                len(data.location), size=self.n_samples, replace=False
-            )
-            data = data.isel(location=random_indices)
         data = data[self.config.index.lower()]
         data = _ensure_time_chunks(data)
         return data
-
-    def sample_locations(self, n_samples):
-        """
-            Randomly sample locations from a DataFrame with replacement
-        .
-
-            Parameters:
-            -----------
-            df : pandas.DataFrame
-                DataFrame containing latitude and longitude columns
-            n_samples : int
-                Number of samples to generate (with replacement)
-
-            Returns:
-            --------
-            pandas.DataFrame
-                DataFrame containing original lat/lon plus random grid coordinates
-        """
-
-        def _is_in_europe(self, lon, lat):
-            """
-            Check if the given longitude and latitude are within the bounds of Europe.
-            """
-            # Define Europe boundaries (these are approximate)
-            lon_min, lon_max = -31.266, 39.869  # Longitude boundaries
-            lat_min, lat_max = 27.636, 81.008  # Latitude boundaries
-
-            # Check if the point is within the defined boundaries
-            in_europe = (
-                (lon >= lon_min)
-                & (lon <= lon_max)
-                & (lat >= lat_min)
-                & (lat <= lat_max)
-            )
-            return in_europe
-
-        metadata_file = (
-            "/Net/Groups/BGI/work_2/scratch/DeepExtremes/mc_earthnet_biome.csv"
-        )
-        df = pd.read_csv(metadata_file, delimiter=",", low_memory=False)[
-            [
-                "path",
-                "group",
-                "check",
-                "start_date",
-                "lat",
-                "lon",
-            ]
-        ]
-        df = df.loc[
-            (df["check"] == 0)
-            & df.apply(lambda row: _is_in_europe(row["lon"], row["lat"]), axis=1)
-        ]
-        # /Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/DeepExtremes_enough_vegetation_europe.csv
-        # Random sampling with replacement
-        sampled_indices = np.random.choice(df.index, size=n_samples, replace=True)
-        return df.loc[
-            sampled_indices
-        ].values  # df.loc[sampled_indices, "path"].values  #
 
     def load_file(self, filepath, process_entire_minicube=False):
         try:
@@ -179,62 +113,16 @@ class Sentinel2Dataloader(Dataloader):
             ds = ds.stack(location=("longitude", "latitude"))
             self.saver.update_saving_path(filepath.stem)
 
-        ds = self.compute_vegetation_index(ds, filename=filepath.stem)
+        ds = self.generate_masked_vegetation_index(ds, filename=filepath.stem)
         if ds is None:
             return None
         ds = self.compute_max_per_period(ds, period_size=16)
         return ds
 
-    def compute_vegetation_index(self, ds, filename=None):
-
-        # Compute coarse mask
-        if getattr(self.config, "modis_resolution", False) and (
-            self.config.index == "EVI_EN"
-        ):
-            mask = self._compute_masks(ds)
-            # Unstack before coarsening
-            ds = ds.unstack("location")
-            # Align coarse_map to fine EVI
-            path = f"/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/{filename}.zip"
-            coarse_map = xr.open_zarr(path, consolidated=True)
-            coarse_map = (
-                coarse_map["250m_16_days_EVI"]
-                .isel(start_range=slice(-100, -1))
-                .mean(dim="start_range")
-            )
-            coarse_map = coarse_map.rename({"x": "longitude", "y": "latitude"})
-            coarse_map = coarse_map.assign_coords(
-                latitude=ds.latitude, longitude=ds.longitude
-            )
-
-            # coarsen mask
-            mask = mask.unstack("location")
-            mask_frac = mask.groupby(coarse_map).map(
-                lambda x: x.mean(dim=("stacked_latitude_longitude"), skipna=True)
-            )
-            mask_frac = mask_frac.sel({coarse_map.name: coarse_map})
-            mask = xr.where(mask_frac > 0.5, 1, np.nan)
-            # Re-stack
-            mask = mask.stack(location=("latitude", "longitude"))
-
-            # Group fine-resolution reflectance bands by coarse_map
-            ds_coarse = (
-                ds[["B8A", "B04", "B02"]]
-                .groupby(coarse_map)
-                .map(lambda x: x.mean(dim=("stacked_latitude_longitude"), skipna=True))
-            )
-            ds_coarse = ds_coarse.sel({coarse_map.name: coarse_map})
-
-            ds_coarse = ds_coarse.stack(location=("latitude", "longitude"))
-            ds_coarse = ds_coarse.chunk({"time": -1, "location": 3606})
-            # Compute EVI at coarse resolution
-            evi = self._calculate_vi(ds_coarse).compute()
-            mask = mask.chunk({"time": -1, "location": 3906}).compute()
-
-        else:
-            # High-resolution computation
-            evi = self._calculate_vi(ds)
-            mask = self._compute_masks(ds, evi)
+    def generate_masked_vegetation_index(self, ds, filename=None):
+        # High-resolution computation
+        evi = self._calculate_vegetation_index(ds)
+        mask = self._compute_masks(ds, evi)
         masked_evi = evi * mask
         data = xr.Dataset(
             data_vars={
@@ -293,7 +181,7 @@ class Sentinel2Dataloader(Dataloader):
         lon_idx, lat_idx = self._choose_random_pixel(ds)
         if (lon_idx == None) and (lat_idx == None):
             return None
-        selected_data = self._select_data_slice(ds, lon_idx, lat_idx)
+        selected_data = self._select_random_pixel(ds, lon_idx, lat_idx)
 
         # Stack spatial dimensions for simpler downstream processing
         return selected_data.stack(location=("longitude", "latitude"))
@@ -314,22 +202,10 @@ class Sentinel2Dataloader(Dataloader):
         random_index = eligible_indices[np.random.choice(eligible_indices.shape[0])]
         return tuple(random_index)  # (lon_idx, lat_idx)
 
-    def _select_data_slice(self, ds, lon_idx, lat_idx):
+    def _select_random_pixel(self, ds, lon_idx, lat_idx):
         """
-        Select a small 12x12 patch (MODIS resolution) or a single pixel from the dataset.
+        Select a single pixel from the dataset.
         """
-        if getattr(self.config, "modis_resolution", True) and (
-            self.config.sensor == "S2"
-        ):
-            lon_size, lat_size = ds.sizes["longitude"], ds.sizes["latitude"]
-            lon_start = min(lon_idx, lon_size - 12)
-            lat_start = min(lat_idx, lat_size - 12)
-            return ds.isel(
-                longitude=slice(lon_start, lon_start + 12),
-                latitude=slice(lat_start, lat_start + 12),
-            )
-
-        # Otherwise, select a single pixel and expand dimensions
         selected = ds.isel(longitude=lon_idx, latitude=lat_idx)
         return selected.expand_dims(
             longitude=[selected.longitude.values.item()],
@@ -338,7 +214,7 @@ class Sentinel2Dataloader(Dataloader):
 
     def _calculate_vegetation_index(self, ds):
         """Calculates the Vegetation Index."""
-        if self.config.index == ("EVI_EN" or "EVI"):
+        if self.config.index in ("EVI_EN", "EVI"):
             return (2.5 * (ds.B8A - ds.B04)) / (
                 ds.B8A + 6 * ds.B04 - 7.5 * ds.B02 + 1 + 10e-8
             )

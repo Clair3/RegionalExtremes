@@ -5,7 +5,7 @@ from pyproj import Transformer
 
 
 class ModisDataloader(Sentinel2Dataloader):
-    def _calculate_vi(self, ds):
+    def _calculate_vegetation_index(self, ds):
         """Calculates the Vegetation Index (EVI)."""
         if self.config.index == "EVI_MODIS" or "EVI":
             ds = (ds["250m_16_days_EVI"] + 2000) / 12000
@@ -39,59 +39,6 @@ class ModisDataloader(Sentinel2Dataloader):
         ds["time"] = ds["time"].dt.floor("D")
 
         return ds.rename({"x": "longitude", "y": "latitude"})
-
-    # def load_file(self, minicube_path, process_entire_minicube=False):
-    #     with xr.open_zarr(filepath) as ds:
-    #
-    #         # Transform UTM to lat/lon
-    #         # ds = self._transform_utm_to_latlon(ds)
-    #
-    #         if not process_entire_minicube:
-    #             # Select a random vegetation location
-    #             ds = self._get_random_vegetation_pixel_series(ds)
-    #             if ds is None:
-    #                 return None
-    #
-    #         self.variable_name = "evi"  # ds.attrs["data_id"]
-    #         # Filter based on vegetation occurrence
-    #         epsg = (
-    #             ds.attrs.get("spatial_ref")
-    #             or ds.attrs.get("EPSG")
-    #             or ds.attrs.get("CRS")
-    #         )
-    #
-    #         # Transform UTM coordinates to latitude and longitude if EPSG is provided
-    #         if epsg is not None:
-    #             transformer = Transformer.from_crs(epsg, 4326, always_xy=True)
-    #             lon, lat = transformer.transform(ds.x.values, ds.y.values)
-    #             ds = ds.drop_vars("spatial_ref")
-    #             ds.assign_coords({"x": ("x", lon), "y": ("y", lat)})
-    #
-    #         ds = ds.rename({"x231": "longitude", "y231": "latitude"})
-    #         # ds = ds.stack(location=("longitude", "latitude"))
-    #
-    #         # Calculate EVI and apply cloud/vegetation mask
-    #         evi = self._calculate_evi(ds)
-    #         # evi = self._apply_masks(ds, evi)
-    #         if "start_range" in evi.coords:
-    #             evi = evi.rename({"start_range": "time"})
-    #         elif "time_modis-13Q1-061" in evi.coords:
-    #             evi = evi.rename({"time_modis-13Q1-061": "time"})
-    #         elif "time" not in evi.coords:
-    #             raise IndexError(f"No time coordinates available in {filepath}")
-    #
-    #         data = xr.Dataset(
-    #             data_vars={
-    #                 f"{self.variable_name}": evi,
-    #             },
-    #             coords={
-    #                 "source_path": minicube_path,  # Add the path as a coordinate
-    #             },
-    #         )
-    #         if process_entire_minicube:
-    #             self.saver.update_saving_path(filepath.stem)
-    #
-    #         return data
 
     def compute_msc(
         self,
@@ -191,40 +138,6 @@ class ModisDataloader(Sentinel2Dataloader):
         deseasonalized = deseasonalized.reset_coords("dayofyear", drop=True)
         return deseasonalized
 
-    def growing_season(self, msc, evi):
-        """Removes winter periods (outside EOS-SOS) from an EVI time series.
-
-        Parameters:
-        msc (xarray.DataArray): Mean Seasonal Cycle of EVI (1D or 3D: time, lat, lon)
-        evi (xarray.DataArray): Multi-year EVI time series (time, lat, lon)
-
-        Returns:
-        xarray.DataArray: EVI with winter periods masked (NaN)
-        """
-        if "dayofyear" not in msc.dims:
-            raise ValueError(
-                "Mean Seasonal Cycle (msc) must have a 'dayofyear' dimension."
-            )
-        # Compute the first derivative (rate of change)
-        first_derivative = np.gradient(
-            msc.values, axis=msc.dims.index("dayofyear")
-        )  # Ensure time axis is last (-1)
-
-        # Determine SOS (max increase) and EOS (max decrease)
-        sos_doy = np.argmax(
-            first_derivative, axis=msc.dims.index("dayofyear")
-        )  # SOS for each pixel
-        eos_doy = np.argmin(
-            first_derivative, axis=msc.dims.index("dayofyear")
-        )  # EOS for each pixel
-
-        # Get Day of Year (DOY) for each time step in the EVI dataset
-        doy = evi["time"].dt.dayofyear  # Shape: (time,)
-        doy_expanded = doy.values[:, np.newaxis]  # Shape: (time, 1, 1)
-        growing_season_mask = (doy_expanded >= sos_doy) & (doy_expanded <= eos_doy)
-        evi_growing_season = evi.where(growing_season_mask)
-        return evi_growing_season
-
     def get_config(self):
         # Define window sizes for gap-filling and cloud noise removal
         config = dict()
@@ -273,7 +186,7 @@ class ModisDataloader(Sentinel2Dataloader):
             data = self.load_dataset()
 
         printt(f"Processing entire dataset: {data.sizes['location']} locations.")
-        # data = self.compute_max_per_period(data, self.config_dict["period_size"])
+
         data = self.noise_removal.cloudfree_timeseries(
             data, noise_half_windows=self.config_dict["noise_half_windows"]
         )
