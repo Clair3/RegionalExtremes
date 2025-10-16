@@ -144,7 +144,7 @@ def parser_arguments():
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
     args.name = "S2_regional_coarse"  # "large_training_set"
-    args.modis_resolution = False  # True
+    args.modis_resolution = True  # True
     args.index = "EVI"
     # args.dayofyear = True
     args.data_source = "S2"  # "MODIS"  # "S2"
@@ -157,7 +157,7 @@ if __name__ == "__main__":
     # EARTHNET_FILEPATH = "/Net/Groups/BGI/work_5/scratch/EU_Minicubes/_final/"
     args.k_pca = False
     args.n_samples_pca = 15000  # 40000
-    args.n_samples_clustering = 50000
+    args.n_samples_clustering = 40000
     args.n_components = 3
     args.n_eco_clusters = 20
     args.compute_variance = False

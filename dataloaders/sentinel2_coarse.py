@@ -37,7 +37,6 @@ class Sentinel2CoarseDataloader(Sentinel2Dataloader):
         """
         # --- Compute initial high-res mask ---
         mask = self._compute_masks(ds)
-        ds = ds.unstack("location")  # Ensure unstacked for coarsening or grouping
 
         # --- Check for existing coarse map ---
         coarse_path = (
@@ -65,6 +64,7 @@ class Sentinel2CoarseDataloader(Sentinel2Dataloader):
 
     def _align_with_coarse_map(self, ds, mask, coarse_path):
         """Align fine-resolution dataset and mask to a precomputed coarse MODIS map."""
+        ds = ds.unstack("location")  # Ensure unstacked for coarsening or grouping
         coarse_map = xr.open_zarr(coarse_path, consolidated=True)
         coarse_map = (
             coarse_map["250m_16_days_EVI"]
@@ -99,6 +99,7 @@ class Sentinel2CoarseDataloader(Sentinel2Dataloader):
 
     def _coarsen_without_map(self, ds, mask):
         """Perform fixed-size spatial coarsening when no external coarse map is available."""
+        ds = ds.unstack("location")
         ds_coarse = (
             ds[["B8A", "B04", "B02"]]
             .coarsen(latitude=12, longitude=12, boundary="trim")
@@ -112,5 +113,8 @@ class Sentinel2CoarseDataloader(Sentinel2Dataloader):
         mask = xr.where(mask_frac > 0.5, 1, np.nan).stack(
             location=("latitude", "longitude")
         )
+
+        ds_coarse = ds_coarse.stack(location=("latitude", "longitude"))
+        ds_coarse = ds_coarse.chunk({"time": -1, "location": 3606})
 
         return ds_coarse, mask

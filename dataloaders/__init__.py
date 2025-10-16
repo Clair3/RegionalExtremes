@@ -9,14 +9,10 @@ from .sentinel2_coarse import Sentinel2CoarseDataloader
 
 @staticmethod
 def dataloader(config: InitializationConfig, n_samples: int):
-    # if config.index in ECOLOGICAL_INDICES:
-    #     return ModisGapfilledDataloader(config, n_samples=n_samples)
-    # elif config.index in CLIMATIC_INDICES:
-    #     return Era5Dataloader(config, n_samples=n_samples)
-    if config.data_source == "S2":  # config.index in EARTHNET_INDICES
-        return Sentinel2Dataloader(config, n_samples=n_samples)
-    elif config.data_source == "S2" and (config.modis_resolution is True):
+    if config.data_source == "S2" and (config.modis_resolution is True):
         return Sentinel2CoarseDataloader(config, n_samples=n_samples)
+    elif config.data_source == "S2":
+        return Sentinel2Dataloader(config, n_samples=n_samples)
     elif config.data_source == "MODIS":
         return ModisDataloader(config, n_samples=n_samples)
     else:
