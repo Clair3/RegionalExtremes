@@ -7,9 +7,9 @@ from pyproj import Transformer
 class ModisDataloader(Sentinel2Dataloader):
     def _calculate_vi(self, ds):
         """Calculates the Vegetation Index (EVI)."""
-        if self.config.index == "EVI_MODIS":
+        if self.config.index == "EVI_MODIS" or "EVI":
             ds = (ds["250m_16_days_EVI"] + 2000) / 12000
-        elif self.config.index == "NDVI_MODIS":
+        elif self.config.index == "NDVI":
             ds = (ds["250m_16_days_NDVI"] + 2000) / 12000
         else:
             raise ValueError(f"Unknown vegetation index: {self.config.index}")
@@ -129,7 +129,6 @@ class ModisDataloader(Sentinel2Dataloader):
 
     def _compute_masks(self, ds, evi):
         """Applies cloud and vegetation masks to the EVI data."""
-        printt("Applying cloud and vegetation masks to EVI data.")
 
         if "250m_16_days_pixel_reliability" not in ds:
             return self._compute_mask_VI_Quality(ds, evi)
@@ -175,6 +174,13 @@ class ModisDataloader(Sentinel2Dataloader):
         final_mask = final_mask.where(final_mask, np.nan)
 
         return evi * final_mask
+
+    def _choose_random_pixel(self, ds):
+        """Selects a random time serie vegetation pixel location in the minicube based on SCL classification."""
+        return (
+            np.random.randint(ds.sizes["longitude"]),
+            np.random.randint(ds.sizes["latitude"]),
+        )
 
     def _deseasonalize(self, data, msc):
         # Align subset_msc with subset_data
@@ -223,7 +229,7 @@ class ModisDataloader(Sentinel2Dataloader):
         # Define window sizes for gap-filling and cloud noise removal
         config = dict()
         config["nan_fill_windows"] = [3, 5]
-        config["noise_half_windows"] = [1, 2]
+        config["noise_half_windows"] = [1]
         config["smoothing_window_msc"] = 7
         config["poly_msc"] = 2
         config["period_size"] = 16
@@ -271,15 +277,14 @@ class ModisDataloader(Sentinel2Dataloader):
         data = self.noise_removal.cloudfree_timeseries(
             data, noise_half_windows=self.config_dict["noise_half_windows"]
         )
-        data = self._remove_low_vegetation_location(data, threshold=0.2)
-        self.saver._save_data(data, "evi")
+        # data = self._remove_low_vegetation_location(data, threshold=0.2)
+        self.saver._save_data(data, "vegetation_index")
         # Compute Mean Seasonal Cycle (MSC)
         msc = self.compute_msc(data)
         msc = msc.transpose("location", "dayofyear", ...)
         self.saver._save_data(msc, "msc")
 
         if not return_time_series:
-            print("msc", msc)
             return msc
 
         # Step 3: Deseasonalization

@@ -227,12 +227,14 @@ class PlotsSentinel2(Plots):
         unique_lats = np.sort(np.unique(lat_coord))
 
         # Get the latitude values you want
-        selected_lats = unique_lats[0:20]  #:85]  # same as isel(latitude=slice(0, 85))
+        selected_lats = (
+            unique_lats  # [0:20]  #:85]  # same as isel(latitude=slice(0, 85))
+        )
         lon_coord = cluster.get_index("location").get_level_values("longitude")
         unique_lons = np.sort(np.unique(lon_coord))
 
         # Get the latitude values you want
-        selected_lons = unique_lons[0:20]
+        selected_lons = unique_lons  # [0:20]
         # Now build a mask to select locations with those latitudes
         mask_lats = cluster.latitude.isin(selected_lats)
         mask_lons = cluster.longitude.isin(selected_lons)
@@ -322,10 +324,10 @@ class PlotsSentinel2(Plots):
         # Add labels and optional legend
         if colored_by_eco_cluster:
             plt.title("MSC Time Series Colored by eco-clusters")
-            saving_path = self.saving_path / "msc_eco_cluster_sorted.png"
+            saving_path = self.saving_path / "msc_eco_cluster.png"
         else:
             plt.title("MSC Time Series Colored by PCA Components")
-            saving_path = self.saving_path / "msc_pca_sorted.png"
+            saving_path = self.saving_path / "msc_pca.png"
         # Optional: Set tick and label colors to white for visibility
         # ax.tick_params(colors="white")
         # ax.spines["bottom"].set_color("white")
@@ -335,7 +337,7 @@ class PlotsSentinel2(Plots):
         # ax.yaxis.label.set_color("white")
         # ax.xaxis.label.set_color("white")
         # ax.title.set_color("white")
-
+        ax.set_ylim(0, 1)
         ax.set_xlabel("Day Of Year")
         ax.set_ylabel("EVI")
         plt.savefig(saving_path)
@@ -345,9 +347,9 @@ class PlotsSentinel2(Plots):
         data = self.loader._load_data("eco_clusters")
         data = data.eco_clusters.transpose("location", "component", ...)
         # bins = data.unstack("location")
-        bins = data.unstack("location").isel(
-            latitude=slice(0, 20), longitude=slice(0, 20)
-        )
+        bins = data.unstack("location")  # .isel(
+        #    latitude=slice(0, 20), longitude=slice(0, 20)
+        # )
 
         # Normalize the explained variance
         rgb_normalized = self.normalize(bins)
@@ -376,14 +378,14 @@ class PlotsSentinel2(Plots):
         # ax.title.set_color("white")
         # Add a title
         plt.title("Eco-clusters")
-        saving_path = self.saving_path / "eco_clusters_small.png"
+        saving_path = self.saving_path / "eco_clusters.png"
         plt.savefig(saving_path)
         plt.show()
 
     def plot_minicube_pca_projection(self):
         data = self.loader._load_pca_projection(explained_variance=False)
         data = data.transpose("location", "component", ...)
-        bins = data.unstack("location").isel(latitude=slice(0, 85))
+        bins = data.unstack("location")  # .isel(latitude=slice(0, 85))
 
         # Normalize the explained variance
         rgb_normalized = self.normalize(bins)
@@ -414,7 +416,7 @@ class PlotsSentinel2(Plots):
 
         # Add a title
         plt.title("PCA Projection")
-        saving_path = self.saving_path / "pca_projection_small.png"
+        saving_path = self.saving_path / "pca_projection.png"
         plt.savefig(saving_path)
         plt.show()
 
@@ -424,7 +426,6 @@ class PlotsSentinel2(Plots):
         ) or glob.glob(
             f"/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/_test/{self.minicube_name}*"
         )
-        print(paths)
         path = paths[0]
 
         ds = xr.open_zarr(path)
@@ -482,7 +483,6 @@ class PlotsSentinel2(Plots):
         # if epsg is not None:
         transformer = Transformer.from_crs(epsg, 4326, always_xy=True)
         lon, lat = transformer.transform(y_values, x_values)
-        print(lon, lat)
         ds = ds.assign_coords({"x": ("x", lon), "y": ("y", lat)})
 
         if "time" not in ds.dims:
@@ -915,7 +915,7 @@ class PlotsSentinel2(Plots):
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
 
-    args.saving_path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_12:13:03_full_fluxnet_therightone/EVI_EN"
+    args.saving_path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-10-01_17:22:11_low_cloud/EVI_EN/"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_12:13:03_full_fluxnet_therightone/EVI_EN"
 
     # subfolders = [
     #     # "30TVK_157southwest1260_combine.zarr",
@@ -928,6 +928,7 @@ if __name__ == "__main__":
     # ]
 
     subfolders = [
+        "DE-Hai_51.08_10.45_v0.zarr",
         # "DE-Tha_50.96_13.57_v0.zarr",
         # "DE-HoH_52.09_11.22_v0.zarr",
         # "DE-Obe_50.79_13.72_v0.zarr",
@@ -938,7 +939,7 @@ if __name__ == "__main__":
         # "BE-Bra_51.31_4.52_v0.zarr",
         # "ES-LM1_39.94_-5.78_v0.zarr",
         # "ES-LM2_39.93_-5.78_v0.zarr",
-        "ES-LMa_39.94_-5.77_v0.zarr",
+        # "ES-LMa_39.94_-5.77_v0.zarr",
         # "ES-Cnd_37.91_-3.23_v0.zarr",
         # "FR-LGt_47.32_2.28_v0.zarr",
         # "DE-Lnf_51.33_10.37_v0.zarr",
@@ -978,18 +979,16 @@ if __name__ == "__main__":
     #      "DE-RuS_50.87_6.45_v0.zarr",
     #  ]
     # subfolders = [
-    #     folder
-    #     for folder in os.listdir(args.path_load_experiment + "/EVI_EN")
-    #     if folder[-7:] == "v0.zarr"
+    #     folder for folder in os.listdir(args.saving_path) if folder[:2] == "S2"
     # ]
 
     for minicube_name in subfolders:
         config = InitializationConfig(args)
         plot = PlotsSentinel2(config=config, minicube_name=minicube_name)
-        # plot.plot_minicube_pca_projection()
+        plot.plot_minicube_pca_projection()
         # plot.plot_rgb()
-        # plot.plot_minicube_eco_clusters()
-        # plot.plot_msc(colored_by_eco_cluster=True)
+        plot.plot_minicube_eco_clusters()
+        plot.plot_msc(colored_by_eco_cluster=True)
         plot.plot_extremes()
         # try:
         #     plot.plot_location_in_europe()

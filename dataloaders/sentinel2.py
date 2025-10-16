@@ -19,19 +19,19 @@ class Sentinel2Dataloader(Dataloader):
         Load and preprocess the dataset. If a cached version exists, use it.
         Otherwise, sample and process new data, then save for future use.
         """
-        self.variable_name = self.config.index.lower()
-
         # Attempt to load cached training data
         training_data = self.loader._load_data("temp_file")
         # path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-10-09_11:13:49_somalia/NDVI/temp_file.zarr"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-20_12:06:49_S2_low_res/EVI_EN/temp_file.zarr"
         # training_data = xr.open_zarr(path)
         # training_data = cfxr.decode_compress_to_multi_index(training_data, "location")
         if training_data is not None:
+            if "evi" in training_data:
+                training_data = training_data.rename({"evi": self.config.index.lower()})
             # Identify duplicates and remove them
             # location_index = training_data.location.to_index()
             # duplicates = location_index.duplicated()
             # training_data = training_data.sel(location=~duplicates)
-            self.data = training_data[self.variable_name]
+            self.data = training_data[self.config.index.lower()]
             # Convert location MultiIndex to a proper index
             if self.n_samples is not None and self.n_samples < len(self.data.location):
                 random_indices = np.random.choice(
@@ -48,11 +48,7 @@ class Sentinel2Dataloader(Dataloader):
                 paths = deepextremes["path"].tolist()
                 sample_paths += [Path(path) for path in paths]
             else:
-                paths = [
-                    Path(path + folder)
-                    for folder in os.listdir(path)
-                    if folder.startswith("S2")
-                ]
+                paths = [Path(path + folder) for folder in os.listdir(path)]
                 sample_paths += paths
 
         printt(
@@ -85,8 +81,7 @@ class Sentinel2Dataloader(Dataloader):
         ds.close()
         del ds, data
         # Force garbage collection (optional but helpful for huge datasets)
-        printt(f"Data saved to {path}")
-        ds = self.loader._load_data("temp_file")[self.variable_name]
+        ds = self.loader._load_data("temp_file")[self.config.index.lower()]
         ds = _ensure_time_chunks(ds)
         printt("Dataset loaded.")
         return ds
@@ -101,8 +96,7 @@ class Sentinel2Dataloader(Dataloader):
                 len(data.location), size=self.n_samples, replace=False
             )
             data = data.isel(location=random_indices)
-        self.variable_name = "evi"
-        data = data[self.variable_name]
+        data = data[self.config.index.lower()]
         data = _ensure_time_chunks(data)
         return data
 
@@ -166,7 +160,13 @@ class Sentinel2Dataloader(Dataloader):
         ].values  # df.loc[sampled_indices, "path"].values  #
 
     def load_file(self, filepath, process_entire_minicube=False):
-        ds = xr.open_zarr(filepath).astype(np.float32)
+        try:
+            ds = xr.open_zarr(
+                filepath,
+            ).astype(np.float32)
+        except Exception as e:
+            print(f"Error loading {filepath}: {e}")
+            return None
 
         ds = self._ensure_coordinates(ds)
 
@@ -186,7 +186,6 @@ class Sentinel2Dataloader(Dataloader):
         return ds
 
     def compute_vegetation_index(self, ds, filename=None):
-        self.variable_name = "evi"
 
         # Compute coarse mask
         if getattr(self.config, "modis_resolution", False) and (
@@ -239,7 +238,7 @@ class Sentinel2Dataloader(Dataloader):
         masked_evi = evi * mask
         data = xr.Dataset(
             data_vars={
-                f"{self.variable_name}": masked_evi,
+                f"{self.config.index.lower()}": masked_evi,
             },
         )
         if self._has_excessive_nan(masked_evi):
@@ -287,47 +286,59 @@ class Sentinel2Dataloader(Dataloader):
         return ds.rename({"x": "longitude", "y": "latitude"})
 
     def _get_random_vegetation_pixel_series(self, ds):
-        """Selects a random time serie vegetation pixel location in the minicube based on SCL classification."""
+        """
+        Select a random vegetation pixel time series from the minicube based on SCL classification.
+        Returns None if no eligible vegetation pixels exist.
+        """
+        lon_idx, lat_idx = self._choose_random_pixel(ds)
+        if (lon_idx == None) and (lat_idx == None):
+            return None
+        selected_data = self._select_data_slice(ds, lon_idx, lat_idx)
 
-        def _has_sufficient_vegetation(ds):
-            """Checks if sufficient vegetation exists across the dataset."""
-            count_of_4 = (ds.SCL == 4).sum(dim="time")
-            mask = count_of_4 > 1 / 4 * (366 / self.config_dict["period_size"]) * len(
-                np.unique(ds.time.dt.year)
+        # Stack spatial dimensions for simpler downstream processing
+        return selected_data.stack(location=("longitude", "latitude"))
+
+    def _find_eligible_vegetation_pixels(self, ds):
+        """Return array of (lon, lat) indices with sufficient vegetation coverage."""
+        vegetation_count = (ds.SCL == 4).sum(dim="time")
+        years = np.unique(ds.time.dt.year)
+        threshold = 0.25 * (366 / self.config_dict["period_size"]) * len(years)
+        mask = vegetation_count > threshold
+        return np.argwhere(mask.values)
+
+    def _choose_random_pixel(self, ds):
+        """Randomly select one pixel index from the eligible vegetation pixels."""
+        eligible_indices = self._find_eligible_vegetation_pixels(ds)
+        if eligible_indices.size == 0:
+            return (None, None)
+        random_index = eligible_indices[np.random.choice(eligible_indices.shape[0])]
+        return tuple(random_index)  # (lon_idx, lat_idx)
+
+    def _select_data_slice(self, ds, lon_idx, lat_idx):
+        """
+        Select a small 12x12 patch (MODIS resolution) or a single pixel from the dataset.
+        """
+        if getattr(self.config, "modis_resolution", True) and (
+            self.config.sensor == "S2"
+        ):
+            lon_size, lat_size = ds.sizes["longitude"], ds.sizes["latitude"]
+            lon_start = min(lon_idx, lon_size - 12)
+            lat_start = min(lat_idx, lat_size - 12)
+            return ds.isel(
+                longitude=slice(lon_start, lon_start + 12),
+                latitude=slice(lat_start, lat_start + 12),
             )
 
-            eligible_indices = np.argwhere(mask.values)
-            return eligible_indices
+        # Otherwise, select a single pixel and expand dimensions
+        selected = ds.isel(longitude=lon_idx, latitude=lat_idx)
+        return selected.expand_dims(
+            longitude=[selected.longitude.values.item()],
+            latitude=[selected.latitude.values.item()],
+        )
 
-        eligible_indices = _has_sufficient_vegetation(ds)
-
-        if eligible_indices.size > 0:
-            random_index = eligible_indices[np.random.choice(eligible_indices.shape[0])]
-            if getattr(self.config, "modis_resolution", True):
-                lon_size, lat_size = ds.sizes["longitude"], ds.sizes["latitude"]
-                lon_start = min(random_index[0], lon_size - 12)
-                lat_start = min(random_index[1], lat_size - 12)
-
-                selected_data = ds.isel(
-                    longitude=slice(lon_start, lon_start + 12),
-                    latitude=slice(lat_start, lat_start + 12),
-                )
-            else:
-                selected_data = ds.isel(
-                    longitude=random_index[0], latitude=random_index[1]
-                )
-                # Expand dimensions
-                selected_data = selected_data.expand_dims(
-                    longitude=[selected_data.longitude.values.item()],
-                    latitude=[selected_data.latitude.values.item()],
-                )
-            # Stack spatial dimensions for easier processing
-            return selected_data.stack(location=("longitude", "latitude"))
-        return None
-
-    def _calculate_vi(self, ds):
-        """Calculates the Vegetation Index (EVI)."""
-        if self.config.index == "EVI_EN":
+    def _calculate_vegetation_index(self, ds):
+        """Calculates the Vegetation Index."""
+        if self.config.index == ("EVI_EN" or "EVI"):
             return (2.5 * (ds.B8A - ds.B04)) / (
                 ds.B8A + 6 * ds.B04 - 7.5 * ds.B02 + 1 + 10e-8
             )
