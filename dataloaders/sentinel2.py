@@ -429,7 +429,7 @@ class Sentinel2Dataloader(Dataloader):
 
         printt(f"Processing entire dataset: {data.sizes['location']} locations.")
         # data = data.compute()
-        self.saver._save_data(data, "vegetation_index")
+        self.saver._save_data(data, self.config.index.lower())
         # Compute Mean Seasonal Cycle (MSC)
         msc = self.compute_msc(data)
         msc = msc.transpose("location", "dayofyear", ...)

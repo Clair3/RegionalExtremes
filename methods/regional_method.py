@@ -113,8 +113,10 @@ def regional_extremes_method(args):
             return_time_series=True
         )  # minicube_path=minicube_path)
         # eco_cluster_processor.apply_pca(scaled_data=msc)
+        eco_cluster_processor.define_limits_eco_clusters()
+        eco_clusters = eco_cluster_processor.find_eco_clusters()
 
-    quantiles_processor.compute_regional_threshold(
+    quantiles_processor.generate_regional_threshold(
         data, eco_clusters_load=eco_cluster_processor.eco_clusters
     )
 

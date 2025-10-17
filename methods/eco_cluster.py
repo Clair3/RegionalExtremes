@@ -110,7 +110,6 @@ class EcoCluster:
         Returns:
             np.ndarray: Transformed data after applying PCA.
         """
-        self._validate_scaled_data(scaled_data)
         transformed_data = xr.apply_ufunc(
             self.pca.transform,
             scaled_data.compute(),
@@ -126,20 +125,6 @@ class EcoCluster:
             self.saver._save_pca_projection(transformed_data, None)
         self.projected_data = transformed_data
         return transformed_data
-
-    def _validate_scaled_data(self, scaled_data: np.ndarray) -> None:
-        """Validates the scaled data to ensure it matches the expected shape."""
-        # if self.config.index in (EARTHNET_INDICES or MODIS_INDICES)
-        expected_shape = 24
-        # else:
-        #    if self.config.compute_variance:
-        #        expected_shape = round(366 / self.config.time_resolution) * 2 + 1
-        #    else:
-        #        expected_shape = round(366 / self.config.time_resolution)
-        #    if scaled_data.shape[1] != expected_shape:
-        #        raise ValueError(
-        #            f"scaled_data should have {expected_shape} columns, but has {scaled_data.shape[1]} columns."
-        #        )
 
     def define_limits_eco_clusters(self) -> list[np.ndarray]:
         """

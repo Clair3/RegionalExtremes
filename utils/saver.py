@@ -85,10 +85,10 @@ class Saver:
     def _save_limits_eco_clusters(self, limits_eco_clusters: list[np.ndarray]) -> None:
         """Saves the limits eco_clusters to a file."""
         limits_eco_clusters_path = self.config.saving_path / "limits_eco_clusters.npz"
-        if os.path.exists(limits_eco_clusters_path):
-            raise FileExistsError(
-                f"The file {limits_eco_clusters_path} already exists. Rewriting is not allowed."
-            )
+        # if os.path.exists(limits_eco_clusters_path):
+        #     raise FileExistsError(
+        #         f"The file {limits_eco_clusters_path} already exists. Rewriting is not allowed."
+        #     )
         np.savez(limits_eco_clusters_path, *limits_eco_clusters)
         printt(f"Limits eco_clusters saved to {limits_eco_clusters_path}")
 
@@ -128,7 +128,7 @@ class Saver:
 
         if "time" in data.dims and "location" in data.dims:
             data = data.chunk({"time": 50, "location": 100})
-        elif "dayofyear" in data.dims:
+        elif "dayofyear" in data.dims and "location" in data.dims:
             data = data.chunk({"location": 50, "dayofyear": -1})
         try:
             data.to_zarr(path, mode="w")  # , consolidated=True)
