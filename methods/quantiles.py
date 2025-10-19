@@ -100,53 +100,6 @@ class QuantilesBase(ABC):
             """Prepare data with eco_cluster coordinates."""
             return data.assign_coords(eco_cluster=("location", labels))
 
-        # Define the function to map thresholds to clusters
-        def map_thresholds_to_clusters(grp):
-            """
-            Maps thresholds to clusters based on the eco-cluster label.
-
-            Args:
-                grp: xarray DataArray group for a specific eco-cluster
-
-            Returns:
-                xarray.DataArray: Thresholds for the current eco-cluster
-            """
-            # Get the string label for the current group
-            eco_cluster_label = grp.eco_cluster.values[0]
-
-            # Parse the label back into its components
-            comp_values = list(map(int, eco_cluster_label.split("_")))
-            # comp_values = [0, 10, 3]
-            coords = self.thresholds.eco_cluster.to_index()
-            # [(0, 10, 3) (16, 4, 0) (30, 19, 2) (31, 0, 4)]
-
-            # Check if the specific combination exists
-            cluster_key = tuple(comp_values)
-            if cluster_key in coords:
-                return self.thresholds.sel(
-                    eco_cluster={
-                        "component_1": comp_values[0],
-                        "component_2": comp_values[1],
-                        "component_3": comp_values[2],
-                    }
-                ).thresholds
-            # Create a NaN array with the same structure as self.thresholds
-            nan_array = xr.full_like(
-                self.thresholds.isel(eco_cluster=0),  # Use first cluster as template
-                fill_value=np.nan,
-            )
-
-            # Ensure the nan_array has the same coordinates as the original selection would have
-            nan_array = nan_array.assign_coords(
-                {
-                    "component_1": comp_values[0],
-                    "component_2": comp_values[1],
-                    "component_3": comp_values[2],
-                }
-            )
-
-            return nan_array.thresholds
-
         # Initialize output array
         extremes_array = xr.full_like(data.astype(float), np.nan)
 
@@ -156,7 +109,7 @@ class QuantilesBase(ABC):
         grouped = data.groupby("eco_cluster")
 
         # Calculate thresholds
-        thresholds = grouped.map(lambda grp: map_thresholds_to_clusters(grp))
+        thresholds = grouped.map(lambda grp: self.map_thresholds_to_clusters(grp))
 
         thresholds = thresholds.sel(eco_cluster=data["eco_cluster"])
         thresholds = thresholds.drop_vars(["eco_cluster"])
@@ -164,12 +117,13 @@ class QuantilesBase(ABC):
         self.saver._save_data(thresholds, "thresholds")
 
         # Calculate and save extremes if needed
-        extremes = grouped.map(
-            lambda grp: self._apply_thresholds(
-                grp,
-                map_thresholds_to_clusters(grp),
-            )
-        )
+        # extremes = grouped.map(
+        #     lambda grp: self._apply_thresholds(
+        #         grp,
+        #         map_thresholds_to_clusters(grp),
+        #     )
+        # )
+        extremes = self._compute_extremes_per_grp(grouped, thresholds)
         extremes_array.values = extremes.values
         self.saver._save_data(extremes_array, "extremes")
         return thresholds, extremes_array
@@ -308,7 +262,7 @@ class QuantilesBase(ABC):
         # return_only_thresholds=False,
     ):
         """
-        Assign quantile levels to data data.
+        Assign quantile levels to data.
 
         Args:
             data (xarray.DataArray): Data used to compute the quantiles.
@@ -319,19 +273,6 @@ class QuantilesBase(ABC):
         """
         assert self.config.method == "regional"
         data = data.chunk("auto")
-
-        # Compute quantiles based on the method
-        return self._compute_quantiles_per_grp(data)
-
-    def _compute_quantiles_per_grp(self, data):
-        """
-        Compute regional quantiles for the provided data.
-        Args:
-            data (dask.array.Array): Flattened data to compute quantiles for.
-            quantile_levels (np.ndarray): Combined lower and upper quantile levels.
-        Returns:
-            xarray.DataArray: Regional quantiles as an xarray.DataArray.
-        """
 
         data = data.data
         non_nan_count = da.count_nonzero(~da.isnan(data))
@@ -360,6 +301,7 @@ class QuantilesBase(ABC):
         data: xr.DataArray,
         thresholds,
     ):
+
         extremes = xr.full_like(data.astype(float), np.nan)
         if thresholds is np.nan:
             return extremes
@@ -368,7 +310,6 @@ class QuantilesBase(ABC):
             data,
             thresholds,
         )
-
         for i, mask in enumerate(masks):
             extremes = xr.where(mask, self.quantile_levels_combined[i], extremes)
         return extremes
@@ -409,6 +350,61 @@ class QuantilesBase(ABC):
         ]
         return masks
 
+    # Define the function to map thresholds to clusters
+    def map_thresholds_to_clusters(self, grp):
+        """
+        Maps thresholds to clusters based on the eco-cluster label.
+
+        Args:
+            grp: xarray DataArray group for a specific eco-cluster
+
+        Returns:
+            xarray.DataArray: Thresholds for the current eco-cluster
+        """
+        # Get the string label for the current group
+        eco_cluster_label = grp.eco_cluster.values[0]
+
+        # Parse the label back into its components
+        comp_values = list(map(int, eco_cluster_label.split("_")))
+        # comp_values = [0, 10, 3]
+        coords = self.thresholds.eco_cluster.to_index()
+        # [(0, 10, 3) (16, 4, 0) (30, 19, 2) (31, 0, 4)]
+
+        # Check if the specific combination exists
+        cluster_key = tuple(comp_values)
+        if cluster_key in coords:
+            return self.thresholds.sel(
+                eco_cluster={
+                    "component_1": comp_values[0],
+                    "component_2": comp_values[1],
+                    "component_3": comp_values[2],
+                }
+            ).thresholds
+        # Create a NaN array with the same structure as self.thresholds
+        nan_array = xr.full_like(
+            self.thresholds.isel(eco_cluster=0),  # Use first cluster as template
+            fill_value=np.nan,
+        )
+
+        # Ensure the nan_array has the same coordinates as the original selection would have
+        nan_array = nan_array.assign_coords(
+            {
+                "component_1": comp_values[0],
+                "component_2": comp_values[1],
+                "component_3": comp_values[2],
+            }
+        )
+
+        return nan_array.thresholds
+
+    def _compute_extremes_per_grp(self, grouped):
+        return grouped.map(
+            lambda grp: self._apply_thresholds(
+                grp,
+                self.map_thresholds_to_clusters(grp),
+            )
+        )
+
 
 class QuantilesPerDoy(QuantilesBase):
     def _compute_thresholds_per_grp(self, data, labels, eco_cluster_index):
@@ -439,3 +435,15 @@ class QuantilesPerDoy(QuantilesBase):
             name="thresholds",
         )
         return thresholds_by_cluster
+
+    def _compute_extremes_per_grp(self, grouped, thresholds):
+        return grouped.map(
+            lambda grp: grp.groupby("time.dayofyear").map(
+                lambda grp_day: self._apply_thresholds(
+                    grp_day,
+                    self.map_thresholds_to_clusters(grp).sel(
+                        dayofyear=grp_day["time.dayofyear"][0]
+                    ),
+                )
+            )
+        )

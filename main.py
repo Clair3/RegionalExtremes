@@ -178,7 +178,7 @@ if __name__ == "__main__":
     parent_folder = "/Net/Groups/BGI/work_5/scratch/Somalia_VCI_test/S2_samples/"  # "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/"  #
     subfolders = [
         folder for folder in os.listdir(parent_folder) if folder[-4:] == ".zip"
-    ][:2]
+    ][:1]
     # existing = set(os.listdir(args.saving_path))
     #
     # subfolders = [
@@ -193,18 +193,19 @@ if __name__ == "__main__":
     if args.method == "regional":
         # Train the regional extreme method on a subset of locations
         # if args.saving_path is None:
-        regional_extremes_method(args)
+        # regional_extremes_method(args)
         # Apply the regional extremes method on a single minicube
 
         @delayed
         def process_sample(folder):
-            try:
-                regional_extremes_minicube(
-                    args,
-                    minicube_path=parent_folder + folder,
-                )
-            except Exception as e:
-                print(f"error with {folder} - {e}")
+            # try:
+            regional_extremes_minicube(
+                args,
+                minicube_path=parent_folder + folder,
+            )
+
+        # except Exception as e:
+        #    print(f"error with {folder} - {e}")
 
         tasks = [process_sample(sample) for sample in subfolders]
         # Trigger execution
