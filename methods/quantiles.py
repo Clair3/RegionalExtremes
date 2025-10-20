@@ -21,8 +21,8 @@ from RegionalExtremesPackage.utils.config import (
 np.set_printoptions(threshold=sys.maxsize)
 
 
-@staticmethod
 def quantiles(config: InitializationConfig):
+    """Factory returning QuantilesPerDoy or QuantilesBase depending on config."""
     if config.dayofyear_extreme:
         return QuantilesPerDoy(config)
     else:
@@ -30,6 +30,7 @@ def quantiles(config: InitializationConfig):
 
 
 class QuantilesBase(ABC):
+
     def __init__(
         self,
         config: InitializationConfig,
@@ -44,7 +45,6 @@ class QuantilesBase(ABC):
             n_eco_clusters (int): Number of eco_clusters per component to define the boxes. Number of boxes = n_eco_clusters**n_components
         """
         self.config = config
-        # self.eco_clusters = eco_clusters
         self.lower_quantiles = self.config.lower_quantiles
         self.upper_quantiles = self.config.upper_quantiles
         self.quantile_levels_combined = np.concatenate(
@@ -116,16 +116,15 @@ class QuantilesBase(ABC):
         # Save thresholds
         self.saver._save_data(thresholds, "thresholds")
 
-        # Calculate and save extremes if needed
-        # extremes = grouped.map(
-        #     lambda grp: self._apply_thresholds(
-        #         grp,
-        #         map_thresholds_to_clusters(grp),
-        #     )
-        # )
-        extremes = self._compute_extremes_per_grp(grouped, thresholds)
+        extremes = self._compute_extremes_per_grp(grouped)
         extremes_array.values = extremes.values
         self.saver._save_data(extremes_array, "extremes")
+
+        vci_array = xr.full_like(data.astype(float), np.nan)
+        vci = self._compute_vci_per_grp(grouped)
+        vci = vci_array.values = vci.values
+        self.saver._save_data(vci_array, "vci")
+
         return thresholds, extremes_array
 
     def generate_regional_threshold(self, data, eco_clusters_load):
@@ -405,6 +404,25 @@ class QuantilesBase(ABC):
             )
         )
 
+    def _apply_vci(
+        self,
+        data: xr.DataArray,
+        thresholds,
+    ):
+
+        extremes = xr.full_like(data.astype(float), np.nan)
+        if thresholds is np.nan:
+            return extremes
+
+        min_data = thresholds.sel(quantile=0)
+        max_data = thresholds.sel(quantile=1)
+        return (data - min_data) / (max_data - min_data)
+
+    def _compute_vci_per_grp(self, grouped):
+        return grouped.map(
+            lambda grp: self._apply_vci(grp, self.map_thresholds_to_clusters(grp))
+        )
+
 
 class QuantilesPerDoy(QuantilesBase):
     def _compute_thresholds_per_grp(self, data, labels, eco_cluster_index):
@@ -436,10 +454,22 @@ class QuantilesPerDoy(QuantilesBase):
         )
         return thresholds_by_cluster
 
-    def _compute_extremes_per_grp(self, grouped, thresholds):
+    def _compute_extremes_per_grp(self, grouped):
         return grouped.map(
             lambda grp: grp.groupby("time.dayofyear").map(
                 lambda grp_day: self._apply_thresholds(
+                    grp_day,
+                    self.map_thresholds_to_clusters(grp).sel(
+                        dayofyear=grp_day["time.dayofyear"][0]
+                    ),
+                )
+            )
+        )
+
+    def _compute_vci_per_grp(self, grouped):
+        return grouped.map(
+            lambda grp: grp.groupby("time.dayofyear").map(
+                lambda grp_day: self._apply_vci(
                     grp_day,
                     self.map_thresholds_to_clusters(grp).sel(
                         dayofyear=grp_day["time.dayofyear"][0]
