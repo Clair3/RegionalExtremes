@@ -915,81 +915,20 @@ class PlotsSentinel2(Plots):
 if __name__ == "__main__":
     args = parser_arguments().parse_args()
 
-    args.saving_path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-10-01_17:22:11_low_cloud/EVI_EN/"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_12:13:03_full_fluxnet_therightone/EVI_EN"
-
-    # subfolders = [
-    #     # "30TVK_157southwest1260_combine.zarr",
-    #     # "32SME_345southwest1260_combine.zarr",
-    #     # "33SVB_095southwest1260_combine.zarr",
-    #     # "37TDL_255southwest1260_combine.zarr",
-    #     # "37UDB_063southwest1260_combine.zarr",
-    #     "S2_38.3598_22.1618_34SEH_390.zarr",
-    #     "S2_55.0510_-1.8846_30UWG_261.zarr",
-    # ]
+    args.saving_path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/PassageProject/2025-10-17_09:51:20_somalia_16d/NDVI/"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-04_12:13:03_full_fluxnet_therightone/EVI_EN"
 
     subfolders = [
-        "DE-Hai_51.08_10.45_v0.zarr",
-        # "DE-Tha_50.96_13.57_v0.zarr",
-        # "DE-HoH_52.09_11.22_v0.zarr",
-        # "DE-Obe_50.79_13.72_v0.zarr",
-        # "DE-Hzd_50.96_13.49_v0.zarr",
-        # "custom_cube_50.90_11.56.zarr",
-        # "DE-Hai_51.08_10.45_v0.zarr",
-        # "DE-RuS_50.87_6.45_v0.zarr",
-        # "BE-Bra_51.31_4.52_v0.zarr",
-        # "ES-LM1_39.94_-5.78_v0.zarr",
-        # "ES-LM2_39.93_-5.78_v0.zarr",
-        # "ES-LMa_39.94_-5.77_v0.zarr",
-        # "ES-Cnd_37.91_-3.23_v0.zarr",
-        # "FR-LGt_47.32_2.28_v0.zarr",
-        # "DE-Lnf_51.33_10.37_v0.zarr",
-        # "DE-Geb_51.10_10.91_v0.zarr",
-        # "DE-Wet_50.45_11.46_v0.zarr",
-        # "DE-Bay_50.14_11.87_v0.zarr",
-        # "DE-Meh_51.28_10.66_v0.zarr",
-        # "custom_cube_44.17_5.24.zarr",
-        # "custom_cube_44.24_5.14.zarr",
-        # "custom_cube_47.31_0.18.zarr",
-        # "UK-ESa_55.91_-2.86_v0.zarr",
-        # "AT-Neu_47.12_11.32_v0.zarr",
-    ]  #
-    ## subfolders = [
-    ##    "ES-LM1_39.94_-5.78_v0.zarr",
-    #    "ES-LM2_39.93_-5.78_v0.zarr",
-    #    "ES-LMa_39.94_-5.77_v0.zarr",
-    #    "DE-Hai_51.08_10.45_v0.zarr",
-    #    "ES-Cnd_37.91_-3.23_v0.zarr",
-    #    "FR-LGt_47.32_2.28_v0.zarr",
-    #    # "DE-Lnf_51.33_10.37_v0.zarr",
-    #    # "DE-Geb_51.10_10.91_v0.zarr",
-    #    # "DE-Wet_50.45_11.46_v0.zarr",
-    #    # "DE-Bay_50.14_11.87_v0.zarr",
-    #    # "DE-Meh_51.28_10.66_v0.zarr",
-    #    # "custom_cube_50.90_11.56.zarr",
-    #    # "custom_cube_44.17_5.24.zarr",
-    #    # "custom_cube_44.24_5.14.zarr",
-    #    # "custom_cube_47.31_0.18.zarr",
-    # ]
-    # subfolders = [
-    # #  subfolders = [
-    #      ""
-    #      # "IT-Tor_45.84_7.58_v0.zarr"
-    #      # "customcube_CO-MEL_1.95_-72.60_S2_v0.zarr/customcube_CO-MEL_1.95_-72.60_S2_v0.zarr"
-    #      "ES-Cnd_37.91_-3.23_v0.zarr",
-    #      "DE-RuS_50.87_6.45_v0.zarr",
-    #  ]
-    # subfolders = [
-    #     folder for folder in os.listdir(args.saving_path) if folder[:2] == "S2"
-    # ]
-
+        folder for folder in os.listdir(args.saving_path) if folder[:2] == "S2"
+    ]
     for minicube_name in subfolders:
-        config = InitializationConfig(args)
-        plot = PlotsSentinel2(config=config, minicube_name=minicube_name)
-        plot.plot_minicube_pca_projection()
-        # plot.plot_rgb()
-        plot.plot_minicube_eco_clusters()
-        plot.plot_msc(colored_by_eco_cluster=True)
-        plot.plot_extremes()
+        try:
+            config = InitializationConfig(args)
+            plot = PlotsSentinel2(config=config, minicube_name=minicube_name)
+            plot.plot_minicube_pca_projection()
+            # plot.plot_rgb()
+            plot.plot_minicube_eco_clusters()
+            plot.plot_msc(colored_by_eco_cluster=True)
+            plot.plot_extremes()
         # try:
         #     plot.plot_location_in_europe()
         #     # for quantile in quantiles:
@@ -1002,9 +941,9 @@ if __name__ == "__main__":
         #     # plot.plot_kl_div()
         #     # plot.plot_robin()
         #     plot.plot_rgb()
-#
-# except:
-#     print(f"error with {minicube_name}")
+        #
+        except:
+            print(f"error with {minicube_name}")
 
 # for minicube_name in subfolders:
 #     config = InitializationConfig(args)

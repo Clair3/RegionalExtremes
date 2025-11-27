@@ -16,10 +16,10 @@ class Sentinel2Dataloader(Dataloader):
         Otherwise, sample and process new data, then save for future use.
         """
         # Attempt to load cached training data
-        training_data = self.loader._load_data("temp_file")
-        # path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-10-09_11:13:49_somalia/NDVI/temp_file.zarr"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-20_12:06:49_S2_low_res/EVI_EN/temp_file.zarr"
-        # training_data = xr.open_zarr(path)
-        # training_data = cfxr.decode_compress_to_multi_index(training_data, "location")
+        # training_data = self.loader._load_data("temp_file")
+        path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/comparison/S2LR_regional_20_lowcloud/EVI/temp_file.zarr"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-20_12:06:49_S2_low_res/EVI_EN/temp_file.zarr"
+        training_data = xr.open_zarr(path)
+        training_data = cfxr.decode_compress_to_multi_index(training_data, "location")
         if training_data is not None:
             if "evi" in training_data:
                 training_data = training_data.rename({"evi": self.config.index.lower()})
@@ -59,7 +59,6 @@ class Sentinel2Dataloader(Dataloader):
         data = [delayed(self.load_file)(path) for path in sample_paths]
         with ProgressBar():
             data = compute(*data, scheduler="processes")
-
         ds = [d for d in data if isinstance(d, xr.Dataset)]
         ds = xr.concat(ds, dim="location", combine_attrs="override")
         location_index = ds.location.to_index()
@@ -116,7 +115,32 @@ class Sentinel2Dataloader(Dataloader):
         ds = self.generate_masked_vegetation_index(ds, filename=filepath.stem)
         if ds is None:
             return None
-        ds = self.compute_max_per_period(ds, period_size=16)
+        ds = self.compute_max_per_period(ds, period_size=self.config.time_resolution)
+        return ds
+
+    def load_file(self, filepath, process_entire_minicube=False):
+        try:
+            ds = xr.open_zarr(
+                filepath,
+            ).astype(np.float32)
+        except Exception as e:
+            print(f"Error loading {filepath}: {e}")
+            return None
+
+        ds = self._ensure_coordinates(ds)
+        if not process_entire_minicube:
+            # Select a random vegetation location
+            ds = self._get_random_vegetation_pixel_series(ds)
+            if ds is None:
+                return None
+        else:
+            ds = ds.stack(location=("longitude", "latitude"))
+            self.saver.update_saving_path(filepath.stem)
+
+        ds = self.generate_masked_vegetation_index(ds, filename=filepath.stem)
+        if ds is None:
+            return None
+        ds = self.compute_max_per_period(ds, period_size=self.config.time_resolution)
         return ds
 
     def generate_masked_vegetation_index(self, ds, filename=None):
@@ -190,7 +214,7 @@ class Sentinel2Dataloader(Dataloader):
         """Return array of (lon, lat) indices with sufficient vegetation coverage."""
         vegetation_count = (ds.SCL == 4).sum(dim="time")
         years = np.unique(ds.time.dt.year)
-        threshold = 0.25 * (366 / self.config_dict["period_size"]) * len(years)
+        threshold = 0.25 * (366 / self.config.time_resolution) * len(years)
         mask = vegetation_count > threshold
         return np.argwhere(mask.values)
 
@@ -362,14 +386,10 @@ class Sentinel2Dataloader(Dataloader):
     def get_config(self):
         # Define window sizes for gap-filling and cloud noise removal
         config = dict()
-        config["nan_fill_windows"] = [3, 4]
+        # config["nan_fill_windows"] = [3, 4]
         config["noise_half_windows"] = [1]
-        config["cumulative_evi_window"] = 5
-        config["period_size"] = 16
-        config["smoothing_window_msc"] = 5
+        config["smoothing_window_msc"] = 7
         config["poly_msc"] = 2
-        config["deseasonalization"] = True
-
         return config
 
     def _remove_low_vegetation_location(self, vegetation_index, threshold=0.1):
@@ -439,16 +459,8 @@ class Sentinel2Dataloader(Dataloader):
             return msc
 
         # Step 3: Deseasonalization
-        if self.config_dict["deseasonalization"]:
-            data = self._deseasonalize(data, msc)  # needed?
-            self.saver._save_data(data, "deseasonalized")
-
-        # Step 5: Cumulative EVI computation
-        # data = self.cumulative_evi(
-        #     data, window_size=dict_config["cumulative_evi_window"]
-        # )
-        # self.saver._save_data(data, "cumulative_evi")
-
+        data = self._deseasonalize(data, msc)  # needed?
+        self.saver._save_data(data, "deseasonalized")
         data = _ensure_time_chunks(data)
         data = data.transpose("location", "time", ...).compute()
         return msc, data

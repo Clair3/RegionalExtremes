@@ -50,11 +50,6 @@ To execute the main script, use the following command:
 
 3. **Resuming from Saved Experiments**:
    - If the argument `path_load_experiment` is provided, the script will load saved intermediate steps and only compute the remaining steps.
-
-## Known Issues
-
-- **Logging**: 
-   - Although there is a `log.txt` file for logging, errors are not currently being saved to this file. This issue is yet to be resolved.
   
 - **Execution Time**:
    - Processing MODIS data for Europe typically takes around 20 minutes.

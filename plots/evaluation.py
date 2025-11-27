@@ -11,6 +11,7 @@ from dask import delayed, compute
 from pyproj import Transformer
 from collections import Counter
 import pickle as pk
+from pathlib import Path
 
 
 def kl_divergence_gaussians(mu_p, sigma_p, mu_q, sigma_q):
@@ -878,7 +879,6 @@ def compute_extremes(
 ) -> xr.DataArray:
     path = f"{path_data1}/{sample}/extremes.zarr"
     # path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-20_12:06:49_S2_low_res/EVI_EN/{sample}/extremes.zarr"
-    print("THRESHOLD", threshold)
     ds = xr.open_zarr(path)
     s2 = cfxr.decode_compress_to_multi_index(ds, "location").extremes
 
@@ -920,7 +920,6 @@ def compute_extremes(
 
     modis = modis.where(valid_mask)
     s2 = s2.where(valid_mask)
-    sys.exit()
     if threshold < 0.501:
         s2_extreme = s2 <= threshold
         modis_extreme = modis <= threshold
@@ -1000,7 +999,7 @@ def compute_extremes(
 
     ds = missed_fraction.to_dataset(name=f"{type}_fraction_{dim}")
     ds = cfxr.encode_multi_index_as_compress(ds, "location")
-    save_path = f"{path_data2}/{sample}/{savename}.zarr"
+    save_path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/comparison/results/{sample}/{savename}"
     ds = ds.chunk("auto")
     ds.to_zarr(save_path, mode="w", consolidated=True)
     print(f"agreement index computed for:", sample)
@@ -1010,11 +1009,9 @@ def compute_dice(
     sample: str, path_data1: str, path_data2: str, savename: str, threshold=0.1
 ) -> xr.DataArray:
     path = f"{path_data1}/{sample}/extremes.zarr"
-    # path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-29_12:08:16_S2_low_res_20/EVI_EN/{sample}/extremes.zarr"
     ds = xr.open_zarr(path)
     s2 = cfxr.decode_compress_to_multi_index(ds, "location").extremes
 
-    # path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-04-14_13:17:58_full_fluxnet_therightone_highveg_modis/EVI_MODIS/{sample}/extremes.zarr"
     path = f"{path_data2}/{sample}/extremes.zarr"
     ds = xr.open_zarr(path)
     modis = cfxr.decode_compress_to_multi_index(ds, "location").extremes
@@ -1044,11 +1041,7 @@ def compute_dice(
         "location"
     )  # .unstack("location")
     s2 = s2.drop_duplicates("location")  # .unstack("location")
-    # # s2, modis = xr.align(s2, modis, join="inner")
-    # common_locations_modis = xr.align(
-    #     thresholds_modis.location, modis.location, join="inner"
-    # )[0]
-    # common_locations = xr.align(s2.location, common_locations_modis, join="inner")[0]
+
     common_time = xr.align(s2.time, modis.time, join="inner")[0]
     ds_tr = thresholds_modis.sel(quantile=0.10)
     unique_values = np.unique(ds_tr.values)
@@ -1073,23 +1066,6 @@ def compute_dice(
         # Mask locations where the threshold == value
         mask = ds_tr == modis_pixel_indice
         masked = ds_tr.where(mask.compute(), drop=True)
-        # modis_location = masked.location  # .values
-        # if len(modis_pixel) < 50:
-        #    mean_lon = modis_pixel.location.longitude.mean().item()
-        #    mean_lat = modis_pixel.location.latitude.mean().item()
-        #
-        #    # Create a DataArray filled with NaN
-        #    sos_std = xr.full_like(s2.sel(location=modis_pixel).mean(), np.nan)
-        #
-        #    # Expand to have lon/lat coordinates
-        #    sos_std = sos_std.expand_dims(
-        #        longitude=[mean_lon],
-        #        latitude=[mean_lat],
-        #    )
-        #
-        #    # Stack into a multi-index for location
-        #    sos_std = sos_std.stack(location=["longitude", "latitude"])
-        #    return sos_std
 
         modis_pixel = modis_extreme.sel(location=masked.location)
         s2_pixel = s2_extreme.sel(location=masked.location)
@@ -1098,12 +1074,6 @@ def compute_dice(
         # union = (modis_pixel | s2_pixel).sum(dim="location")
         modis_sum = modis_pixel.sum()
         s2_sum = s2_pixel.sum()
-
-        # avoid divide by zero
-        # jaccard = intersection / union
-        # jaccard = jaccard.where(union > 0)
-        # # average over time
-        # jaccard = jaccard.mean(dim="time", skipna=True)
         denom = modis_sum + s2_sum
         safe_denom = xr.where(denom > 0 + 1e-5, denom, np.nan)
         dice = 2 * intersection / safe_denom
@@ -1127,7 +1097,7 @@ def compute_dice(
 
     ds = missed_fraction.to_dataset(name=f"jaccard")
     ds = cfxr.encode_multi_index_as_compress(ds, "location")
-    save_path = f"{path_data2}/{sample}/{savename}.zarr"
+    save_path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/comparison/results/{sample}/{savename}"
     ds = ds.chunk("auto")
     ds.to_zarr(save_path, mode="w", consolidated=True)
     print(f"agreement index computed for:", sample)
@@ -1456,46 +1426,39 @@ if __name__ == "__main__":
     parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/"
     subfolders = [folder[:-4] for folder in os.listdir(parent_folder)]
 
-    path_data1 = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN"
-    path_data2 = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-29_12:08:16_S2_low_res_20/EVI_EN"
-    savename = f"missed_extremes_fraction_time_0.1_s2_vs_s2_coarse"
-    print(savename)
-    existing = set(os.listdir(path_data2))
+    # # Base experiments folder
+    # BASE_DIR = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/comparison"
+    #
+    # # Regex pattern to extract the 4 parameters
+    # # e.g.MODIS_regional_20_lowcloud
+    # PATTERN = re.compile(
+    #     r".(?P<sensor>[A-Za-z0-9]+)_(?P<method>[A-Za-z]+)_(?P<clustering_resolution>\d+)_(?P<preprocessing>[A-Za-z]+)$"
+    # )
+    # # create a dataframe with the path of the experiment for each set of parameters
+    # # for sensors in pd["MODIS", "S2LR"]:
+    # #    for binning resolution in [5, 20, 50]:
+    # #        for preprocessing in ["lowcloud", "highcloud"]:
 
+    path_data1 = Path(
+        "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/comparison/S2_regional_20_lowcloud/EVI_EN"
+    )
+    path_data2 = Path(
+        "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/comparison/MODIS_local_None_lowcloud/EVI"
+    )
+    savename_dice = f"dice_{str(path_data1.parent.name)}_{str(path_data2.parent.name)}"
+    savename = (
+        f"missed_fraction_{str(path_data1.parent.name)}_{str(path_data2.parent.name)}"
+    )
+
+    # existing = set(os.listdir(path_data2))
+    #
     # subfolders = [
     #     folder
-    #     for folder in subfolders_0
+    #     for folder in subfolders
     #     if not os.path.isdir(os.path.join(path_data2, folder, f"{savename}.zarr"))
     # ]
-    # subfolders = [
-    #     "DE-RuW_50.50_6.33_v0.zarr",
-    #     "IT-TrF_45.82_7.56_v0.zarr",
-    #     "IT-MBo_46.01_11.05_v0.zarr",
-    #     "DE-RuW_50.50_6.33_v0.zarr",
-    #     "DK-Skj_55.91_8.40_v0.zarr",
-    #     "IE-Cra_53.32_-7.64_v0.zarr",
-    #     "IT-Bsn_45.12_7.16_v0.zarr",
-    #     "DK-Fou_56.48_9.59_v0.zarr",
-    #     "CZ-BK1_49.50_18.54_v0.zarr",
-    # ]
+
     print(f"Processing {len(subfolders)} samples...")
-    # parent_folder = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN/"
-    # parent_folder2 = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:10:25_local_sentinel2_modisres/EVI_EN/" #"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN/
-    # #subfolders = [folder for folder in os.listdir(parent_folder) if (folder[-4:] ==".zarr" and "s2_frac.zarr" not in os.listdir(os.path.join(parent_folder, folder)))]
-    # subfolders = [
-    #     folder
-    #     for folder in os.listdir(parent_folder)
-    #     if not os.path.isdir(os.path.join(parent_folder2, folder))  # Only directories
-    # ] #[:20]
-    # subfolders = [
-    #      "ES-Cnd_37.91_-3.23_v0.zarr",
-    #      # "DE-Lnf_51.33_10.37_v0.zarr",
-    # ]/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-26_11:30:09_S2_low_res_30
-    #     "UK-ESa_55.91_-2.86_v0.zarr",
-    #     "FR-LGt_47.32_2.28_v0.zarr",
-    # ]
-    # sample = ["ES-Cnd_37.91_-3.23_v0.zarr"]
-    # compute_extremes(sample[0], type="missed", dim="time", threshold=0.1)
 
     @delayed
     def process_sample(sample):
@@ -1518,20 +1481,37 @@ if __name__ == "__main__":
             #     sample=sample,
             #     path_data1=path_data1,
             #     path_data2=path_data2,
-            #     savename=savename,
+            #     savename=savename_dice + "_0.01",
+            #     threshold=0.1,
+            # )
+            #
+            # compute_dice(
+            #     sample=sample,
+            #     path_data1=path_data1,
+            #     path_data2=path_data2,
+            #     savename=savename_dice + "_0.05",
             #     threshold=0.05,
             # )
+
             compute_extremes(
                 sample,
                 path_data1=path_data1,
                 path_data2=path_data2,
-                savename=savename,
+                savename=savename + "_0.01",
                 type="missed",
                 dim="time",
                 threshold=0.1,
             )
-        #    # remove the file
-        #    shutil.rmtree(os.path.join(sample_path, "kl_div_raoq.zarr"))
+
+            compute_extremes(
+                sample,
+                path_data1=path_data1,
+                path_data2=path_data2,
+                savename=savename + "_0.05",
+                type="missed",
+                dim="time",
+                threshold=0.05,
+            )
         ## compute_variance(sample)
         # compute_raoq(sample)
         ## compute_diversity(sample, metric="raoq")

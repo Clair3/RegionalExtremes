@@ -8,6 +8,7 @@ from scipy.spatial.distance import pdist, squareform
 import dask.array as da
 from abc import ABC
 
+from typing import Optional, Tuple
 
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
@@ -17,8 +18,6 @@ from RegionalExtremesPackage.dataloaders import dataloader
 from RegionalExtremesPackage.utils.config import (
     InitializationConfig,
 )
-
-np.set_printoptions(threshold=sys.maxsize)
 
 
 def quantiles(config: InitializationConfig):
@@ -31,101 +30,81 @@ def quantiles(config: InitializationConfig):
 
 class QuantilesBase(ABC):
 
-    def __init__(
-        self,
-        config: InitializationConfig,
-    ):
+    def __init__(self, config: InitializationConfig):
         """
-        Compute the regional extremes by defining boxes of similar region using a PCA computed on the mean seasonal cycle of the samples.
-        Each values of the msc is considered as an independent component.
+        Base class for quantile threshold computation.
 
         Args:
-            config (InitializationConfig): Shared attributes across the classes.
-            n_components (int): number of components of the PCA
-            n_eco_clusters (int): Number of eco_clusters per component to define the boxes. Number of boxes = n_eco_clusters**n_components
+            config: InitializationConfig with attributes used across methods.
         """
         self.config = config
-        self.lower_quantiles = self.config.lower_quantiles
-        self.upper_quantiles = self.config.upper_quantiles
+        self.lower_quantiles = np.asarray(self.config.lower_quantiles)
+        self.upper_quantiles = np.asarray(self.config.upper_quantiles)
         self.quantile_levels_combined = np.concatenate(
             (self.lower_quantiles, self.upper_quantiles)
         )
-        # Loader class to load intermediate steps.
+
+        # Loader / Saver (replace stubs above with your real classes)
         self.loader = Loader(config)
-        # Saver class to save intermediate steps.
         self.saver = Saver(config)
-        if self.config.load_existing_experiment:
-            # Load every variable if already available, otherwise return None.
-            # self.eco_clusters = self.loader._load_data("eco_clusters")
-            self.thresholds = self.loader._load_data(
-                "thresholds", location=False, cluster=True
-            )
 
-        else:
-            # self.eco_clusters = None
-            self.thresholds = None
+        # If user requested loading existing experiment, try to load thresholds
+        self.thresholds: Optional[xr.DataArray] = None
+        if getattr(self.config, "load_existing_experiment", False):
+            loaded = self.loader._load_data("thresholds", location=False, cluster=True)
+            if loaded is not None:
+                self.thresholds = loaded
 
-    def apply_regional_threshold(self, data, eco_clusters_load):
+    def apply_regional_threshold(
+        self, data: xr.DataArray, eco_clusters_load: xr.DataArray
+    ) -> Tuple[xr.DataArray, xr.DataArray]:
         """
-        Compute and save a xarray indicating the quantiles of extremes using the regional threshold definition.
+        Compute extremes and vci for the given data grouped by ECO clusters.
 
         Args:
-            data (xarray.DataArray): Input data
-
-        Returns:
-            tuple: (thresholds, extremes_array) if not compute_only_thresholds, else thresholds
-
-        Raises:
-            AssertionError: If config method is not "regional"
-            ValueError: If eco_clusters or thresholds are not properly configured
+            data: xarray DataArray with dims that include "location" and "time".
+            eco_clusters_load: DataArray with shape (location, components...) describing cluster membership.
         """
-        # Validate inputs
         if not isinstance(data, xr.DataArray):
-            raise TypeError("data must be an xarray DataArray")
+            raise TypeError("`data` must be an xarray.DataArray")
 
-        assert self.config.method == "regional", "Method must be regional"
+        if self.config.method != "regional":
+            raise AssertionError("Method must be 'regional' for regional thresholds")
 
-        # Initialize parameters
-        # compute_only_thresholds = self.config.is_generic_xarray_dataset
+        # helper to create textual labels for eco clusters (e.g. "0_10_3")
+        def create_eco_cluster_labels(ecocluster):
+            return np.array(["_".join(map(str, row)) for row in ecocluster.values])
 
-        def create_eco_cluster_labels(eco_clusters_load):
-            """Create standardized eco-cluster labels."""
-            # if not hasattr(self, "eco_clusters"):  # or not self.eco_clusters:
-            #     raise ValueError("eco_clusters not properly initialized")
-            return np.array(
-                ["_".join(map(str, cluster)) for cluster in eco_clusters_load.values]
-            )
+        def prepare_data_with_labels(data_arr, labels_arr):
+            return data_arr.assign_coords(eco_cluster=("location", labels_arr))
 
-        def prepare_data(data, labels):
-            """Prepare data with eco_cluster coordinates."""
-            return data.assign_coords(eco_cluster=("location", labels))
+        # Prepare labels and grouped object
+        eco_labels = create_eco_cluster_labels(eco_clusters_load)
+        data_with_labels = prepare_data_with_labels(data, eco_labels)
+        grouped = data_with_labels.groupby("eco_cluster")
 
-        # Initialize output array
-        extremes_array = xr.full_like(data.astype(float), np.nan)
-
-        # Process data
-        eco_cluster_labels = create_eco_cluster_labels(eco_clusters_load)
-        data = prepare_data(data, eco_cluster_labels)
-        grouped = data.groupby("eco_cluster")
-
-        # Calculate thresholds
+        # Map thresholds for each group's label
         thresholds = grouped.map(lambda grp: self.map_thresholds_to_clusters(grp))
+        # align thresholds to existing eco_cluster coord and drop helper coords if present
+        thresholds = thresholds.sel(eco_cluster=data_with_labels["eco_cluster"])
+        if "eco_cluster" in thresholds.coords:
+            thresholds = thresholds.drop_vars(["eco_cluster"], errors="ignore")
 
-        thresholds = thresholds.sel(eco_cluster=data["eco_cluster"])
-        thresholds = thresholds.drop_vars(["eco_cluster"])
-        # Save thresholds
+        # Save thresholds (backend-specific)
         self.saver._save_data(thresholds, "thresholds")
 
+        # Compute extremes array per group
         extremes = self._compute_extremes_per_grp(grouped)
+        extremes_array = xr.full_like(data.astype(float), np.nan)
         extremes_array.values = extremes.values
         self.saver._save_data(extremes_array, "extremes")
 
-        vci_array = xr.full_like(data.astype(float), np.nan)
-        vci = self._compute_vci_per_grp(grouped)
-        vci = vci_array.values = vci.values
-        self.saver._save_data(vci_array, "vci")
-
-        return thresholds, extremes_array
+        if getattr(self.config, "vci", False):
+            # Compute vci and save
+            vci = self._compute_vci_per_grp(grouped)
+            vci_array = xr.full_like(data.astype(float), np.nan)
+            vci_array.values = vci.values
+            self.saver._save_data(vci_array, "vci")
 
     def generate_regional_threshold(self, data, eco_clusters_load):
         """
