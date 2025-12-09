@@ -118,35 +118,10 @@ class Sentinel2Dataloader(Dataloader):
         ds = self.compute_max_per_period(ds, period_size=self.config.time_resolution)
         return ds
 
-    def load_file(self, filepath, process_entire_minicube=False):
-        try:
-            ds = xr.open_zarr(
-                filepath,
-            ).astype(np.float32)
-        except Exception as e:
-            print(f"Error loading {filepath}: {e}")
-            return None
-
-        ds = self._ensure_coordinates(ds)
-        if not process_entire_minicube:
-            # Select a random vegetation location
-            ds = self._get_random_vegetation_pixel_series(ds)
-            if ds is None:
-                return None
-        else:
-            ds = ds.stack(location=("longitude", "latitude"))
-            self.saver.update_saving_path(filepath.stem)
-
-        ds = self.generate_masked_vegetation_index(ds, filename=filepath.stem)
-        if ds is None:
-            return None
-        ds = self.compute_max_per_period(ds, period_size=self.config.time_resolution)
-        return ds
-
     def generate_masked_vegetation_index(self, ds, filename=None):
         # High-resolution computation
         evi = self._calculate_vegetation_index(ds)
-        mask = self._compute_masks(ds, evi)
+        mask = self._compute_masks(ds)
         masked_evi = evi * mask
         data = xr.Dataset(
             data_vars={
@@ -194,7 +169,6 @@ class Sentinel2Dataloader(Dataloader):
 
         ds["time"] = ds["time"].dt.floor("D")
         ds = ds.sel(time=slice(date(2017, 3, 1), None))
-
         return ds.rename({"x": "longitude", "y": "latitude"})
 
     def _get_random_vegetation_pixel_series(self, ds):
@@ -247,7 +221,7 @@ class Sentinel2Dataloader(Dataloader):
         else:
             raise ValueError(f"Unknown vegetation index: {self.config.index}")
 
-    def _compute_masks(self, ds, evi=None):
+    def _compute_masks(self, ds):
         """
         Applies cloud and vegetation masks.
         If use_coarsen=True, masks are coarsened before being returned.
@@ -291,15 +265,13 @@ class Sentinel2Dataloader(Dataloader):
 
     def compute_msc(
         self,
-        clean_data: xr.DataArray,
+        data: xr.DataArray,
         smoothing_window: int = 7,  # 9,
         poly_order: int = 2,
     ):
 
         # Step 1: Compute mean seasonal cycle
-        mean_seasonal_cycle = clean_data.groupby("time.dayofyear").mean(
-            "time", skipna=True
-        )
+        mean_seasonal_cycle = data.groupby("time.dayofyear").mean("time", skipna=True)
         # Apply circular padding along the dayofyear axis before rolling
         # # edge case growing season during the change of year
         padded_values = np.pad(
@@ -387,7 +359,7 @@ class Sentinel2Dataloader(Dataloader):
         # Define window sizes for gap-filling and cloud noise removal
         config = dict()
         # config["nan_fill_windows"] = [3, 4]
-        config["noise_half_windows"] = [1]
+        config["noise_half_windows"] = [2]
         config["smoothing_window_msc"] = 7
         config["poly_msc"] = 2
         return config

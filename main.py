@@ -24,7 +24,7 @@ def parser_arguments():
         "--id",
         type=str,
         default=None,
-        help="id of the experiment is time of the job launch and job_id",
+        help="id_of_the_experiment. If no id, the id is set to the current date and time.",
     )
 
     parser.add_argument(
@@ -57,20 +57,6 @@ def parser_arguments():
         help=" Absolute path to the clustering dataset (default: path/to/data).",
     )
 
-    parser.add_argument(
-        "--compute_variance",
-        type=bool,
-        default=False,
-        help="Compute variance of the seasonal cycle in addition of the mean seasonal cycle (default: False).",
-    )
-
-    parser.add_argument(
-        "--region",
-        type=str,
-        default="globe",
-        help="Region of the globe to apply the regional extremes."
-        "Region available: 'globe', 'europe'.",
-    )
     parser.add_argument(
         "--time_resolution",
         type=int,
@@ -111,25 +97,11 @@ def parser_arguments():
     )
 
     parser.add_argument(
-        "--kernel_pca",
-        type=str,
-        default=False,
-        help="Using a Kernel PCA instead of a PCA.",
-    )
-
-    parser.add_argument(
         "--saving_path",
         type=str,
         default=None,
         help="Absolute path to save the experiments 'path/to/experiment'. "
         "If None, the experiment will be save in a folder /experiment in the parent folder.",
-    )
-
-    parser.add_argument(
-        "--compute_only_thresholds",
-        type=bool,
-        default=False,
-        help="If True, only compute the thresholds and not the extremes.",
     )
 
     parser.add_argument(
@@ -149,12 +121,13 @@ def parser_arguments():
 
 
 if __name__ == "__main__":
+
     args = parser_arguments().parse_args()
-    args.name = "S2LR_regional_30_lowcloud"  # "large_training_set"
-    args.modis_resolution = True
+    args.name = "modis_test"  # "large_training_set"
+    args.modis_resolution = False  # True
     args.index = "EVI"
     args.dayofyear_extreme = False  # True
-    args.data_source = "S2"
+    args.data_source = "MODIS"
     args.vci = False
     args.time_resolution = 16
     args.data_source_path = [
@@ -163,24 +136,23 @@ if __name__ == "__main__":
         # "/Net/Groups/BGI/work_2/scratch/DeepExtremes/dx-minicubes/full/",
         "/Net/Groups/BGI/work_5/scratch/EU_Minicubes/_final/",
     ]
-    # EARTHNET_FILEPATH = "/Net/Groups/BGI/work_5/scratch/EU_Minicubes/_final/"
     args.k_pca = False
     args.n_samples_pca = 15000
     args.n_samples_clustering = 50000
     args.n_components = 3
-    args.n_eco_clusters = 30
+    args.n_eco_clusters = 20
     args.compute_variance = False
-    args.method = "regional"
+    args.method = "local"
     args.start_year = 2000
-    args.lower_quantiles = [0.025, 0.05, 0.10, 0.2, 0.3, 0.4, 0.50]
-    args.upper_quantiles = [0.501, 0.6, 0.7, 0.8, 0.9, 0.95, 0.975]
+    args.lower_quantiles = [0, 0.025, 0.05, 0.10, 0.2, 0.3, 0.4, 0.50]
+    args.upper_quantiles = [0.501, 0.6, 0.7, 0.8, 0.9, 0.95, 0.975, 1]
+    # args.saving_path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/PassageProject/2025-10-21_10:05:17_somalia_5d/NDVI"
 
-    # args.saving_path = "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-10-21_10:05:17_somalia_5d/NDVI/"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-10-09_14:01:20_somalia_with_DeepExtreme/NDVI/"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-10-01_17:22:11_low_cloud/EVI_EN/"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-10-09_11:57:15_somalia/NDVI/"  # /Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN/"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-28_14:31:10_S2_reg_40_modis/EVI_MODIS/"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-26_11:30:09_S2_low_res_30/EVI_EN/"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-28_14:31:10_S2_reg_40_modis/EVI_MODIS/"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-26_11:36:43_S2_low_res_40/EVI_EN/"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-22_23:58:39_S2_low_res_local/EVI_EN/"  # "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-14_16:23:50_S2_low_res/EVI_EN/" #"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-14_16:23:50_S2_low_res/EVI_EN" #"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-09-13_14:26:50_S2_low_res/EVI_EN" #/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:52:57_large_training_set/EVI_EN/" #"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-22_14:35:49_local_sentinel2/EVI_EN" ##"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-24_22:10:25_local_sentinel2_modisres/EVI_EN/" #/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-08-22_14:35:49_local_sentinel2/EVI_EN/"  #
-    # "/Net/Groups/BGI/work_5/scratch/Somalia_VCI_test/S2_samples/"  #
     parent_folder = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/"  #
     subfolders = [
         folder for folder in os.listdir(parent_folder) if folder[-4:] == ".zip"
     ]
+    subfolders = ["DE-Hai_51.08_10.45_v0.zarr.zip"]
     # existing = set(os.listdir(args.saving_path))
     #
     # subfolders = [
@@ -194,10 +166,10 @@ if __name__ == "__main__":
     print(f"Processing {len(subfolders)} minicubes...")
     if args.method == "regional":
         # Train the regional extreme method on a subset of locations
-        # if args.saving_path is None:
-        regional_extremes_method(args)
-        # Apply the regional extremes method on a single minicube
+        if args.saving_path is None:
+            regional_extremes_method(args)
 
+        # Apply the regional extremes method on a single minicube
         @delayed
         def process_sample(folder):
             try:
@@ -223,9 +195,6 @@ if __name__ == "__main__":
     elif args.method == "local":
 
         for folder in subfolders:
-            # if folder[:-4] not in os.listdir(
-            #    f"{args.saving_path}"
-            # ):
             try:
                 local_extremes_method(args, minicube_path=parent_folder + folder)
             except Exception as e:

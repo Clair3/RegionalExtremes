@@ -47,15 +47,6 @@ class EcoCluster:
         self.projected_data = self.loader._load_pca_projection()
         self.limits_eco_clusters = self.loader._load_limits_eco_clusters()
         self.eco_clusters = self.loader._load_data("eco_clusters")
-        # else:
-        #     # Initialize a new PCA.
-        #     if self.config.k_pca:
-        #         self.pca = KernelPCA(n_components=self.n_components, kernel="rbf")
-        #     else:
-        #         self.pca = PCA(n_components=self.n_components)
-        #     self.projected_data = None
-        #     self.limits_eco_clusters = None
-        #     self.eco_clusters = None
 
     def compute_pca_and_transform(
         self,

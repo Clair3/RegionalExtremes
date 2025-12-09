@@ -48,20 +48,17 @@ class LocalExtremes:
         # Apply the quantile calculation to each location
         results = self._compute_thresholds(
             deseasonalized=deseasonalized,
-            return_only_thresholds=self.config.compute_only_thresholds,
         )
         printt("results computed")
 
         # Assign the results back to the quantile_array
         thresholds_array.values = results["thresholds"].values.T
-        if not self.config.compute_only_thresholds:
-            extremes_array.values = results["extremes"].values
+        extremes_array.values = results["extremes"].values
 
         # save the array
         printt("Saving in progress")
         self.saver._save_data(thresholds_array, "thresholds")
-        if not self.config.compute_only_thresholds:
-            self.saver._save_data(extremes_array, "extremes")
+        self.saver._save_data(extremes_array, "extremes")
 
     def _compute_thresholds(
         self,

@@ -7,10 +7,11 @@ from pyproj import Transformer
 class ModisDataloader(Sentinel2Dataloader):
     def _calculate_vegetation_index(self, ds):
         """Calculates the Vegetation Index (EVI)."""
+
         if self.config.index == "EVI_MODIS" or "EVI":
-            ds = (ds["250m_16_days_EVI"] + 2000) / 12000
+            ds = ds["250m_16_days_EVI"] * 0.0001
         elif self.config.index == "NDVI":
-            ds = (ds["250m_16_days_NDVI"] + 2000) / 12000
+            ds = ds["250m_16_days_NDVI"] * 0.0001
         else:
             raise ValueError(f"Unknown vegetation index: {self.config.index}")
         if "start_range" in ds.coords:
@@ -43,10 +44,9 @@ class ModisDataloader(Sentinel2Dataloader):
     def compute_msc(
         self,
         clean_data: xr.DataArray,
-        smoothing_window: int = 5,
+        smoothing_window: int = 7,
         poly_order: int = 2,
     ):
-
         # Step 1: Compute mean seasonal cycle
         mean_seasonal_cycle = clean_data.groupby("time.dayofyear").mean(
             "time", skipna=True
@@ -74,11 +74,11 @@ class ModisDataloader(Sentinel2Dataloader):
         mean_seasonal_cycle = mean_seasonal_cycle.where(mean_seasonal_cycle > 0, 0)
         return mean_seasonal_cycle
 
-    def _compute_masks(self, ds, evi):
+    def _compute_masks(self, ds):
         """Applies cloud and vegetation masks to the EVI data."""
 
         if "250m_16_days_pixel_reliability" not in ds:
-            return self._compute_mask_VI_Quality(ds, evi)
+            return self._compute_mask_VI_Quality(ds)
 
         # mask = xr.ones_like(evi)  # Default mask (all ones, meaning no masking)
 
@@ -92,9 +92,9 @@ class ModisDataloader(Sentinel2Dataloader):
             mask != 0, 1
         )  # Convert to binary mask (1 = valid, NaN = masked)
 
-        return evi * mask
+        return mask
 
-    def _compute_mask_VI_Quality(self, ds, evi):
+    def _compute_mask_VI_Quality(self, ds):
         """Applies cloud and vegetation masks to the EVI data using VI_Quality."""
         vi_quality = ds["250m_16_days_VI_Quality"].astype(np.uint16)
         if "start_range" in vi_quality.coords:
@@ -120,7 +120,7 @@ class ModisDataloader(Sentinel2Dataloader):
         # Mask EVI with NaNs where data is invalid
         final_mask = final_mask.where(final_mask, np.nan)
 
-        return evi * final_mask
+        return final_mask
 
     def _choose_random_pixel(self, ds):
         """Selects a random time serie vegetation pixel location in the minicube based on SCL classification."""
@@ -142,7 +142,7 @@ class ModisDataloader(Sentinel2Dataloader):
         # Define window sizes for gap-filling and cloud noise removal
         config = dict()
         config["nan_fill_windows"] = [3, 5]
-        config["noise_half_windows"] = [1]
+        config["noise_half_windows"] = [2]
         config["smoothing_window_msc"] = 7
         config["poly_msc"] = 2
         config["period_size"] = 16
@@ -191,7 +191,7 @@ class ModisDataloader(Sentinel2Dataloader):
             data, noise_half_windows=self.config_dict["noise_half_windows"]
         )
         # data = self._remove_low_vegetation_location(data, threshold=0.2)
-        self.saver._save_data(data, "vegetation_index")
+        self.saver._save_data(data, self.config.index.lower())
         # Compute Mean Seasonal Cycle (MSC)
         msc = self.compute_msc(data)
         msc = msc.transpose("location", "dayofyear", ...)

@@ -12,9 +12,7 @@ from typing import Optional, Tuple
 
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
-from RegionalExtremesPackage.utils.logging_config import printt
 from RegionalExtremesPackage.utils import Loader, Saver
-from RegionalExtremesPackage.dataloaders import dataloader
 from RegionalExtremesPackage.utils.config import (
     InitializationConfig,
 )
@@ -237,7 +235,6 @@ class QuantilesBase(ABC):
     def _compute_thresholds(
         self,
         data: xr.DataArray,
-        # return_only_thresholds=False,
     ):
         """
         Assign quantile levels to data.
@@ -245,7 +242,6 @@ class QuantilesBase(ABC):
         Args:
             data (xarray.DataArray): Data used to compute the quantiles.
             quantile_levels (tuple): Tuple of lower and upper quantile levels.
-            return_only_thresholds (bool): If True, only return quantile thresholds.
         Returns:
             xarray.Dataset: Dataset containing extremes and thresholds.
         """
