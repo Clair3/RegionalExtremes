@@ -408,3 +408,74 @@ class Sentinel2Dataloader(Dataloader):
         data = _ensure_time_chunks(data)
         data = data.transpose("location", "time", ...).compute()
         return msc, data
+
+
+class S24MLDataloader(Sentinel2Dataloader):
+    def preprocess_data(
+        self,
+        return_time_series=False,
+        filepath=None,
+    ):
+        """
+        Preprocess dataset by applying noise removal, gap-filling, cloud removal,
+        deseasonalization, and cumulative EVI computation.
+
+        Parameters
+        ----------
+        return_time_series : bool, optional
+            If True, return both the mean seasonal cycle (MSC) and processed time series.
+        minicube_path : str, optional
+            Path to a precomputed minicube dataset for loading.
+
+        Returns
+        -------
+        xr.DataArray
+            Mean seasonal cycle (MSC), and optionally, the processed time series.
+        """
+        self.config_dict = self.get_config()
+        printt("Starting preprocessing...")
+
+        data = self.load_file(filepath=filepath, variable="evi")
+        msc = self.load_file(filepath=filepath, variable="msc")
+
+        # Compute Mean Seasonal Cycle (MSC)
+        msc = self.compute_msc(data)
+        msc = msc.transpose("location", "dayofyear", ...)
+        self.saver._save_data(msc, "msc")
+
+        if not return_time_series:
+            return msc
+
+        # Step 3: Deseasonalization
+        data = self._deseasonalize(data, msc)  # needed?
+        self.saver._save_data(data, "deseasonalized")
+        data = _ensure_time_chunks(data)
+        data = data.transpose("location", "time", ...).compute()
+        return msc, data
+
+    def _ensure_coordinates(self, ds):
+        """Transforms UTM coordinates to latitude and longitude."""
+        if "time_veg" in ds.dims:
+            ds = ds.rename({"time_veg": "time"})
+
+        ds["time"] = ds["time"].dt.floor("D")
+        # ds = ds.sel(time=slice(date(2017, 3, 1), None))
+
+        ds = ds.set_index(sample=("latitude", "longitude"))
+        ds = ds.rename(sample="location")
+        return ds
+
+    def load_file(self, filepath, variable):
+        try:
+            ds = xr.open_zarr(
+                Path(filepath),
+            ).astype(np.float32)
+        except Exception as e:
+            print(f"Error loading {filepath}: {e}")
+            return None
+
+        ds = self._ensure_coordinates(ds)
+
+        ds = _ensure_time_chunks(ds)
+        ds = ds[variable]
+        return ds

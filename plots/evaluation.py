@@ -999,7 +999,7 @@ def compute_extremes(
 
     ds = missed_fraction.to_dataset(name=f"{type}_fraction_{dim}")
     ds = cfxr.encode_multi_index_as_compress(ds, "location")
-    save_path = f"/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/comparison/results/{sample}/{savename}"
+    save_path = f"{path_data2}/{sample}/{savename}"
     ds = ds.chunk("auto")
     ds.to_zarr(save_path, mode="w", consolidated=True)
     print(f"agreement index computed for:", sample)
@@ -1443,11 +1443,11 @@ if __name__ == "__main__":
         "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/comparison/S2_regional_20_lowcloud/EVI_EN"
     )
     path_data2 = Path(
-        "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/comparison/MODIS_local_None_lowcloud/EVI"
+        "/Net/Groups/BGI/scratch/crobin/PythonProjects/ExtremesProject/experiments/2025-12-09_02:53:15_modis_regional/EVI"
     )
-    savename_dice = f"dice_{str(path_data1.parent.name)}_{str(path_data2.parent.name)}"
+    # savename_dice = f"dice_{str(path_data1.parent.name)}_{str(path_data2.parent.name)}"
     savename = (
-        f"missed_fraction_{str(path_data1.parent.name)}_{str(path_data2.parent.name)}"
+        f"common_fraction_{str(path_data1.parent.name)}_{str(path_data2.parent.name)}"
     )
 
     # existing = set(os.listdir(path_data2))
@@ -1498,20 +1498,20 @@ if __name__ == "__main__":
                 path_data1=path_data1,
                 path_data2=path_data2,
                 savename=savename + "_0.01",
-                type="missed",
+                type="common",
                 dim="time",
                 threshold=0.1,
             )
 
-            compute_extremes(
-                sample,
-                path_data1=path_data1,
-                path_data2=path_data2,
-                savename=savename + "_0.05",
-                type="missed",
-                dim="time",
-                threshold=0.05,
-            )
+            # compute_extremes(
+            #     sample,
+            #     path_data1=path_data1,
+            #     path_data2=path_data2,
+            #     savename=savename + "_0.05",
+            #     type="missed",
+            #     dim="time",
+            #     threshold=0.05,
+            # )
         ## compute_variance(sample)
         # compute_raoq(sample)
         ## compute_diversity(sample, metric="raoq")

@@ -75,7 +75,6 @@ class Sentinel2CoarseDataloader(Sentinel2Dataloader):
         coarse_map = coarse_map.assign_coords(
             latitude=ds.latitude, longitude=ds.longitude
         )
-
         # Group fine-resolution reflectance bands by coarse_map bins
         ds_coarse = (
             ds[["B8A", "B04", "B02"]]
@@ -92,7 +91,7 @@ class Sentinel2CoarseDataloader(Sentinel2Dataloader):
             lambda x: x.mean(dim=("stacked_latitude_longitude"), skipna=True)
         )
         mask_frac = mask_frac.sel({coarse_map.name: coarse_map})
-        mask = xr.where(mask_frac > 0.5, 1, np.nan).stack(
+        mask = xr.where(mask_frac > 0.9, 1, np.nan).stack(
             location=("latitude", "longitude")
         )
         return ds_coarse, mask
@@ -106,11 +105,11 @@ class Sentinel2CoarseDataloader(Sentinel2Dataloader):
             .mean(skipna=True)
         )
 
-        mask = mask.unstack("location")
+        mask = mask.unstack("location")  # 1 is valid, nan is invalid
         mask_frac = mask.coarsen(latitude=12, longitude=12, boundary="trim").mean(
             skipna=True
         )
-        mask = xr.where(mask_frac > 0.5, 1, np.nan).stack(
+        mask = xr.where(mask_frac > 0.9, 1, np.nan).stack(
             location=("latitude", "longitude")
         )
 

@@ -24,9 +24,6 @@ class Dataloader(ABC):
         self.loader = Loader(config)
         self.saver = Saver(config)
         self.noise_removal = NoiseRemovalBase()
-
-        self.start_year = self.config.start_year
-
         # data loaded from the dataset
         self.data = None
         # Mean seasonal cycle

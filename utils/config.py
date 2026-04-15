@@ -19,8 +19,6 @@ GRANDPARENT_DIRECTORY_PATH = os.path.abspath(
 CLIMATIC_INDICES = ["pei_30", "pei_90", "pei_180"]
 ECOLOGICAL_INDICES = ["EVI", "NDVI", "kNDVI"]
 DATA_SOURCES = ["S2", "MODIS"]
-# EARTHNET_INDICES = ["EVI_EN"]
-# MODIS_INDICES = ["EVI_MODIS"]
 
 
 class InitializationConfig:
@@ -32,7 +30,6 @@ class InitializationConfig:
             args (argparse.Namespace): Parsed arguments from argparse.ArgumentParser().parse_args()
         """
         if args.saving_path is None:
-            # self.saving_path = None
             self._initialize_new_experiment(args)
         else:
 

@@ -64,11 +64,7 @@ class EcoCluster:
             self.n_components <= 366
         ), "n_components have to be in the range of days of a years"
         # Fit the PCA. Each colomns give us the projection through 1 component.
-        if self.config.k_pca:
-            self.pca = KernelPCA(n_components=self.n_components, kernel="rbf")
-        else:
-            self.pca = PCA(n_components=self.n_components)
-        # self.pca = PCA(n_components=self.n_components)
+        self.pca = PCA(n_components=self.n_components)
         pca_components = self.pca.fit_transform(scaled_data)
 
         if isinstance(self.pca, PCA):
@@ -153,29 +149,17 @@ class EcoCluster:
         self, projected_data: np.ndarray
     ) -> list[np.ndarray]:
         """Calculates the limits eco_clusters for each component."""
-        if isinstance(self.pca, PCA):
-            return [
-                np.linspace(
-                    np.quantile(projected_data[:, component], 0.05),
-                    np.quantile(projected_data[:, component], 0.95),
-                    round(
-                        self.pca.explained_variance_ratio_[component]
-                        * self.n_eco_clusters
-                    )
-                    + 1,
+        return [
+            np.linspace(
+                np.quantile(projected_data[:, component], 0.05),
+                np.quantile(projected_data[:, component], 0.95),
+                round(
+                    self.pca.explained_variance_ratio_[component] * self.n_eco_clusters
                 )
-                for component in range(self.n_components)
-            ]
-        # KPCA. Legacy, to remove?
-        else:
-            return [
-                np.linspace(
-                    np.quantile(projected_data[:, component], 0.05),
-                    np.quantile(projected_data[:, component], 0.95),
-                    self.n_eco_clusters + 1,
-                )
-                for component in range(self.n_components)
-            ]
+                + 1,
+            )
+            for component in range(self.n_components)
+        ]
 
     def find_eco_clusters(self):
         """Function to attribute at every location the bin it belong to."""

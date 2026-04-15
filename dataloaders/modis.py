@@ -20,7 +20,6 @@ class ModisDataloader(Sentinel2Dataloader):
 
     def _ensure_coordinates(self, ds):
         """Transforms UTM coordinates to latitude and longitude."""
-
         epsg = (
             ds.attrs.get("spatial_ref") or ds.attrs.get("EPSG") or ds.attrs.get("CRS")
         )
@@ -37,8 +36,28 @@ class ModisDataloader(Sentinel2Dataloader):
             ds = ds.rename({"time_modis-13Q1-061": "time"})
         elif "y231" in ds.coords:
             ds = ds.rename({"x231": "x", "y231": "y"})
+            ## Patch for the ES-LM2 site
+            # s2_path = "/Net/Groups/BGI/work_5/scratch/FluxSitesMiniCubes/final/ES-LM2_39.93_-5.78_v0.zarr.zip"
+            # s2_cube = xarray.open_zarr(s2_path)
+            # ds.rio.write_crs(
+            #     "+proj=sinu +R=6371007.181 +nadgrids=@null +wktext", inplace=True
+            # )
+            # s2_cube.rio.write_crs(s2_cube.attrs["EPSG"], inplace=True)
+            # ds = ds.rio.reproject_match(s2_cube, resampling=Resampling.nearest)
+            # epsg = (
+            #     ds.attrs.get("spatial_ref")
+            #     or ds.attrs.get("EPSG")
+            #     or ds.attrs.get("CRS")
+            # )
+            # transformer = Transformer.from_crs(
+            #     s2_cube.attrs["EPSG"], 4326, always_xy=True
+            # )
+            # lon, lat = transformer.transform(ds.x.values, ds.y.values)
+            # ds = ds.assign_coords({"x": ("x", lon), "y": ("y", lat)})
+
         ds["time"] = ds["time"].dt.floor("D")
 
+        # ds = ds.sel(time=slice(date(2017, 3, 1), None))
         return ds.rename({"x": "longitude", "y": "latitude"})
 
     def compute_msc(
@@ -76,6 +95,13 @@ class ModisDataloader(Sentinel2Dataloader):
 
     def _compute_masks(self, ds):
         """Applies cloud and vegetation masks to the EVI data."""
+        if ("250m_16_days_pixel_reliability" not in ds) and (
+            "250m_16_days_VI_Quality" not in ds
+        ):
+            printt(
+                "Warning: No quality mask found. Returning unmasked data. This may lead to inaccurate results."
+            )
+            return xr.ones_like(ds["250m_16_days_EVI"])  # No masking, all valid
 
         if "250m_16_days_pixel_reliability" not in ds:
             return self._compute_mask_VI_Quality(ds)
